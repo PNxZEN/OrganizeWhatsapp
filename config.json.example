@@ -1,0 +1,11 @@
+{
+  "hex_key": "",
+  "mode": "copy",
+  "port": 8000,
+  "idle_timeout": 45,
+  "output_dir": "./output",
+  "media_dir": "./output",
+  "db_dir": "./Databases",
+  "allow_lan": false,
+  "skip_db_pull": false
+}

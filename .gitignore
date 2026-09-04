@@ -1,0 +1,79 @@
+# ==============================================================================
+# WhatsApp Media Organizer - Git Ignore Rules
+# ==============================================================================
+
+# Python Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# WhatsApp Decrypted Databases & Media (CRITICAL PRIVACY)
+# Never commit personal chats, decrypted SQLite databases, or private media!
+output/
+Media/
+Databases/
+Backups/
+contacts_map.json
+encrypted_backup.key
+
+# Configuration files with personal keys
+# Use config.json.example as the public template
+config.json
+
+# SQLite Databases & temporary journal/WAL files
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+*.crypt12
+*.crypt14
+*.crypt15
+
+# Scratch & Temporary Directories
+scratch/
+tests/test_output/
+test_output/
+*.tmp
+*.log
+
+# Caches & Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Operating System Files
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDE & Editor Configuration
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# HowToProceed
+HowToProceed.md
