@@ -295,55 +295,11 @@ def draw_ripple(draw: ImageDraw.Draw, cx: int, cy: int, r_max: int = 36, color=A
         if r > 0:
             draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=color, width=3)
 
-def draw_button_highlight(draw: ImageDraw.Draw, btn_box: tuple, badge_num: int, badge_text: str, arrow_len: int = 70):
-    """Draw standard green rounded bounding box with badge pill and arrow."""
-    x0, y0, x1, y1 = btn_box
-    box_x0 = x0 - 14
-    box_y0 = y0 - 14
-    box_x1 = x1 + 14
-    box_y1 = y1 + 14
-
-    draw.rounded_rectangle([box_x0, box_y0, box_x1, box_y1], radius=32, outline=ACCENT_GREEN, width=4)
-
-    ripple_cx = x1 - 80
-    ripple_cy = (y0 + y1) // 2
-    draw_ripple(draw, ripple_cx, ripple_cy, r_max=36, color=BRIGHT_GREEN)
-
-    font_badge = get_font(36, bold=True)
-    full_text = f"{badge_num}. {badge_text}"
-    t_box = font_badge.getbbox(full_text)
-    tw = t_box[2] - t_box[0]
-    th = t_box[3] - t_box[1]
-
-    pad_x = 24
-    pad_y = 12
-    badge_w = tw + pad_x * 2
-    badge_h = th + pad_y * 2
-
-    badge_x0 = box_x0 + 36
-    badge_y0 = box_y0 - badge_h - arrow_len
-    badge_x1 = badge_x0 + badge_w
-    badge_y1 = badge_y0 + badge_h
-
-    draw.rounded_rectangle([badge_x0, badge_y0, badge_x1, badge_y1], radius=24, fill=ACCENT_GREEN)
-    tx = badge_x0 + pad_x
-    ty = badge_y0 + (badge_h - th) // 2 - 2
-    draw.text((tx, ty), full_text, fill=(0, 0, 0), font=font_badge)
-
-    arrow_x = (x0 + x1) // 2
-    arrow_y0 = badge_y1 + 4
-    arrow_y1 = box_y0 - 2
-    draw.line([arrow_x, arrow_y0, arrow_x, arrow_y1], fill=ACCENT_GREEN, width=6)
-    draw.polygon([
-        (arrow_x, arrow_y1 + 12),
-        (arrow_x - 14, arrow_y1 - 10),
-        (arrow_x + 14, arrow_y1 - 10),
-    ], fill=ACCENT_GREEN)
-
 def process_slide_7() -> Image.Image:
     """Step 8 (Slide 7): Long press on key table & tap Copy."""
     raw = Image.open(os.path.join(RAW_DIR, "7.png"))
     im = normalize_canvas(raw)
+    draw_clean_status_bar(im)
     draw = ImageDraw.Draw(im)
 
     redact_key_table(draw, card_y_top=704)
@@ -391,33 +347,59 @@ def process_slide_7() -> Image.Image:
     return im
 
 def process_slide_8() -> Image.Image:
-    """Step 9 (Slide 8): Tap Continue."""
+    """Step 9 (Slide 8): Tap Continue (matches wa_step6.webp design language)."""
     raw = Image.open(os.path.join(RAW_DIR, "7.png"))
     im = normalize_canvas(raw)
+    draw_clean_status_bar(im)
     draw = ImageDraw.Draw(im)
     redact_key_table(draw, card_y_top=704)
-    btn_box = (62, 2129, 1017, 2241)
-    draw_button_highlight(draw, btn_box, badge_num=9, badge_text="Tap Continue", arrow_len=80)
-    return im
+    # Box [50, 2120, 1030, 2250] with tight label and long arrow starting at Y=1500
+    out = draw_focus_spotlight(
+        im,
+        [50, 2120, 1030, 2250],
+        color=ACCENT_GREEN,
+        label="9. Tap Continue",
+        badge_pos="above",
+        arrow_dir="down",
+        arrow_from_y=1500
+    )
+    return out
 
 def process_slide_9() -> Image.Image:
-    """Step 10 (Slide 9): Confirm I Saved My 64-digit Key."""
+    """Step 10 (Slide 9): Confirm I Saved My 64-digit Key (matches wa_step6.webp design language)."""
     raw = Image.open(os.path.join(RAW_DIR, "8.png"))
     im = normalize_canvas(raw)
+    draw_clean_status_bar(im)
     draw = ImageDraw.Draw(im)
     redact_key_table(draw, card_y_top=727)
-    btn_box = (62, 1995, 1017, 2105)
-    draw_button_highlight(draw, btn_box, badge_num=10, badge_text="Tap 'I Saved My Key'", arrow_len=75)
-    return im
+    # Box [50, 1985, 1030, 2115] with tight label and long arrow starting at Y=1400
+    out = draw_focus_spotlight(
+        im,
+        [50, 1985, 1030, 2115],
+        color=ACCENT_GREEN,
+        label="10. Tap 'I Saved My Key'",
+        badge_pos="above",
+        arrow_dir="down",
+        arrow_from_y=1400
+    )
+    return out
 
 def process_slide_10() -> Image.Image:
-    """Step 11 (Slide 10): Tap Create."""
+    """Step 11 (Slide 10): Tap Create (matches wa_step6.webp design language)."""
     raw = Image.open(os.path.join(RAW_DIR, "9.png"))
     im = normalize_canvas(raw)
-    draw = ImageDraw.Draw(im)
-    btn_box = (62, 1995, 1017, 2105)
-    draw_button_highlight(draw, btn_box, badge_num=11, badge_text="Tap Create", arrow_len=75)
-    return im
+    draw_clean_status_bar(im)
+    # Box [50, 1985, 1030, 2115] with tight label and long arrow starting at Y=1350
+    out = draw_focus_spotlight(
+        im,
+        [50, 1985, 1030, 2115],
+        color=ACCENT_GREEN,
+        label="11. Tap Create",
+        badge_pos="above",
+        arrow_dir="down",
+        arrow_from_y=1350
+    )
+    return out
 
 def main():
     print("[1/11] Processing Slide 0 (Main Menu -> Settings)...")
