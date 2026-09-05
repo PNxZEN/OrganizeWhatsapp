@@ -6,7 +6,7 @@ prominent red cross-out on 'Use passkey', and realistic Slide 7 without desktop 
 
 import os
 import math
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageEnhance
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_DIR = os.path.join(ROOT_DIR, 'scratch', 'tutorial_raw', '64digit_wa_tutorial')
@@ -80,7 +80,7 @@ def draw_arrow(draw, start, end, color=BRIGHT_GREEN, width=8, head_len=36):
     p2 = (x2 - head_len * math.cos(angle + math.pi / 6), y2 - head_len * math.sin(angle + math.pi / 6))
     draw.polygon([end, p1, p2], fill=color)
 
-def draw_focus_spotlight(im, bbox, color=ACCENT_GREEN, label=None, badge_pos="above", arrow_dir=None, arrow_from_y=None):
+def draw_focus_spotlight(im, bbox, color=ACCENT_GREEN, label=None, badge_pos="above", arrow_dir=None, arrow_from_y=None, arrow_x=None):
     """Draws an ultra-clean focus spotlight with optional long directional arrow and tightly attached pill label."""
     overlay = Image.new('RGBA', im.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
@@ -101,12 +101,12 @@ def draw_focus_spotlight(im, bbox, color=ACCENT_GREEN, label=None, badge_pos="ab
     # Directional arrow: long, prominent attention drawer from top/center of screen
     if arrow_dir == 'down':
         start_y = arrow_from_y if arrow_from_y is not None else (y1 - 100)
-        mid_x = (x1 + x2) // 2
-        draw_arrow(draw, (mid_x, start_y), (mid_x, y1 - 10), color=BRIGHT_GREEN, width=8, head_len=36)
+        ax = arrow_x if arrow_x is not None else ((x1 + x2) // 2)
+        draw_arrow(draw, (ax, start_y), (ax, y1 - 10), color=BRIGHT_GREEN, width=8, head_len=36)
     elif arrow_dir == 'up':
-        mid_x = (x1 + x2) // 2
+        ax = arrow_x if arrow_x is not None else ((x1 + x2) // 2)
         start_y = arrow_from_y if arrow_from_y is not None else (y2 + 100)
-        draw_arrow(draw, (mid_x, start_y), (mid_x, y2 + 10), color=BRIGHT_GREEN, width=8, head_len=36)
+        draw_arrow(draw, (ax, start_y), (ax, y2 + 10), color=BRIGHT_GREEN, width=8, head_len=36)
     elif arrow_dir == 'right':
         mid_y = (y1 + y2) // 2
         draw_arrow(draw, (x1 - 110, mid_y), (x1 - 12, mid_y), color=BRIGHT_GREEN, width=8, head_len=32)
@@ -251,8 +251,8 @@ def process_slide_5():
     src = os.path.join(RAW_DIR, '5.png')
     im = Image.open(src).convert('RGB')
     draw_clean_status_bar(im)
-    # Box [40, 2125, 1040, 2295] with tight label and long arrow starting at Y=1550
-    out = draw_focus_spotlight(im, [40, 2125, 1040, 2295], color=ACCENT_GREEN, label="6. Tap 64-digit key", badge_pos="above", arrow_dir="down", arrow_from_y=1550)
+    # Box [40, 2125, 1040, 2295] with tight label and long arrow starting at Y=1380 positioned at X=950 (aligns with pulse ring, avoids handle bar and all text)
+    out = draw_focus_spotlight(im, [40, 2125, 1040, 2295], color=ACCENT_GREEN, label="6. Tap 64-digit key", badge_pos="above", arrow_dir="down", arrow_from_y=1380, arrow_x=950)
     return out
 
 def process_slide_6():
@@ -385,21 +385,63 @@ def process_slide_9() -> Image.Image:
     return out
 
 def process_slide_10() -> Image.Image:
-    """Step 11 (Slide 10): Tap Create (matches wa_step6.webp design language)."""
+    """Step 11 (Slide 10): Tap Create - maximum visual magnetism, radiant bloom, and enhanced vibrance."""
     raw = Image.open(os.path.join(RAW_DIR, "9.png"))
     im = normalize_canvas(raw)
     draw_clean_status_bar(im)
-    # Box [50, 1985, 1030, 2115] with tight label and long arrow starting at Y=1350
-    out = draw_focus_spotlight(
-        im,
-        [50, 1985, 1030, 2115],
-        color=ACCENT_GREEN,
-        label="11. Tap Create",
-        badge_pos="above",
-        arrow_dir="down",
-        arrow_from_y=1350
-    )
-    return out
+
+    # 1. Softly dim non-essential areas so Create button becomes the unmistakable visual anchor
+    dim_layer = Image.new('RGBA', im.size, (0, 0, 0, 0))
+    dim_draw = ImageDraw.Draw(dim_layer)
+    dim_draw.rectangle([0, 150, 1080, 1850], fill=(11, 20, 26, 75))
+    dim_draw.rectangle([0, 2125, 1080, 2300], fill=(11, 20, 26, 90))
+
+    im_rgba = Image.alpha_composite(im.convert('RGBA'), dim_layer)
+
+    # 2. Boost Create button vibrance and illumination
+    x1, y1, x2, y2 = 50, 1985, 1030, 2115
+    btn_crop = im_rgba.crop((x1, y1, x2, y2))
+    enh_c = ImageEnhance.Color(btn_crop).enhance(1.6)
+    enh_b = ImageEnhance.Brightness(enh_c).enhance(1.15)
+
+    mask = Image.new('L', (x2 - x1, y2 - y1), 0)
+    m_draw = ImageDraw.Draw(mask)
+    m_draw.rounded_rectangle([0, 0, x2 - x1, y2 - y1], radius=65, fill=255)
+    im_rgba.paste(enh_b, (x1, y1), mask)
+
+    # 3. Radiant neon emerald glow around the Create button
+    glow_layer = Image.new('RGBA', im.size, (0, 0, 0, 0))
+    g_draw = ImageDraw.Draw(glow_layer)
+
+    color = (37, 211, 102)
+    for w, a in [(36, 18), (26, 35), (18, 70), (10, 130), (5, 200), (2, 255)]:
+        g_draw.rounded_rectangle([x1 - w//2, y1 - w//2, x2 + w//2, y2 + w//2], radius=65 + w//2, outline=(color[0], color[1], color[2], a), width=max(2, w//2))
+
+    # Pulse rings on right of button (x=940)
+    cx = x2 - 90
+    cy = (y1 + y2) // 2
+    g_draw.ellipse([cx - 40, cy - 40, cx + 40, cy + 40], outline=(color[0], color[1], color[2], 75), width=4)
+    g_draw.ellipse([cx - 26, cy - 26, cx + 26, cy + 26], outline=(color[0], color[1], color[2], 160), width=5)
+    g_draw.ellipse([cx - 13, cy - 13, cx + 13, cy + 13], fill=(color[0], color[1], color[2], 255))
+
+    # 4. Prominent glowing arrow from Y=1250 to Y=1975
+    draw_arrow(g_draw, (540, 1250), (540, y1 - 10), color=BRIGHT_GREEN, width=9, head_len=38)
+
+    # 5. Label pill '11. Tap Create'
+    badge_font = get_font(32, bold=True)
+    label = '11. Tap Create'
+    bbox = g_draw.textbbox((0, 0), label, font=badge_font)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+    bw = tw + 44
+    bh = th + 24
+    bx = x1 + 40
+    by = y1 - bh - 14
+    g_draw.rounded_rectangle([bx, by, bx + bw, by + bh], radius=18, fill=(color[0], color[1], color[2], 250))
+    g_draw.text((bx + 22, by + 10), label, font=badge_font, fill=(0, 0, 0))
+
+    final = Image.alpha_composite(im_rgba, glow_layer).convert('RGB')
+    return final
 
 def main():
     print("[1/11] Processing Slide 0 (Main Menu -> Settings)...")
