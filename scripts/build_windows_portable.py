@@ -77,15 +77,21 @@ def download(url: str, dest: Path, label: str) -> None:
     """Download url to dest with progress dots, using cache."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cached = CACHE_DIR / dest.name
-    if cached.exists():
+    if not cached.exists() or cached.stat().st_size == 0:
+        print(f"  [DOWNLOAD] {label} ... ", end="", flush=True)
+        tmp_dest = CACHE_DIR / (dest.name + ".tmp")
+        urllib.request.urlretrieve(url, tmp_dest)
+        if cached.exists():
+            cached.unlink()
+        tmp_dest.replace(cached)
+        size_mb = cached.stat().st_size / 1_048_576
+        print(f"done ({size_mb:.1f} MB)")
+    else:
         print(f"  [CACHE] {label} ({cached.name})")
+
+    if dest.resolve() != cached.resolve():
+        dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(cached, dest)
-        return
-    print(f"  [DOWNLOAD] {label} ... ", end="", flush=True)
-    urllib.request.urlretrieve(url, dest)
-    shutil.copy2(dest, cached)
-    size_mb = dest.stat().st_size / 1_048_576
-    print(f"done ({size_mb:.1f} MB)")
 
 
 def build(version: str, dry_run: bool = False) -> None:
@@ -151,6 +157,8 @@ def build(version: str, dry_run: bool = False) -> None:
             lines.append("Lib/site-packages")
         if "." not in pth_text.splitlines():
             lines.append(".")
+        if ".." not in pth_text.splitlines():
+            lines.append("..")
         pth_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         print(f"  [OK] Patched {pth_path.name}")
 

@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (e.g. v1.0.0)'
+        required: false
+        default: 'v1.0.0'
 
 permissions:
   contents: write
@@ -25,10 +31,18 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Extract version from tag
+      - name: Determine version
         id: version
         shell: bash
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          RAW="${{ inputs.tag_name }}"
+          if [ -z "$RAW" ]; then
+            RAW="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${RAW#v}"
+          TAG="v${VERSION}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "TAG=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Run Windows Portable build script
         shell: python
@@ -59,9 +73,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract version from tag
+      - name: Determine version
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          RAW="${{ inputs.tag_name }}"
+          if [ -z "$RAW" ]; then
+            RAW="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${RAW#v}"
+          TAG="v${VERSION}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "TAG=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Make shell scripts executable
         run: |
@@ -82,7 +104,7 @@ jobs:
 
       - name: Create Unix source archive
         run: |
-          VERSION=${{ steps.version.outputs.VERSION }}
+          VERSION="${{ steps.version.outputs.VERSION }}"
           ARCHIVE_NAME="WhatsAppMediaOrganizer-v${VERSION}-Unix-Source.tar.gz"
           STAGING="build/unix-staging/WhatsAppMediaOrganizer-v${VERSION}"
           mkdir -p "$STAGING"
@@ -91,6 +113,11 @@ jobs:
           cp -r core wa_media_organizer.py gallery.html requirements.txt README.md "$STAGING/"
           cp start_gallery.sh install.sh "$STAGING/"
           chmod +x "$STAGING/start_gallery.sh" "$STAGING/install.sh"
+
+          # Clean bytecode/cache before packaging
+          find "$STAGING" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+          find "$STAGING" -type f -name "*.pyc" -delete 2>/dev/null || true
+          find "$STAGING" -type f -name "*.pyo" -delete 2>/dev/null || true
 
           # Write clean config.json
           cat > "$STAGING/config.json" << 'EOF'
@@ -127,9 +154,17 @@ jobs:
     needs: [build-windows-portable, build-unix-source]
 
     steps:
-      - name: Extract version from tag
+      - name: Determine version
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          RAW="${{ inputs.tag_name }}"
+          if [ -z "$RAW" ]; then
+            RAW="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${RAW#v}"
+          TAG="v${VERSION}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "TAG=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -147,35 +182,43 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: "WhatsApp Media Organizer v${{ steps.version.outputs.VERSION }}"
+          tag_name: ${{ steps.version.outputs.TAG }}
+          name: "WhatsApp Offline Media Gallery ${{ steps.version.outputs.TAG }} - Windows Portable"
           draft: false
           prerelease: false
+          make_latest: true
           body: |
-            ## WhatsApp Media Organizer v${{ steps.version.outputs.VERSION }}
+            ## WhatsApp Offline Media Gallery ${{ steps.version.outputs.TAG }}
+
+            > Browse, search, and export your WhatsApp photos, videos, and documents — fully offline, private, and organized.
+
+            ---
 
             ### Download
 
             | Platform | File | SHA256 |
             | :--- | :--- | :--- |
-            | **Windows** (zero-install) | `WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Windows-Portable.zip` | `${{ steps.checksums.outputs.WIN_SHA }}` |
+            | **Windows** (zero-install portable) | `WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Windows-Portable.zip` | `${{ steps.checksums.outputs.WIN_SHA }}` |
             | **macOS / Linux** (source + scripts) | `WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Unix-Source.tar.gz` | `${{ steps.checksums.outputs.UNIX_SHA }}` |
 
-            ### Windows Quick Start
-            1. Download and right-click the ZIP -> **Extract All**
-            2. Double-click **Start-Gallery.bat**
-            3. Browser opens automatically
+            ---
+
+            ### Windows Quick Start (zero-install)
+            1. Download `WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Windows-Portable.zip`
+            2. Right-click the ZIP -> **Extract All** (to any folder)
+            3. Double-click **Start-Gallery.bat**
+            4. Browser opens automatically with the interactive setup guide
+
+            > [!NOTE]
+            > The ZIP includes embedded Python 3.13, Google ADB, and all dependencies. No installation required.
 
             ### macOS / Linux Quick Start
             ```bash
             tar -xzf WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Unix-Source.tar.gz
             cd WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}
-            ./install.sh     # one-time setup
-            ./start_gallery.sh
+            ./install.sh        # one-time setup (creates Python venv + installs deps)
+            ./start_gallery.sh  # launch
             ```
-
-            > [!NOTE]
-            > The Windows Portable ZIP includes embedded Python 3.13 and ADB -- no installation required.
 
           files: |
             dist-artifacts/windows-portable/WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Windows-Portable.zip

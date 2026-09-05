@@ -53,6 +53,11 @@ test_output/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+.cache/
+
+# Build Artifacts & Packaging
+build/
+dist/
 
 # Operating System Files
 Thumbs.db
