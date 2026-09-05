@@ -67,40 +67,31 @@ On Android 11 through Android 15:
 
 Follow these steps to back up and organize your WhatsApp media:
 
-### Step 1: Enable End-to-End Encrypted Backup in WhatsApp
-1. On your phone, open **WhatsApp**.
-2. Tap **Three Dots (Top Right) > Settings > Chats > Chat Backup**.
-3. Tap **End-to-end encrypted backup**.
-4. Tap **Turn On**, then choose **Use 64-digit encryption key instead**.
-5. Tap **Generate your 64-digit key**.
-6. **Important**: Copy or write down this 64-digit key. You will need to enter this into the desktop app.
-7. Tap **I Saved My 64-digit Key > Create**.
-8. Tap the green **Back Up** button to generate the encrypted local database snapshot.
+### Step 1: Launch Setup Guide & Connect Phone
+1. Double-click **`start_gallery.bat`** (or run `python wa_media_organizer.py --serve --auto-open`).
+2. On first launch, the application automatically welcomes you with the **Interactive Setup & Onboarding Guide**. (You can also open it anytime by clicking **Setup Guide** in the top navigation bar).
+3. In **Step 1 (Phone Connection)**:
+   - Follow the tailored instructions for your phone brand (**Xiaomi / Redmi / POCO**, **Samsung Galaxy**, **OnePlus / OPPO / Realme**, or **Google Pixel / Stock Android**).
+   - Watch the real-time cable docking animation and connect your phone via USB.
+   - When the phone displays *"Allow USB debugging?"*, check **"Always allow from this computer"** and tap **Allow**.
 
-> **Note on Low Storage**: If your phone's storage is 99% full, WhatsApp may display *"Not enough storage to back up"*. Do not panic: WhatsApp creates an automated local backup every morning at 2:00 AM. Our application will automatically detect and pull the latest existing backup from your device.
+### Step 2: Obtain & Transfer Your 64-Digit Key
+Follow **Step 2 (WhatsApp 64-Digit Key)** in the guide:
+1. In WhatsApp, go to **Settings > Chats > Chat backup > End-to-end encrypted backup**.
+   - *Note*: If a backup upload is currently in progress, wait for it to complete.
+   - *Note*: If already set up without saving your key, tap "Turn off" and then "Turn on" to regenerate a new 64-digit key.
+2. **Crucial**: Tap **More options** at the bottom. **DO NOT tap "Use passkey"** (passkeys are tied to device biometrics and cannot decrypt databases on PC).
+3. Choose **Use 64-digit encryption key**, then tap **Generate your 64-digit key**.
+4. Press and hold anywhere on the generated 4x4 key table on your phone to copy all 64 characters to your clipboard.
+5. **1-Tap Zero-Cloud USB Transfer**:
+   - In the desktop guide, click **"Send Key from Phone via USB"**.
+   - The desktop securely opens the local transfer portal on your phone browser over the physical USB wire (`http://localhost:8000/paste-key`).
+   - On your phone, tap **"Paste & Send to PC"**. The key is transmitted in milliseconds directly across the USB cable with zero internet or cloud leakage!
+   - *(Alternative)*: You can also paste the 64 hex characters directly into the desktop input field.
 
-### Step 2: Enable Developer Options & USB Debugging
-1. Open your phone's **Settings > About Phone**.
-2. Locate **Build Number**:
-   - **Xiaomi / Redmi / POCO**: Tap *OS Version* or *MIUI Version* 7 times.
-   - **Samsung**: Tap *Software Information > Build Number* 7 times.
-   - **OnePlus / OPPO / Realme**: Tap *Version > Build Number* 7 times.
-   - **Google Pixel / Motorola**: Tap *Build Number* 7 times.
-3. Enter your lock screen PIN if prompted until you see *"You are now a developer!"*.
-4. Go back to main **Settings > System > Developer Options** (or *Additional Settings > Developer Options*).
-5. Scroll down and turn ON **USB Debugging**.
-
-### Step 3: Connect to PC and Launch Organizer
-1. Connect your Android phone to your PC using a USB cable.
-2. A prompt will appear on your phone screen: *"Allow USB debugging?"*. Check the box **"Always allow from this computer"** and tap **Allow**.
-3. On your PC, double-click **`start_gallery.bat`** (or run `python wa_media_organizer.py --serve --auto-open` in your terminal).
-4. The local offline gallery will open in your browser at `http://127.0.0.1:8000/gallery.html`.
-
-### Step 4: Configure Key and Sync
-1. Click the **Key & Settings** button in the top navigation bar.
-2. Enter your **64-digit encryption key**.
-3. Click **Sync Phone** in the top navigation bar.
-4. The app will pull your WhatsApp Databases and Media over USB at maximum bus speed, decrypt your chat mapping, and generate optimized gallery thumbnails directly into `./output`.
+### Step 3: Sync Phone and Decrypt Media
+1. Click **Sync Phone** in the top navigation bar.
+2. The app pulls your encrypted WhatsApp databases (`msgstore.db.crypt15`) and media over USB at maximum bus speed (30-60 MB/s), decrypts your chat names and contacts, and generates optimized gallery thumbnails directly into `./output`.
 
 ### Step 5: Browse, Filter, and Back Up
 1. **Browse Chats**: View your chats in the left sidebar, sorted by media count and disk footprint.

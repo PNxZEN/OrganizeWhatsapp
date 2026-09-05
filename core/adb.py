@@ -1187,3 +1187,119 @@ def disable_developer_options(adb_path=None):
         return False, "ADB command timed out while attempting to disable Developer Options."
     except Exception as e:
         return False, f"Error communicating with device: {e}"
+
+
+def detect_device_oem(adb_path=None):
+    """
+    Detects the connected Android device OEM/brand and model.
+    Prioritizes active ADB getprop if authorized, otherwise falls back to Windows USB hardware VID.
+    Returns:
+        dict: {
+            "oem_key": "xiaomi" | "samsung" | "oneplus" | "pixel" | "generic",
+            "brand": str,
+            "model": str,
+            "confidence": "high" | "suggested" | "unknown"
+        }
+    """
+    cmd = find_adb_binary(adb_path)
+    try:
+        dev = check_adb_device(adb_path)
+        if dev.connected and dev.authorized:
+            res_m = subprocess.run([cmd, "shell", "getprop ro.product.manufacturer"], capture_output=True, text=True, timeout=3, check=False)
+            res_model = subprocess.run([cmd, "shell", "getprop ro.product.model"], capture_output=True, text=True, timeout=3, check=False)
+            brand = res_m.stdout.strip()
+            model = res_model.stdout.strip()
+            if brand:
+                b_low = brand.lower()
+                if any(x in b_low for x in ["xiaomi", "redmi", "poco"]):
+                    return {"oem_key": "xiaomi", "brand": brand, "model": model, "confidence": "high"}
+                if "samsung" in b_low:
+                    return {"oem_key": "samsung", "brand": brand, "model": model, "confidence": "high"}
+                if any(x in b_low for x in ["oneplus", "oppo", "realme"]):
+                    return {"oem_key": "oneplus", "brand": brand, "model": model, "confidence": "high"}
+                if any(x in b_low for x in ["vivo", "iqoo"]):
+                    return {"oem_key": "vivo", "brand": brand, "model": model, "confidence": "high"}
+                if any(x in b_low for x in ["motorola", "moto", "lenovo"]):
+                    return {"oem_key": "motorola", "brand": brand, "model": model, "confidence": "high"}
+                if "nothing" in b_low:
+                    return {"oem_key": "nothing", "brand": brand, "model": model, "confidence": "high"}
+                if any(x in b_low for x in ["google", "pixel"]):
+                    return {"oem_key": "pixel", "brand": brand, "model": model, "confidence": "high"}
+                return {"oem_key": "generic", "brand": brand, "model": model, "confidence": "high"}
+    except Exception:
+        pass
+
+    try:
+        usb_devices = detect_usb_android_hardware(adb_path)
+        if usb_devices:
+            first = usb_devices[0]
+            vendor = (first.get("vendor") or "").lower()
+            name = (first.get("name") or "").lower()
+            combined = f"{vendor} {name}"
+            if any(x in combined for x in ["xiaomi", "redmi", "poco"]):
+                return {"oem_key": "xiaomi", "brand": first.get("vendor") or "Xiaomi", "model": first.get("name") or "", "confidence": "suggested"}
+            if "samsung" in combined:
+                return {"oem_key": "samsung", "brand": "Samsung", "model": first.get("name") or "", "confidence": "suggested"}
+            if any(x in combined for x in ["oneplus", "oppo", "realme"]):
+                return {"oem_key": "oneplus", "brand": first.get("vendor") or "OnePlus", "model": first.get("name") or "", "confidence": "suggested"}
+            if any(x in combined for x in ["vivo", "iqoo"]):
+                return {"oem_key": "vivo", "brand": first.get("vendor") or "Vivo", "model": first.get("name") or "", "confidence": "suggested"}
+            if any(x in combined for x in ["motorola", "moto", "lenovo"]):
+                return {"oem_key": "motorola", "brand": first.get("vendor") or "Motorola", "model": first.get("name") or "", "confidence": "suggested"}
+            if "nothing" in combined:
+                return {"oem_key": "nothing", "brand": first.get("vendor") or "Nothing", "model": first.get("name") or "", "confidence": "suggested"}
+            if any(x in combined for x in ["google", "pixel"]):
+                return {"oem_key": "pixel", "brand": first.get("vendor") or "Google", "model": first.get("name") or "", "confidence": "suggested"}
+            return {"oem_key": "generic", "brand": first.get("vendor") or "Android", "model": first.get("name") or "", "confidence": "suggested"}
+    except Exception:
+        pass
+
+    return {"oem_key": "generic", "brand": "Android", "model": "", "confidence": "unknown"}
+
+
+def setup_reverse_port(port=8000, adb_path=None):
+    """
+    Sets up ADB reverse port forwarding (adb reverse tcp:PORT tcp:PORT)
+    so the phone can access http://localhost:PORT over the physical USB wire.
+    Returns: (success: bool, message: str)
+    """
+    cmd = find_adb_binary(adb_path)
+    try:
+        dev = check_adb_device(adb_path)
+        if not dev.connected:
+            return False, "No Android phone detected. Connect via USB first."
+        if not dev.authorized:
+            return False, "Phone is unauthorized. Please tap 'Allow USB debugging' on your phone."
+
+        res = subprocess.run([cmd, "reverse", f"tcp:{port}", f"tcp:{port}"], capture_output=True, text=True, timeout=5, check=False)
+        if res.returncode == 0:
+            return True, f"Reverse port {port} forwarding enabled over USB."
+        return False, res.stderr.strip() or f"Failed to reverse port {port}"
+    except Exception as e:
+        return False, str(e)
+
+
+def open_url_on_phone(url="http://localhost:8000/paste-key", adb_path=None):
+    """
+    Opens a URL in the default browser on the connected Android phone via ADB intent.
+    Returns: (success: bool, message: str)
+    """
+    cmd = find_adb_binary(adb_path)
+    try:
+        dev = check_adb_device(adb_path)
+        if not dev.connected or not dev.authorized:
+            return False, "Phone not connected or unauthorized."
+
+        res = subprocess.run(
+            [cmd, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False
+        )
+        if res.returncode == 0:
+            return True, f"Opened {url} on phone."
+        return False, res.stderr.strip() or "Failed to open URL on phone."
+    except Exception as e:
+        return False, str(e)
+

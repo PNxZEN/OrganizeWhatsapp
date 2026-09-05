@@ -657,6 +657,7 @@
         .cal-range-slider {
             flex: 1;
             -webkit-appearance: none;
+            appearance: none;
             height: 6px;
             border-radius: 3px;
             background: rgba(255, 255, 255, 0.12);
@@ -2028,6 +2029,592 @@
             from { transform: translateY(12px); opacity: 0; }
             to { transform: translateY(0); opacity: 1; }
         }
+    
+        /* ==========================================================================
+           INTERACTIVE SETUP & ONBOARDING TUTORIAL MODAL
+           ========================================================================== */
+        .modal-card-xl {
+            width: 1040px;
+            max-width: 96vw;
+            height: 820px;
+            max-height: 94vh;
+            border-color: rgba(16, 185, 129, 0.25);
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 32px rgba(16, 185, 129, 0.12);
+        }
+
+        .tut-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(10px);
+            gap: 16px;
+            flex-shrink: 0;
+        }
+
+        .tut-header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .tut-header-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent);
+            flex-shrink: 0;
+        }
+
+        .tut-header-titles h3 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tut-header-titles p {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin: 2px 0 0 0;
+        }
+
+        .tut-tab-nav {
+            display: flex;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 3px;
+            border-radius: 9px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            gap: 4px;
+        }
+
+        .tut-tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tut-tab-btn:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .tut-tab-btn.active {
+            background: var(--accent);
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+        }
+
+        .tut-modal-body {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 24px;
+            gap: 16px;
+            background: radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.05) 0%, transparent 65%);
+        }
+
+        /* --- Tutorial 1: Phone Connection Layout --- */
+        .tut-phone-grid {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 22px;
+            align-items: stretch;
+            flex: 1;
+        }
+
+        @media (max-width: 860px) {
+            .tut-phone-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .tut-cable-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tut-svg-cable-box {
+            width: 100%;
+            height: 270px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        /* SVG Micro-animation keyframes */
+        @keyframes cableDockAnim {
+            0% { transform: translateY(22px); }
+            34% { transform: translateY(0px); }
+            86% { transform: translateY(0px); }
+            100% { transform: translateY(22px); }
+        }
+
+        @keyframes dataPulseFlow {
+            0%, 34% { opacity: 0; stroke-dashoffset: 80; }
+            36% { opacity: 1; }
+            84% { opacity: 1; stroke-dashoffset: -120; }
+            88%, 100% { opacity: 0; }
+        }
+
+        @keyframes screenLightUp {
+            0%, 32% { fill: #0b1320; }
+            36%, 86% { fill: #0d1929; }
+            92%, 100% { fill: #0b1320; }
+        }
+
+        @keyframes portBurst {
+            0%, 32% { transform: scale(0.6); opacity: 0; }
+            36% { transform: scale(1.4); opacity: 0.9; }
+            44% { transform: scale(1); opacity: 0.35; }
+            64% { transform: scale(1.3); opacity: 0.8; }
+            72% { transform: scale(1); opacity: 0.35; }
+            86% { opacity: 0.35; }
+            92%, 100% { opacity: 0; }
+        }
+
+        @keyframes screenWaitingAnim {
+            0%, 30% { opacity: 1; transform: scale(1); }
+            34%, 92% { opacity: 0; transform: scale(0.92); }
+            96%, 100% { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes screenPromptAnim {
+            0%, 32% { opacity: 0; transform: scale(0.88); }
+            36%, 60% { opacity: 1; transform: scale(1); }
+            64%, 100% { opacity: 0; transform: scale(0.95); }
+        }
+
+        @keyframes tapRippleAnim {
+            0%, 46% { opacity: 0; transform: scale(0.4); }
+            52% { opacity: 0.9; transform: scale(1.1); }
+            58% { opacity: 0; transform: scale(1.8); }
+            100% { opacity: 0; }
+        }
+
+        @keyframes screenAuthAnim {
+            0%, 62% { opacity: 0; transform: scale(0.85); }
+            66%, 86% { opacity: 1; transform: scale(1); }
+            90%, 100% { opacity: 0; transform: scale(0.9); }
+        }
+
+        .anim-cable-dock {
+            animation: cableDockAnim 5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+            transform-origin: center bottom;
+        }
+
+        .anim-data-flow {
+            stroke-dasharray: 8 16;
+            animation: dataPulseFlow 5s linear infinite;
+        }
+
+        .anim-screen-glow {
+            animation: screenLightUp 5s ease-in-out infinite;
+        }
+
+        .anim-port-burst {
+            animation: portBurst 5s ease-in-out infinite;
+            transform-origin: 170px 206px;
+        }
+
+        .anim-screen-waiting {
+            animation: screenWaitingAnim 5s ease-in-out infinite;
+            transform-origin: 170px 110px;
+        }
+
+        .anim-screen-prompt {
+            animation: screenPromptAnim 5s ease-in-out infinite;
+            transform-origin: 170px 110px;
+        }
+
+        .anim-tap-ripple {
+            animation: tapRippleAnim 5s ease-out infinite;
+            transform-origin: 170px 118px;
+        }
+
+        .anim-screen-auth {
+            animation: screenAuthAnim 5s ease-in-out infinite;
+            transform-origin: 170px 110px;
+        }
+
+        .tut-live-status-box {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .tut-pulse-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #6b7280;
+            flex-shrink: 0;
+            transition: all 0.3s ease;
+        }
+
+        .tut-pulse-indicator.ready {
+            background: var(--accent);
+            box-shadow: 0 0 12px var(--accent);
+        }
+
+        .tut-pulse-indicator.action {
+            background: #f59e0b;
+            box-shadow: 0 0 12px #f59e0b;
+            animation: pulseAmber 1.2s infinite;
+        }
+
+        @keyframes pulseAmber {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.25); }
+        }
+
+        /* OEM switcher buttons */
+        .tut-oem-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .tut-oem-chip {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 500;
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tut-oem-chip:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-primary);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .tut-oem-chip.active {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: var(--accent);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .tut-steps-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 18px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .tut-step-item {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            font-size: 13px;
+            line-height: 1.45;
+            color: var(--text-secondary);
+        }
+
+        .tut-step-num {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            color: var(--accent);
+            font-size: 11px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        .tut-step-item strong {
+            color: var(--text-primary);
+        }
+
+        .tut-step-item code {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 12px;
+            color: #6ee7b7;
+        }
+
+        /* --- Tutorial 2: WhatsApp Key Carousel Layout --- */
+        .tut-story-progress {
+            display: flex;
+            gap: 6px;
+            width: 100%;
+            margin-bottom: 14px;
+            flex-shrink: 0;
+        }
+
+        .tut-story-bar {
+            flex: 1;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+
+        .tut-story-bar:hover {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.22);
+        }
+
+        .tut-story-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        .tut-story-bar.active .tut-story-bar-fill {
+            width: 100%;
+            box-shadow: 0 0 8px var(--accent);
+        }
+
+        .tut-story-bar.completed .tut-story-bar-fill {
+            width: 100%;
+            background: rgba(16, 185, 129, 0.55);
+        }
+
+        .tut-carousel-grid {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 24px;
+            align-items: center;
+            flex: 1;
+        }
+
+        @media (max-width: 820px) {
+            .tut-carousel-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .tut-phone-frame {
+            background: #090d16;
+            border: 3px solid rgba(255, 255, 255, 0.14);
+            border-radius: 24px;
+            padding: 8px 8px 10px 8px;
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 235px;
+            max-height: 470px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .tut-phone-notch {
+            width: 66px;
+            height: 10px;
+            background: #090d16;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
+            position: absolute;
+            top: 8px;
+            z-index: 10;
+        }
+
+        .tut-phone-screen-wrap {
+            width: 100%;
+            border-radius: 16px;
+            overflow: hidden;
+            background: #000000;
+            position: relative;
+            max-height: 440px;
+            aspect-ratio: 9 / 19.5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tut-slide-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+
+        .tut-step-card {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .tut-step-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            color: var(--accent);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            width: fit-content;
+        }
+
+        .tut-step-title {
+            font-size: 19px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.3;
+        }
+
+        .tut-step-desc {
+            font-size: 13.5px;
+            color: var(--text-secondary);
+            line-height: 1.55;
+        }
+
+        /* Alert callouts inside slides */
+        .tut-alert {
+            padding: 12px 14px;
+            border-radius: 8px;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .tut-alert-info {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            color: #93c5fd;
+        }
+
+        .tut-alert-warning {
+            background: rgba(245, 158, 11, 0.12);
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            color: #fcd34d;
+        }
+
+        .tut-alert-danger {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            color: #fca5a5;
+        }
+
+        /* Slide 7 USB Action Box */
+        .tut-usb-action-box {
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .btn-usb-send-action {
+            background: var(--accent);
+            color: #ffffff;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+            transition: all 0.2s;
+        }
+
+        .btn-usb-send-action:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-usb-send-action.waiting {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+        }
+
+        .btn-usb-send-action.waiting:hover {
+            background: rgba(16, 185, 129, 0.25);
+        }
+
+        .btn-usb-send-action:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .tut-modal-footer {
+            padding: 12px 22px;
+            border-top: 1px solid var(--border-color);
+            background: rgba(17, 24, 39, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-shrink: 0;
+        }
     </style>
 
 </head>
@@ -2049,6 +2636,10 @@
             <button class="control-btn control-btn-sync" id="btnControlSync" onclick="openSyncModal()">
                 <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
                 <span>Sync Phone</span>
+            </button>
+                        <button class="control-btn control-btn-secondary" id="btnControlTutorial" onclick="openTutorialModal()" title="Interactive Setup &amp; Onboarding Guide">
+                <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>
+                <span>Setup Guide</span>
             </button>
             <button class="control-btn control-btn-secondary" id="btnControlKey" onclick="openKeyModal()">
                 <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
@@ -2406,8 +2997,15 @@
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                     <span id="keyCharCount" style="font-size:12px;color:var(--text-muted);">0 / 64 hex characters</span>
-                    <button class="action-btn action-btn-secondary" style="font-size:12px;padding:4px 8px;" onclick="pasteKeyFromClipboard()">Paste from Clipboard</button>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <button class="action-btn action-btn-secondary" id="btnKeyFetchPhone" style="font-size:12px;padding:4px 8px;display:none;align-items:center;gap:4px;" onclick="fetchKeyFromPhone()">
+                            <svg class="icon" viewBox="0 0 24 24" style="width:13px;height:13px;fill:currentColor;vertical-align:middle;margin-right:2px;"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
+                            <span id="btnKeyFetchPhoneText">Fetch from Phone</span>
+                        </button>
+                        <button class="action-btn action-btn-secondary" style="font-size:12px;padding:4px 8px;" onclick="pasteKeyFromClipboard()">Paste from Clipboard</button>
+                    </div>
                 </div>
+                <div id="keyFetchStatus" style="font-size:12px;margin-bottom:8px;min-height:0;"></div>
                 <div id="keyValidationFeedback" style="font-size:12px;min-height:16px;"></div>
             </div>
             <div class="modal-footer">
@@ -2581,6 +3179,290 @@
         </div>
     </div>
 
+    
+    <!-- INTERACTIVE SETUP & ONBOARDING TUTORIAL MODAL -->
+    <div class="modal-overlay" id="modalTutorial" onclick="if (event.target === this) closeModal('modalTutorial')">
+        <div class="modal-card modal-card-xl">
+            <!-- Header with Dual Tutorial Tabs -->
+            <div class="tut-modal-header">
+                <div class="tut-header-left">
+                    <div class="tut-header-icon">
+                        <svg class="icon" viewBox="0 0 24 24" style="width:20px;height:20px;fill:currentColor;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>
+                    </div>
+                    <div class="tut-header-titles">
+                        <h3>Interactive Setup &amp; Onboarding Guide</h3>
+                        <p>Complete the two steps below to connect your phone and decrypt WhatsApp media</p>
+                    </div>
+                </div>
+
+                <!-- Tab Switcher -->
+                <div class="tut-tab-nav">
+                    <button type="button" class="tut-tab-btn active" id="tabTutPhone" onclick="switchTutTab('phone')">
+                        <svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
+                        <span>1. Phone Connection (USB)</span>
+                    </button>
+                    <button type="button" class="tut-tab-btn" id="tabTutKey" onclick="switchTutTab('key')">
+                        <svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+                        <span>2. WhatsApp 64-Digit Key</span>
+                    </button>
+                </div>
+
+                <button class="modal-close" onclick="closeModal('modalTutorial')">&times;</button>
+            </div>
+
+            <!-- Body -->
+            <div class="tut-modal-body">
+                <!-- SECTION 1: PHONE CONNECTION & USB DEBUGGING -->
+                <div id="tutSectionPhone" style="display:flex;flex-direction:column;gap:16px;">
+                    <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;">
+                        To sync WhatsApp media directly over your USB cable, enable <strong>Developer Options</strong> and <strong>USB Debugging</strong> on your Android phone.
+                    </div>
+
+                    <div class="tut-phone-grid">
+                        <!-- Left: Animated Cable Dock & Status -->
+                        <div class="tut-cable-card">
+                            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:8px;text-align:center;">
+                                Physical Cable Connection
+                            </div>
+
+                            <div class="tut-svg-cable-box">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 280" style="width:100%;height:100%;overflow:visible;">
+                                    <defs>
+                                        <linearGradient id="cablePlugGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                                            <stop offset="0%" stop-color="#4b5563" />
+                                            <stop offset="100%" stop-color="#1f2937" />
+                                        </linearGradient>
+                                        <linearGradient id="phoneCaseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" stop-color="#1e293b" />
+                                            <stop offset="100%" stop-color="#0f172a" />
+                                        </linearGradient>
+                                        <filter id="glowPulse" x="-20%" y="-20%" width="140%" height="140%">
+                                            <feGaussianBlur stdDeviation="3.5" result="blur" />
+                                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                        </filter>
+                                    </defs>
+
+                                    <!-- Phone Chassis (Realistic tall smartphone aspect ratio 104x194) -->
+                                    <rect x="118" y="12" width="104" height="194" rx="20" fill="url(#phoneCaseGrad)" stroke="rgba(255,255,255,0.18)" stroke-width="2" />
+                                    
+                                    <!-- Speaker Ear-Piece Slit -->
+                                    <rect x="160" y="15" width="20" height="2.5" rx="1.2" fill="#475569" />
+
+                                    <!-- Phone Screen (Tall 92x178) -->
+                                    <rect class="anim-screen-glow" x="124" y="20" width="92" height="178" rx="14" fill="#0b1320" stroke="rgba(255,255,255,0.06)" />
+
+                                    <!-- Selfie Camera Punch-Hole -->
+                                    <circle cx="170" cy="28" r="2.5" fill="#000000" />
+                                    <circle cx="170" cy="28" r="0.9" fill="#1e293b" />
+
+                                    <!-- Screen State 1: Disconnected / Waiting -->
+                                    <g class="anim-screen-waiting">
+                                        <circle cx="170" cy="98" r="15" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" stroke-dasharray="3 3" />
+                                        <path d="M170 90v16M162 98h16" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" />
+                                        <text x="170" y="130" text-anchor="middle" fill="#64748b" font-size="8.5" font-weight="600">Connect USB</text>
+                                    </g>
+
+                                    <!-- Screen State 2: Prompt Dialog with Tap on ALLOW -->
+                                    <g class="anim-screen-prompt">
+                                        <rect x="128" y="58" width="84" height="104" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1" />
+                                        <text x="170" y="75" text-anchor="middle" fill="#f8fafc" font-size="7.5" font-weight="700">Allow USB Debug?</text>
+                                        
+                                        <!-- Checkbox -->
+                                        <rect x="133" y="87" width="8" height="8" rx="2" fill="#10b981" />
+                                        <path d="M135 91l1.5 1.5 3-3" stroke="#ffffff" stroke-width="1.2" fill="none" />
+                                        <text x="145" y="94" fill="#94a3b8" font-size="6.5" font-weight="500">Always allow</text>
+                                        
+                                        <!-- Allow Button -->
+                                        <rect x="134" y="108" width="72" height="20" rx="4" fill="#10b981" />
+                                        <text x="170" y="121" text-anchor="middle" fill="#ffffff" font-size="7.5" font-weight="700">TAP ALLOW</text>
+                                        
+                                        <!-- Touch Ripple on ALLOW -->
+                                        <circle class="anim-tap-ripple" cx="170" cy="118" r="11" fill="none" stroke="#ffffff" stroke-width="2" />
+                                        <circle cx="170" cy="118" r="3.5" fill="#ffffff" opacity="0.8" />
+                                    </g>
+
+                                    <!-- Screen State 3: Authorized & Ready -->
+                                    <g class="anim-screen-auth">
+                                        <circle cx="170" cy="94" r="16" fill="rgba(16,185,129,0.25)" stroke="#10b981" stroke-width="2" filter="url(#glowPulse)" />
+                                        <path d="M162 94l5 5 10-10" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                                        <text x="170" y="126" text-anchor="middle" fill="#34d399" font-size="8.5" font-weight="700" letter-spacing="0.4">AUTHORIZED</text>
+                                        <text x="170" y="140" text-anchor="middle" fill="#6ee7b7" font-size="7" font-weight="600">ADB READY</text>
+                                    </g>
+
+                                    <!-- Phone USB-C Port Receptacle -->
+                                    <rect x="157" y="204" width="26" height="5" rx="2.5" fill="#0b0f19" stroke="rgba(255,255,255,0.25)" stroke-width="1" />
+                                    <!-- Port Connection Glow -->
+                                    <circle class="anim-port-burst" cx="170" cy="206" r="14" fill="none" stroke="#10b981" stroke-width="3" filter="url(#glowPulse)" />
+
+                                    <!-- Animated USB-C Cable Assembly -->
+                                    <g class="anim-cable-dock">
+                                        <!-- Metal Plug Head -->
+                                        <rect x="163" y="206" width="14" height="10" rx="2.5" fill="#9ca3af" stroke="#e5e7eb" stroke-width="0.5" />
+                                        <!-- Molded Connector Grip -->
+                                        <rect x="155" y="215" width="30" height="22" rx="4" fill="url(#cablePlugGrad)" stroke="rgba(255,255,255,0.2)" stroke-width="1" />
+                                        <line x1="162" y1="226" x2="178" y2="226" stroke="#10b981" stroke-width="1.5" />
+                                        <!-- Flexible Cable Wire -->
+                                        <path d="M170 237 L170 278" fill="none" stroke="#4b5563" stroke-width="6" stroke-linecap="round" />
+                                        <!-- Glowing Data Stream Line -->
+                                        <path class="anim-data-flow" d="M170 278 L170 206" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" filter="url(#glowPulse)" />
+                                    </g>
+                                </svg>
+                            </div>
+
+                            <!-- Live ADB Connection Status Pill -->
+                            <div class="tut-live-status-box" id="tutPhoneLiveBox">
+                                <div class="tut-pulse-indicator" id="tutPhoneStatusDot"></div>
+                                <div style="flex:1;">
+                                    <div style="font-size:13px;font-weight:600;color:var(--text-primary);" id="tutPhoneStatusTitle">Checking USB status...</div>
+                                    <div style="font-size:11px;color:var(--text-muted);" id="tutPhoneStatusSub">Connect USB cable to proceed</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right: OEM Instructions & Switcher -->
+                        <div style="display:flex;flex-direction:column;justify-content:space-between;gap:12px;">
+                            <div>
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                                    <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);">
+                                        Select Your Phone Brand:
+                                    </span>
+                                    <span id="tutOemSuggestedBadge" style="display:none;font-size:11px;color:var(--accent);background:rgba(16,185,129,0.12);padding:2px 8px;border-radius:9999px;border:1px solid rgba(16,185,129,0.3);">
+                                        Hardware Suggested
+                                    </span>
+                                </div>
+
+                                <!-- OEM Switcher Buttons -->
+                                <div class="tut-oem-bar">
+                                    <button type="button" class="tut-oem-chip active" id="btnOemXiaomi" onclick="switchTutOem('xiaomi')">
+                                        Xiaomi / Redmi / POCO
+                                    </button>
+                                    <button type="button" class="tut-oem-chip" id="btnOemSamsung" onclick="switchTutOem('samsung')">
+                                        Samsung Galaxy
+                                    </button>
+                                    <button type="button" class="tut-oem-chip" id="btnOemOneplus" onclick="switchTutOem('oneplus')">
+                                        OnePlus / OPPO / Realme
+                                    </button>
+                                    <button type="button" class="tut-oem-chip" id="btnOemVivo" onclick="switchTutOem('vivo')">
+                                        Vivo / iQOO
+                                    </button>
+                                    <button type="button" class="tut-oem-chip" id="btnOemMotorola" onclick="switchTutOem('motorola')">
+                                        Motorola
+                                    </button>
+                                    <button type="button" class="tut-oem-chip" id="btnOemNothing" onclick="switchTutOem('nothing')">
+                                        Nothing Phone
+                                    </button>
+                                    <button type="button" class="tut-oem-chip" id="btnOemPixel" onclick="switchTutOem('pixel')">
+                                        Google Pixel / Stock
+                                    </button>
+                                </div>
+
+                                <!-- Dynamic OEM Instructions Card -->
+                                <div class="tut-steps-card" id="tutOemContent">
+                                    <!-- Populated dynamically by JavaScript -->
+                                </div>
+                            </div>
+
+                            <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+                                <button type="button" class="action-btn action-btn-primary" onclick="switchTutTab('key')" style="background:var(--accent);color:#ffffff;box-shadow:0 2px 10px rgba(16,185,129,0.3);font-weight:600;">
+                                    <span>Proceed to WhatsApp Key Guide &rarr;</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SECTION 2: WHATSAPP 64-DIGIT KEY CAROUSEL -->
+                <div id="tutSectionKey" style="display:none;flex-direction:column;gap:12px;">
+                    <!-- Segmented Story Progress Bars (8 Steps) -->
+                    <div class="tut-story-progress" id="tutStoryBars">
+                        <!-- 8 segments generated by JS -->
+                    </div>
+
+                    <div class="tut-carousel-grid">
+                        <!-- Left: Phone Frame Mockup -->
+                        <div class="tut-phone-frame">
+                            <div class="tut-phone-notch"></div>
+                            <div class="tut-phone-screen-wrap">
+                                <img id="tutSlideImg" class="tut-slide-img" src="/assets/tutorial/wa_step0.webp" alt="WhatsApp Step" onerror="handleTutImgError(this)">
+                            </div>
+                        </div>
+
+                        <!-- Right: Step Info Card -->
+                        <div class="tut-step-card">
+                            <div class="tut-step-badge" id="tutStepBadge">STEP 1 OF 8</div>
+                            <h3 class="tut-step-title" id="tutStepTitle">Open WhatsApp Settings</h3>
+                            <p class="tut-step-desc" id="tutStepDesc">
+                                On your Android phone, open WhatsApp. Tap the <strong>3-dot menu</strong> icon in the top right corner and tap <strong>Settings</strong>.
+                            </p>
+
+                            <!-- Callout Alert (Dynamic per slide) -->
+                            <div id="tutStepAlert" style="display:none;"></div>
+
+                            <!-- Slide 7 Specific Action Box (USB 1-Tap Transfer) -->
+                            <div id="tutSlide7UsbBox" style="display:none;" class="tut-usb-action-box">
+                                <div style="font-size:13px;font-weight:600;color:var(--text-primary);display:flex;align-items:center;gap:6px;">
+                                    <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px;fill:var(--accent);"><path d="M19 2h-4.18C14.4 0.84 13.3 0 12 0c-1.3 0-2.4 0.84-2.82 2H5c-1.1 0-2 0.9-2 2v16c0 1.1 0.9 2 2 2h14c1.1 0 2-0.9 2-2V4c0-1.1-0.9-2-2-2zm-7 0c0.55 0 1 0.45 1 1s-0.45 1-1 1-1-0.45-1-1 0.45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/></svg>
+                                    <span>1-Tap Instant USB Transfer (Zero-Cloud)</span>
+                                </div>
+                                <div style="font-size:12px;color:var(--text-secondary);line-height:1.4;">
+                                    After copying the 64-digit key on your phone, tap the button below. It securely opens the transfer portal on your phone via the physical USB cable:
+                                </div>
+                                <button type="button" class="btn-usb-send-action" id="btnTutSendUsb" onclick="handleSendKeyViaUsb()">
+                                    <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                                    <span id="btnTutSendUsbText">Send Key from Phone via USB</span>
+                                </button>
+                                <div id="tutUsbPortalStatus" style="font-size:12px;min-height:18px;"></div>
+
+                                <!-- Manual Paste Alternative -->
+                                <div style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.08);padding-top:10px;">
+                                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Or paste 64-character key directly here:</div>
+                                    <div style="display:flex;gap:8px;">
+                                        <input type="text" id="tutManualKeyInput" class="key-input" placeholder="Paste 64 hex characters..." maxlength="64" spellcheck="false" style="padding:8px 12px;font-size:12px;" oninput="onTutManualKeyChange(this.value)">
+                                        <button type="button" class="action-btn action-btn-secondary" id="btnTutManualSave" onclick="saveTutManualKey()" disabled style="font-size:12px;padding:6px 12px;">Save</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer with Dynamic Persistent Controls -->
+            <div class="tut-modal-footer">
+                <!-- Phone tab footer -->
+                <div id="tutFooterPhone" style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+                    <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);">
+                        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);"></span>
+                        <span>100% Offline &amp; Private. Your personal keys never touch the internet or cloud.</span>
+                    </div>
+                    <button type="button" class="action-btn action-btn-secondary" onclick="closeModal('modalTutorial')">
+                        Close Guide
+                    </button>
+                </div>
+
+                <!-- Key tab footer -->
+                <div id="tutFooterKey" style="display:none;align-items:center;justify-content:space-between;width:100%;">
+                    <button type="button" class="action-btn action-btn-secondary" id="btnTutPrevFooter" onclick="prevTutSlide()" style="font-size:12px;padding:6px 14px;">
+                        &larr; Previous
+                    </button>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span id="tutSlideCounterFooter" style="font-size:12px;color:var(--text-muted);font-weight:500;">Step 1 of 8</span>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <button type="button" class="action-btn action-btn-secondary" onclick="closeModal('modalTutorial')" style="font-size:12px;padding:6px 12px;">
+                            Close Guide
+                        </button>
+                        <button type="button" class="action-btn action-btn-primary" id="btnTutNextFooter" onclick="nextTutSlide()" style="font-size:12px;padding:6px 16px;background:var(--accent);color:#ffffff;font-weight:600;box-shadow:0 2px 8px rgba(16,185,129,0.3);">
+                            <span>Next Step &rarr;</span>
+                        </button>
+                        <button type="button" class="action-btn" id="btnTutFinishFooter" onclick="finishTutorialOnboarding(true)" style="display:none;font-size:12px;padding:6px 16px;background:var(--accent);color:#ffffff;font-weight:600;box-shadow:0 2px 8px rgba(16,185,129,0.3);">
+                            <span>Finish &amp; Sync Phone</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     <!-- EXIT CONFIRMATION MODAL -->
     <div class="modal-overlay" id="modalExit">
         <div class="modal-card" style="max-width: 450px; border-color: rgba(239, 68, 68, 0.35); box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 24px rgba(239, 68, 68, 0.15);">
@@ -2876,6 +3758,15 @@
                 if (modalDevicePollTimer) {
                     clearInterval(modalDevicePollTimer);
                     modalDevicePollTimer = null;
+                }
+            }
+            if (id === 'modalKey') {
+                if (keyModalPollTimer) {
+                    clearInterval(keyModalPollTimer);
+                    keyModalPollTimer = null;
+                }
+                if (isHttpServer) {
+                    fetch('/api/phone/clear-received-key', { method: 'POST' }).catch(() => {});
                 }
             }
         }
@@ -3392,6 +4283,499 @@
             }
         }
 
+        
+        /* ==========================================================================
+           INTERACTIVE SETUP & ONBOARDING TUTORIAL CONTROLLER
+           ========================================================================== */
+        let activeTutTab = 'phone';
+        let activeTutSlide = 0;
+        let activeTutOem = 'xiaomi';
+        let tutDevicePollInterval = null;
+        let tutKeyStatusPollTimer = null;
+        let tutOemDetected = false;
+
+        const TUTORIAL_SLIDES_DATA = [
+            {
+                badge: 'Step 1 of 8',
+                title: 'Open WhatsApp Settings',
+                desc: 'On your Android phone, open WhatsApp. Tap the <strong>3-dot menu icon</strong> in the top right corner and tap <strong>Settings</strong>.',
+                alert: null
+            },
+            {
+                badge: 'Step 2 of 8',
+                title: 'Select "Chats"',
+                desc: 'In WhatsApp Settings, scroll slightly down and tap <strong>Chats</strong> (located between Account and Notifications).',
+                alert: null
+            },
+            {
+                badge: 'Step 3 of 8',
+                title: 'Select "Chat backup"',
+                desc: 'Scroll all the way to the bottom of the Chats screen and tap <strong>Chat backup</strong>.',
+                alert: null
+            },
+            {
+                badge: 'Step 4 of 8',
+                title: 'Open "End-to-end encrypted backup"',
+                desc: 'At the bottom of the Chat backup screen, tap <strong>End-to-end encrypted backup</strong>.',
+                alert: {
+                    type: 'warning',
+                    icon: '&#x26A0;',
+                    title: 'Upload in Progress &amp; Existing Key Note',
+                    text: 'If a Google Drive backup is currently uploading or preparing, the "End-to-end encrypted backup" option will be greyed out; wait for the upload to complete. If already turned on with a forgotten password, tap "Turn off" first, then turn it back on to generate a fresh 64-digit key.'
+                }
+            },
+            {
+                badge: 'Step 5 of 8',
+                title: 'Tap "More options" (Crucial Step)',
+                desc: 'On the setup screen, tap <strong>More options</strong> at the bottom of the page.',
+                alert: {
+                    type: 'danger',
+                    icon: '&#x26A0;',
+                    title: 'CRITICAL: Do NOT Tap "Use passkey"!',
+                    text: 'Passkeys are tied to device biometrics and CANNOT decrypt your database on PC. You MUST tap "More options" at the bottom to generate the 64-digit encryption key.'
+                }
+            },
+            {
+                badge: 'Step 6 of 8',
+                title: 'Select "Use 64-digit encryption key"',
+                desc: 'In the options dialog, select <strong>Use 64-digit encryption key</strong>. WhatsApp provides this key specifically for physical backup access.',
+                alert: null
+            },
+            {
+                badge: 'Step 7 of 8',
+                title: 'Generate Your 64-Digit Key',
+                desc: 'Tap the green button <strong>Generate your 64-digit key</strong> (or "Turn on"). WhatsApp will generate your 16-block hexadecimal key.',
+                alert: null
+            },
+            {
+                badge: 'Step 8 of 8',
+                title: 'Copy & Send Key to PC via USB',
+                desc: 'Press and hold anywhere on the generated 4x4 key table on your phone until the <strong>Copy</strong> option appears, then copy it. Tap <strong>Send Key from Phone via USB</strong> below to transfer it in milliseconds with zero cloud involvement.',
+                alert: null
+            }
+        ];
+
+        const OEM_INSTRUCTIONS = {
+            xiaomi: [
+                { num: '1', title: 'Open About Phone', text: 'Go to <strong>Settings &gt; About phone</strong>.' },
+                { num: '2', title: 'Tap OS / MIUI Version 7 Times', text: 'Rapidly tap <strong>OS Version</strong> (or <strong>MIUI Version</strong>) 7 times until you see "You are now a developer!".' },
+                { num: '3', title: 'Open Developer Options', text: 'Return to <strong>Settings &gt; Additional settings &gt; Developer options</strong>.' },
+                { num: '4', title: 'Enable USB Debugging', text: 'Turn ON <strong>USB Debugging</strong>.' },
+                { num: '5', title: 'Xiaomi Special Permissions', text: 'Also enable <strong>"Install via USB"</strong> and <strong>"USB debugging (Security settings)"</strong> if available on your MIUI/HyperOS device.' },
+                { num: '6', title: 'Allow PC Connection', text: 'Connect USB cable to PC. When the phone prompts "Allow USB debugging?", check <strong>"Always allow from this computer"</strong> and tap <strong>OK</strong>.' }
+            ],
+            samsung: [
+                { num: '1', title: 'Open Software Information', text: 'Go to <strong>Settings &gt; About phone &gt; Software information</strong>.' },
+                { num: '2', title: 'Tap Build Number 7 Times', text: 'Tap <strong>Build number</strong> 7 times (enter your lock screen PIN if requested).' },
+                { num: '3', title: 'Open Developer Options', text: 'Return to main <strong>Settings</strong> and scroll to the very bottom to find <strong>Developer options</strong>.' },
+                { num: '4', title: 'Enable USB Debugging', text: 'Toggle the switch for <strong>USB debugging</strong> to <strong>ON</strong>.' },
+                { num: '5', title: 'Authorize USB on Phone', text: 'Plug in the USB cable. Check <strong>"Always allow from this computer"</strong> on the pop-up and tap <strong>Allow</strong>.' }
+            ],
+            oneplus: [
+                { num: '1', title: 'Open Version Info', text: 'Go to <strong>Settings &gt; About device &gt; Version</strong>.' },
+                { num: '2', title: 'Tap Build Number 7 Times', text: 'Tap <strong>Build number</strong> 7 times until Developer mode is unlocked.' },
+                { num: '3', title: 'Open Developer Options', text: 'Go back to <strong>Settings &gt; Additional settings</strong> (or <strong>System settings</strong>) <strong>&gt; Developer options</strong>.' },
+                { num: '4', title: 'Enable USB Debugging', text: 'Turn ON <strong>USB debugging</strong>.' },
+                { num: '5', title: 'Authorize USB on Phone', text: 'Plug in USB cable. When prompted, check <strong>"Always allow from this computer"</strong> and tap <strong>Allow</strong>.' }
+            ],
+            vivo: [
+                { num: '1', title: 'Open Software Information', text: 'Go to <strong>Settings &gt; About phone &gt; Software information</strong> (or <strong>More settings &gt; About phone</strong>).' },
+                { num: '2', title: 'Tap Build Number 7 Times', text: 'Tap <strong>Build number</strong> (or <strong>Software version</strong>) 7 times rapidly until "You are now a developer" appears.' },
+                { num: '3', title: 'Open Developer Options', text: 'Return to <strong>Settings &gt; System management</strong> (or <strong>System / More settings</strong>) <strong>&gt; Developer options</strong>.' },
+                { num: '4', title: 'Enable USB Debugging', text: 'Turn ON <strong>USB debugging</strong>.' },
+                { num: '5', title: 'Authorize USB on Phone', text: 'Connect USB cable to PC. When prompted "Allow USB debugging?", check <strong>"Always allow from this computer"</strong> and tap <strong>Allow</strong> (or <strong>OK</strong>).' }
+            ],
+            motorola: [
+                { num: '1', title: 'Open About Phone', text: 'Go to <strong>Settings &gt; About phone</strong>.' },
+                { num: '2', title: 'Tap Build Number 7 Times', text: 'Scroll to the very bottom and tap <strong>Build number</strong> 7 times (enter your PIN or pattern if prompted).' },
+                { num: '3', title: 'Open Developer Options', text: 'Return to <strong>Settings &gt; System &gt; Developer options</strong> (or <strong>Advanced &gt; Developer options</strong>).' },
+                { num: '4', title: 'Enable USB Debugging', text: 'Toggle <strong>USB debugging</strong> to <strong>ON</strong>.' },
+                { num: '5', title: 'Authorize USB on Phone', text: 'Connect USB cable to PC. Check <strong>"Always allow from this computer"</strong> on the prompt and tap <strong>Allow</strong>.' }
+            ],
+            nothing: [
+                { num: '1', title: 'Open Software Info', text: 'Go to <strong>Settings &gt; About phone &gt; Software info</strong>.' },
+                { num: '2', title: 'Tap Build Number 7 Times', text: 'Tap <strong>Build number</strong> 7 times until you see "You are now in Developer mode!".' },
+                { num: '3', title: 'Open Developer Options', text: 'Return to <strong>Settings &gt; System &gt; Developer options</strong>.' },
+                { num: '4', title: 'Enable USB Debugging', text: 'Turn ON the <strong>USB debugging</strong> toggle.' },
+                { num: '5', title: 'Authorize USB on Phone', text: 'Connect USB cable to PC. Check <strong>"Always allow from this computer"</strong> and tap <strong>Allow</strong>.' }
+            ],
+            pixel: [
+                { num: '1', title: 'Open About Phone', text: 'Go to <strong>Settings &gt; About phone</strong>.' },
+                { num: '2', title: 'Tap Build Number 7 Times', text: 'Scroll to the bottom and tap <strong>Build number</strong> 7 times until unlocked.' },
+                { num: '3', title: 'Open Developer Options', text: 'Return to <strong>Settings &gt; System &gt; Developer options</strong>.' },
+                { num: '4', title: 'Enable USB Debugging', text: 'Turn ON <strong>USB debugging</strong>.' },
+                { num: '5', title: 'Authorize USB on Phone', text: 'Plug in USB cable. Check <strong>"Always allow from this computer"</strong> and tap <strong>Allow</strong>.' }
+            ]
+        };
+
+        function handleTutImgError(img) {
+            // If WebP is served via static file protocol or missing, try core assets
+            if (img.src.indexOf('/assets/tutorial/') !== -1) {
+                const fname = img.src.substring(img.src.lastIndexOf('/') + 1);
+                img.src = 'core/assets/tutorial/' + fname;
+            }
+        }
+
+        async function openTutorialModal(tab = null, slide = 0) {
+            initTutStoryBars();
+            renderTutOemContent(activeTutOem);
+
+            if (tab) {
+                switchTutTab(tab);
+            } else {
+                // If device is already connected and authorized, default to key guide
+                if (currentDeviceStatus && currentDeviceStatus.connected && currentDeviceStatus.authorized) {
+                    switchTutTab('key');
+                } else {
+                    switchTutTab('phone');
+                }
+            }
+
+            setTutSlide(slide);
+            openModal('modalTutorial');
+
+            // Detect OEM hardware
+            if (isHttpServer) {
+                try {
+                    const r = await fetch('/api/phone/oem');
+                    if (r.ok) {
+                        const info = await r.json();
+                        if (info && info.oem_key) {
+                            switchTutOem(info.oem_key, true);
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            // Start live ADB polling in Tutorial 1
+            tutPollDeviceStatus();
+            if (tutDevicePollInterval) clearInterval(tutDevicePollInterval);
+            tutDevicePollInterval = setInterval(tutPollDeviceStatus, 1500);
+        }
+
+        function switchTutTab(tab) {
+            activeTutTab = tab;
+            const btnPhone = document.getElementById('tabTutPhone');
+            const btnKey = document.getElementById('tabTutKey');
+            const secPhone = document.getElementById('tutSectionPhone');
+            const secKey = document.getElementById('tutSectionKey');
+            const footPhone = document.getElementById('tutFooterPhone');
+            const footKey = document.getElementById('tutFooterKey');
+
+            if (tab === 'phone') {
+                btnPhone.classList.add('active');
+                btnKey.classList.remove('active');
+                secPhone.style.display = 'flex';
+                secKey.style.display = 'none';
+                if (footPhone) footPhone.style.display = 'flex';
+                if (footKey) footKey.style.display = 'none';
+            } else {
+                btnKey.classList.add('active');
+                btnPhone.classList.remove('active');
+                secPhone.style.display = 'none';
+                secKey.style.display = 'flex';
+                if (footPhone) footPhone.style.display = 'none';
+                if (footKey) footKey.style.display = 'flex';
+                setTutSlide(activeTutSlide);
+            }
+        }
+
+        function switchTutOem(oemKey, isHardwareAuto = false) {
+            activeTutOem = oemKey;
+            ['xiaomi', 'samsung', 'oneplus', 'vivo', 'motorola', 'nothing', 'pixel'].forEach(k => {
+                const btn = document.getElementById('btnOem' + k.charAt(0).toUpperCase() + k.slice(1));
+                if (btn) {
+                    if (k === oemKey) btn.classList.add('active');
+                    else btn.classList.remove('active');
+                }
+            });
+
+            const badge = document.getElementById('tutOemSuggestedBadge');
+            if (badge) badge.style.display = isHardwareAuto ? 'inline-block' : 'none';
+
+            renderTutOemContent(oemKey);
+        }
+
+        function renderTutOemContent(oemKey) {
+            const container = document.getElementById('tutOemContent');
+            if (!container) return;
+            const steps = OEM_INSTRUCTIONS[oemKey] || OEM_INSTRUCTIONS.xiaomi;
+            container.innerHTML = steps.map(s => `
+                <div class="tut-step-item">
+                    <div class="tut-step-num">${s.num}</div>
+                    <div>${s.text}</div>
+                </div>
+            `).join('');
+        }
+
+        function tutPollDeviceStatus() {
+            const modal = document.getElementById('modalTutorial');
+            if (!modal || !modal.classList.contains('open')) {
+                if (tutDevicePollInterval) {
+                    clearInterval(tutDevicePollInterval);
+                    tutDevicePollInterval = null;
+                }
+                return;
+            }
+
+            const dot = document.getElementById('tutPhoneStatusDot');
+            const title = document.getElementById('tutPhoneStatusTitle');
+            const sub = document.getElementById('tutPhoneStatusSub');
+            if (!dot || !title || !sub) return;
+
+            const st = currentDeviceStatus || {};
+            if (st.connected && st.authorized) {
+                dot.className = 'tut-pulse-indicator ready';
+                title.innerText = (st.model || st.serial || 'Android Device') + ': Ready';
+                sub.innerText = 'USB Debugging authorized. Proceed to WhatsApp Key guide.';
+            } else if (st.connected && !st.authorized) {
+                dot.className = 'tut-pulse-indicator action';
+                title.innerText = 'Device Detected: Authorization Required';
+                sub.innerText = 'Unlock your phone and tap "Allow USB debugging" on screen.';
+            } else {
+                dot.className = 'tut-pulse-indicator';
+                title.innerText = 'No Device Detected';
+                sub.innerText = 'Plug your phone into PC with a USB data cable.';
+            }
+        }
+
+        function initTutStoryBars() {
+            const container = document.getElementById('tutStoryBars');
+            if (!container || container.children.length > 0) return;
+            for (let i = 0; i < 8; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'tut-story-bar';
+                bar.title = 'Jump to Step ' + (i + 1);
+                bar.onclick = () => setTutSlide(i);
+                const fill = document.createElement('div');
+                fill.className = 'tut-story-bar-fill';
+                bar.appendChild(fill);
+                container.appendChild(bar);
+            }
+        }
+
+        function setTutSlide(idx) {
+            if (idx < 0) idx = 0;
+            if (idx > 7) idx = 7;
+            activeTutSlide = idx;
+
+            // Update Progress Bar
+            const bars = document.querySelectorAll('.tut-story-bar');
+            bars.forEach((b, i) => {
+                b.classList.remove('active', 'completed');
+                if (i < idx) b.classList.add('completed');
+                else if (i === idx) b.classList.add('active');
+            });
+
+            // Update Image
+            const img = document.getElementById('tutSlideImg');
+            if (img) {
+                img.style.opacity = '0';
+                img.style.transform = 'scale(0.98)';
+                setTimeout(() => {
+                    img.src = '/assets/tutorial/wa_step' + idx + '.webp';
+                    img.style.opacity = '1';
+                    img.style.transform = 'scale(1)';
+                }, 120);
+            }
+
+            // Update Step Text
+            const data = TUTORIAL_SLIDES_DATA[idx];
+            document.getElementById('tutStepBadge').innerText = data.badge;
+            document.getElementById('tutStepTitle').innerText = data.title;
+            document.getElementById('tutStepDesc').innerHTML = data.desc;
+            
+            const countStr = 'Step ' + (idx + 1) + ' of 8';
+            const cntFooter = document.getElementById('tutSlideCounterFooter');
+            if (cntFooter) cntFooter.innerText = countStr;
+
+            // Alerts
+            const alertEl = document.getElementById('tutStepAlert');
+            if (data.alert) {
+                alertEl.className = 'tut-alert tut-alert-' + data.alert.type;
+                alertEl.innerHTML = `
+                    <div style="font-size:16px;line-height:1;margin-top:2px;">${data.alert.icon}</div>
+                    <div>
+                        <div style="font-weight:700;margin-bottom:2px;">${data.alert.title}</div>
+                        <div>${data.alert.text}</div>
+                    </div>
+                `;
+                alertEl.style.display = 'flex';
+            } else {
+                alertEl.style.display = 'none';
+            }
+
+            // Slide 7 Specific USB Action Box & Footer Controls
+            const usbBox = document.getElementById('tutSlide7UsbBox');
+            const btnPrevFooter = document.getElementById('btnTutPrevFooter');
+            const btnNextFooter = document.getElementById('btnTutNextFooter');
+            const btnFinishFooter = document.getElementById('btnTutFinishFooter');
+
+            if (btnPrevFooter) btnPrevFooter.disabled = (idx === 0);
+
+            if (idx === 7) {
+                if (usbBox) usbBox.style.display = 'flex';
+                if (btnNextFooter) btnNextFooter.style.display = 'none';
+                if (btnFinishFooter) btnFinishFooter.style.display = 'inline-flex';
+
+                // Check if key is already configured on load of Step 8
+                if (!tutKeyStatusPollTimer && isHttpServer) {
+                    fetch('/api/config').then(r => r.json()).then(cfg => {
+                        const btnText = document.getElementById('btnTutSendUsbText');
+                        if (cfg.hex_key_set && btnText) {
+                            btnText.innerText = 'Resend Key from Phone via USB';
+                        }
+                    }).catch(() => {});
+                }
+            } else {
+                if (usbBox) usbBox.style.display = 'none';
+                if (btnNextFooter) btnNextFooter.style.display = 'inline-flex';
+                if (btnFinishFooter) btnFinishFooter.style.display = 'none';
+            }
+        }
+
+        function nextTutSlide() {
+            if (activeTutSlide < 7) {
+                setTutSlide(activeTutSlide + 1);
+            }
+        }
+
+        function prevTutSlide() {
+            if (activeTutSlide > 0) {
+                setTutSlide(activeTutSlide - 1);
+            }
+        }
+
+        async function handleSendKeyViaUsb() {
+            const btn = document.getElementById('btnTutSendUsb');
+            const text = document.getElementById('btnTutSendUsbText');
+            const statusEl = document.getElementById('tutUsbPortalStatus');
+
+            btn.disabled = true;
+            btn.classList.remove('waiting');
+            text.innerText = 'Opening portal on mobile...';
+            statusEl.innerHTML = '<span style="color:var(--accent);">Setting up physical USB reverse tether...</span>';
+
+            try {
+                const resp = await fetch('/api/phone/open-key-portal', { method: 'POST' });
+                const res = await resp.json();
+                if (resp.ok && res.status === 'success') {
+                    btn.disabled = false;
+                    btn.classList.add('waiting');
+                    text.innerHTML = 'Waiting for Key from Phone... <span style="font-size:11px;opacity:0.8;">(Click to Re-open)</span>';
+                    statusEl.innerHTML = `
+                        <div style="color:var(--accent);font-weight:600;display:flex;align-items:center;gap:6px;">
+                            <span class="status-dot dot-ready" style="animation:pulseWarning 1s infinite;"></span>
+                            Portal opened on phone! Tap "Paste &amp; Send to PC" on mobile screen...
+                        </div>
+                    `;
+                    // Start polling /api/key-status
+                    startTutKeyStatusPolling();
+                } else {
+                    btn.disabled = false;
+                    btn.classList.remove('waiting');
+                    text.innerText = 'Send Key from Phone via USB';
+                    statusEl.innerHTML = `<span style="color:#ef4444;">Could not open portal: ${res.message || 'Check USB debugging connection.'}</span>`;
+                }
+            } catch (err) {
+                btn.disabled = false;
+                btn.classList.remove('waiting');
+                text.innerText = 'Send Key from Phone via USB';
+                statusEl.innerHTML = `<span style="color:#ef4444;">Network error: ${err.message}</span>`;
+            }
+        }
+
+        function startTutKeyStatusPolling() {
+            if (tutKeyStatusPollTimer) clearInterval(tutKeyStatusPollTimer);
+            tutKeyStatusPollTimer = setInterval(async () => {
+                try {
+                    const resp = await fetch('/api/key-status');
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        if (data.received_key || data.hex_key_set) {
+                            clearInterval(tutKeyStatusPollTimer);
+                            tutKeyStatusPollTimer = null;
+                            const key = data.received_key || '';
+                            onTutKeyReceivedSuccess(key);
+                        }
+                    }
+                } catch (e) {}
+            }, 1000);
+        }
+
+        function onTutKeyReceivedSuccess(key) {
+            const statusEl = document.getElementById('tutUsbPortalStatus');
+            const btn = document.getElementById('btnTutSendUsb');
+            const text = document.getElementById('btnTutSendUsbText');
+            if (btn) {
+                btn.disabled = false;
+                btn.classList.remove('waiting');
+            }
+            if (text) {
+                text.innerText = 'Key Received! (Click to Resend)';
+            }
+            if (statusEl) {
+                statusEl.innerHTML = `
+                    <div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:8px 12px;color:var(--accent);font-weight:600;display:flex;align-items:center;gap:8px;">
+                        <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                        <span>64-digit key received and encrypted in config.json!</span>
+                    </div>
+                `;
+            }
+            const manualInput = document.getElementById('tutManualKeyInput');
+            if (manualInput && key) {
+                manualInput.value = key;
+                onTutManualKeyChange(key);
+            }
+            showToast('64-digit WhatsApp key received over USB!', 'success');
+            checkConfigStatus();
+        }
+
+        function onTutManualKeyChange(val) {
+            const cleaned = val.replace(/[^0-9a-fA-F]/g, '').toLowerCase();
+            document.getElementById('tutManualKeyInput').value = cleaned;
+            const btn = document.getElementById('btnTutManualSave');
+            btn.disabled = (cleaned.length !== 64);
+        }
+
+        async function saveTutManualKey() {
+            const key = document.getElementById('tutManualKeyInput').value.trim();
+            if (key.length !== 64) {
+                showToast('Key must be exactly 64 hexadecimal characters.', 'error');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/submit-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hex_key: key })
+                });
+                const res = await resp.json();
+                if (resp.ok && res.status === 'success') {
+                    showToast('Key saved successfully!', 'success');
+                    onTutKeyReceivedSuccess(key);
+                } else {
+                    showToast(res.message || 'Failed to save key.', 'error');
+                }
+            } catch (e) {
+                showToast('Save failed: ' + e.message, 'error');
+            }
+        }
+
+        async function finishTutorialOnboarding(autoStartSync = false) {
+            closeModal('modalTutorial');
+            if (isHttpServer) {
+                try {
+                    await fetch('/api/onboarding/complete', { method: 'POST' });
+                } catch (e) {}
+            }
+            showToast('Setup complete! Ready to sync WhatsApp.', 'success');
+            if (autoStartSync) {
+                setTimeout(() => {
+                    openSyncModal();
+                }, 300);
+            }
+        }
         async function checkConfigStatus() {
             if (!isHttpServer) return;
             try {
@@ -3399,6 +4783,12 @@
                 if (resp.ok) {
                     const cfg = await resp.json();
                     windowHasLocalDb = !!cfg.has_local_db;
+                    if (cfg.onboarding_completed === false && !cfg.hex_key_set) {
+                        const params = new URLSearchParams(window.location.search);
+                        if (!params.has('no_auto_tutorial')) {
+                            setTimeout(() => openTutorialModal(), 500);
+                        }
+                    }
                     const ind = document.getElementById('keyIndicator');
                     if (ind) {
                         if (cfg.hex_key_set) {
@@ -3413,28 +4803,52 @@
             } catch (e) {}
         }
 
+        let keyModalPollTimer = null;
+
         async function openKeyModal() {
             const statusDiv = document.getElementById('keyCurrentStatus');
             const input = document.getElementById('hexKeyInput');
             const count = document.getElementById('keyCharCount');
             const btnSave = document.getElementById('btnSaveKey');
             const feedback = document.getElementById('keyValidationFeedback');
+            const btnFetchPhone = document.getElementById('btnKeyFetchPhone');
+            const fetchStatus = document.getElementById('keyFetchStatus');
 
             input.value = '';
             count.innerText = '0 / 64 hex characters';
             count.style.color = 'var(--text-muted)';
             btnSave.disabled = true;
             feedback.innerHTML = '';
+            if (fetchStatus) fetchStatus.innerHTML = '';
+            if (btnFetchPhone) {
+                btnFetchPhone.style.display = 'none';
+                btnFetchPhone.disabled = false;
+                const txt = document.getElementById('btnKeyFetchPhoneText');
+                if (txt) txt.innerText = 'Fetch from Phone';
+            }
+
+            let keyConfigured = false;
 
             if (isHttpServer) {
+                // Clear any unstaged received key from memory
+                fetch('/api/phone/clear-received-key', { method: 'POST' }).catch(() => {});
+
                 try {
                     const resp = await fetch('/api/config');
                     if (resp.ok) {
                         const cfg = await resp.json();
                         windowHasLocalDb = !!cfg.has_local_db;
+                        keyConfigured = !!cfg.hex_key_set;
                         if (cfg.hex_key_set) {
                             statusDiv.innerHTML = `
-                                <span style="color:var(--accent);">Active Key:</span> <code>${cfg.masked_key}</code> (Configured)
+                                <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.22);border-radius:8px;padding:8px 12px;gap:8px;">
+                                    <div style="display:flex;align-items:center;gap:6px;font-size:12px;overflow:hidden;text-overflow:ellipsis;">
+                                        <span style="color:var(--accent);font-weight:600;white-space:nowrap;">Active Key:</span> <code style="word-break:break-all;">${cfg.masked_key}</code>
+                                    </div>
+                                    <button type="button" id="btnDeleteKey" onclick="deleteActiveKey(event)" title="Delete Key (removes from config.json and deletes encrypted_backup.key)" aria-label="Delete WhatsApp Backup Key" style="background:transparent;border:none;color:#ef4444;cursor:pointer;padding:6px;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:all 0.15s;flex-shrink:0;" onmouseover="this.style.background='rgba(239,68,68,0.15)'" onmouseout="this.style.background='transparent'">
+                                        <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;pointer-events:none;"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                                    </button>
+                                </div>
                             `;
                             btnSave.disabled = false;
                             btnSave.innerText = 'Save Settings';
@@ -3448,8 +4862,125 @@
                 } catch (e) {
                     statusDiv.innerText = '';
                 }
+
+                // Check ADB device readiness: only show Fetch from Phone if key isn't present AND device is ready
+                try {
+                    const devResp = await fetch('/api/device-status');
+                    if (devResp.ok) {
+                        currentDeviceStatus = await devResp.json();
+                    }
+                } catch (e) {}
+
+                const isDeviceReady = currentDeviceStatus && currentDeviceStatus.connected && currentDeviceStatus.authorized;
+                if (btnFetchPhone && !keyConfigured && isDeviceReady) {
+                    btnFetchPhone.style.display = 'inline-flex';
+                }
             }
             openModal('modalKey');
+        }
+
+        async function deleteActiveKey(e) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            const confirmed = window.confirm('Are you sure you want to delete this backup key? It will be permanently removed from config.json and encrypted_backup.key.');
+            if (!confirmed) {
+                return;
+            }
+            try {
+                const resp = await fetch('/api/delete-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                let res = {};
+                try { res = await resp.json(); } catch(err) { res = {}; }
+                if (resp.ok && (res.status === 'success' || !res.status)) {
+                    showToast('Backup key permanently deleted.', 'success');
+                    const input = document.getElementById('hexKeyInput');
+                    if (input) input.value = '';
+                    const count = document.getElementById('keyCharCount');
+                    if (count) {
+                        count.innerText = '0 / 64 hex characters';
+                        count.style.color = 'var(--text-muted)';
+                    }
+                    const feedback = document.getElementById('keyValidationFeedback');
+                    if (feedback) feedback.innerHTML = '';
+                    const fetchStatus = document.getElementById('keyFetchStatus');
+                    if (fetchStatus) fetchStatus.innerHTML = '';
+
+                    await checkConfigStatus();
+                    await openKeyModal();
+                } else {
+                    showToast(res.message || 'Failed to delete key.', 'error');
+                }
+            } catch (err) {
+                showToast(`Error: ${err.message}`, 'error');
+            }
+        }
+
+        async function fetchKeyFromPhone() {
+            const btn = document.getElementById('btnKeyFetchPhone');
+            const text = document.getElementById('btnKeyFetchPhoneText');
+            const fetchStatus = document.getElementById('keyFetchStatus');
+
+            btn.disabled = true;
+            text.innerText = 'Opening portal...';
+            if (fetchStatus) {
+                fetchStatus.innerHTML = '<span style="color:var(--accent);">Setting up physical USB reverse tether...</span>';
+            }
+
+            try {
+                const resp = await fetch('/api/phone/open-key-portal', { method: 'POST' });
+                const res = await resp.json();
+                if (resp.ok && res.status === 'success') {
+                    btn.disabled = false;
+                    text.innerText = 'Waiting for key...';
+                    if (fetchStatus) {
+                        fetchStatus.innerHTML = `
+                            <div style="color:var(--accent);font-weight:600;display:flex;align-items:center;gap:6px;">
+                                <span class="status-dot dot-ready" style="animation:pulseWarning 1s infinite;"></span>
+                                Portal opened on phone! Tap "Paste &amp; Send to PC" on mobile screen...
+                            </div>
+                        `;
+                    }
+                    if (keyModalPollTimer) clearInterval(keyModalPollTimer);
+                    keyModalPollTimer = setInterval(async () => {
+                        try {
+                            const kResp = await fetch('/api/key-status');
+                            if (kResp.ok) {
+                                const kData = await kResp.json();
+                                if (kData.received_key) {
+                                    clearInterval(keyModalPollTimer);
+                                    keyModalPollTimer = null;
+                                    const key = kData.received_key;
+                                    onKeyInput(key);
+                                    text.innerText = 'Key Received!';
+                                    if (fetchStatus) {
+                                        fetchStatus.innerHTML = `
+                                            <span style="color:var(--accent);font-weight:600;">✓ 64-digit key received from phone! Click "Save Settings" below to apply.</span>
+                                        `;
+                                    }
+                                    showToast('64-digit key received from phone! Click Save Settings to save.', 'success');
+                                }
+                            }
+                        } catch (e) {}
+                    }, 1000);
+                } else {
+                    btn.disabled = false;
+                    text.innerText = 'Fetch from Phone';
+                    if (fetchStatus) {
+                        fetchStatus.innerHTML = `<span style="color:#ef4444;">Could not open portal: ${res.message || 'Check USB debugging connection.'}</span>`;
+                    }
+                }
+            } catch (err) {
+                btn.disabled = false;
+                text.innerText = 'Fetch from Phone';
+                if (fetchStatus) {
+                    fetchStatus.innerHTML = `<span style="color:#ef4444;">Network error: ${err.message}</span>`;
+                }
+            }
         }
 
         function onKeyInput(val) {
@@ -4441,6 +5972,12 @@
 
             renderSidebar();
             restoreAppState();
+            // Check URL onboarding flag or first-time launch
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('onboarding') === '1') {
+                setTimeout(() => openTutorialModal(), 400);
+            }
+
         });
 
         // Render sidebar chats
@@ -6143,6 +7680,11 @@
 
             // Global keyboard shortcuts and lightbox navigation
             document.addEventListener('keydown', (e) => {
+            const tutModal = document.getElementById('modalTutorial');
+            if (tutModal && tutModal.classList.contains('open') && activeTutTab === 'key') {
+                if (e.key === 'ArrowLeft') { prevTutSlide(); return; }
+                if (e.key === 'ArrowRight') { nextTutSlide(); return; }
+            }
                 // 1. Escape key closes open modals or active lightbox
                 if (e.key === 'Escape') {
                     const openModal = document.querySelector('.modal-overlay.open');

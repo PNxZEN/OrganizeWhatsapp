@@ -18,9 +18,377 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Dict, Optional
 
-from core.adb import check_adb_device, disable_developer_options, wait_for_adb_device
+from core.adb import (
+    check_adb_device,
+    detect_device_oem,
+    disable_developer_options,
+    open_url_on_phone,
+    setup_reverse_port,
+    wait_for_adb_device,
+)
 from core.config import load_config, mask_key, save_config
 from core.decrypt import create_key_file, validate_hex_key
+
+_latest_received_key: Optional[str] = None
+
+PASTE_KEY_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WhatsApp 64-Digit Key Transfer</title>
+    <style>
+        :root {
+            --bg: #0b141a;
+            --surface: #111b21;
+            --surface-card: #182229;
+            --accent: #00a884;
+            --accent-hover: #02906f;
+            --text-primary: #e9edef;
+            --text-secondary: #8696a0;
+            --danger: #ef4444;
+            --border: rgba(134, 150, 160, 0.15);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px 16px;
+        }
+        .container {
+            width: 100%;
+            max-width: 440px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 28px 20px;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+            text-align: center;
+        }
+        .shield-icon {
+            width: 56px;
+            height: 56px;
+            fill: var(--accent);
+            margin: 0 auto 16px;
+            display: block;
+        }
+        h1 { font-size: 1.25rem; font-weight: 600; margin-bottom: 8px; }
+        .subtitle { font-size: 0.88rem; color: var(--text-secondary); line-height: 1.45; margin-bottom: 24px; }
+        .usb-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0, 168, 132, 0.12);
+            border: 1px solid rgba(0, 168, 132, 0.3);
+            color: var(--accent);
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        .btn-paste {
+            width: 100%;
+            background: var(--accent);
+            color: #0b141a;
+            border: none;
+            border-radius: 14px;
+            padding: 16px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: background 0.15s, transform 0.1s;
+        }
+        .btn-paste:active { background: var(--accent-hover); transform: scale(0.98); }
+        .divider {
+            display: flex;
+            align-items: center;
+            margin: 20px 0;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .divider::before, .divider::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+        .divider span { padding: 0 10px; }
+        textarea {
+            width: 100%;
+            background: var(--surface-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text-primary);
+            padding: 12px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            height: 72px;
+            resize: none;
+            outline: none;
+            margin-bottom: 12px;
+        }
+        textarea:focus { border-color: var(--accent); }
+        .btn-submit {
+            width: 100%;
+            background: transparent;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-submit:active { background: rgba(0,168,132,0.1); }
+        .status-msg {
+            margin-top: 16px;
+            font-size: 0.85rem;
+            padding: 10px;
+            border-radius: 8px;
+            display: none;
+            line-height: 1.4;
+        }
+        .status-msg.error {
+            display: block;
+            background: rgba(239, 68, 68, 0.12);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+        }
+        .status-msg.success {
+            display: block;
+            background: rgba(0, 168, 132, 0.12);
+            color: var(--accent);
+            border: 1px solid rgba(0, 168, 132, 0.25);
+        }
+        .char-counter {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-align: right;
+            margin-top: -6px;
+            margin-bottom: 10px;
+        }
+        .btn-resend {
+            width: 100%;
+            background: rgba(0, 168, 132, 0.15);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            border-radius: 14px;
+            padding: 14px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 16px;
+            transition: all 0.2s;
+        }
+        .btn-resend:active { background: rgba(0, 168, 132, 0.28); }
+        .success-card {
+            background: rgba(0, 168, 132, 0.08);
+            border: 1px solid rgba(0, 168, 132, 0.3);
+            border-radius: 16px;
+            padding: 20px 16px;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <svg class="shield-icon" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+        <div class="usb-badge">Direct USB Transfer (100% Offline)</div>
+
+        <!-- SUCCESS SECTION: Shown when key is received or already present -->
+        <div id="successSection" style="display:none;">
+            <div class="success-card">
+                <div style="width:52px;height:52px;border-radius:50%;background:rgba(0,168,132,0.18);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
+                    <svg style="width:28px;height:28px;fill:var(--accent);" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                </div>
+                <h1 id="successTitle" style="color:var(--accent);font-size:1.15rem;">Key Received on PC!</h1>
+                <p class="subtitle" id="successSubtitle" style="margin-bottom:0;font-size:0.85rem;">
+                    Your 64-digit WhatsApp key has been received and safely encrypted on your PC. You can close this browser tab.
+                </p>
+            </div>
+            <button class="btn-resend" id="btnResend" onclick="enableResendMode()">
+                <svg style="width:16px;height:16px;fill:currentColor;" viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+                <span id="btnResendText">Resend or Update Key</span>
+            </button>
+        </div>
+
+        <!-- INPUT SECTION: Shown when entering key or resending -->
+        <div id="inputSection">
+            <h1 id="inputTitle">Send 64-Digit Key to PC</h1>
+            <p class="subtitle" id="inputSubtitle">Tap the button below to paste your copied 64-digit key directly into your PC via the USB cable.</p>
+
+            <button class="btn-paste" id="btnPaste" onclick="handlePasteFromClipboard()">
+                <svg style="width:20px;height:20px;fill:currentColor;" viewBox="0 0 24 24"><path d="M19 2h-4.18C14.4 0.84 13.3 0 12 0c-1.3 0-2.4 0.84-2.82 2H5c-1.1 0-2 0.9-2 2v16c0 1.1 0.9 2 2 2h14c1.1 0 2-0.9 2-2V4c0-1.1-0.9-2-2-2zm-7 0c0.55 0 1 0.45 1 1s-0.45 1-1 1-1-0.45-1-1 0.45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/></svg>
+                <span id="btnPasteText">Paste &amp; Send to PC</span>
+            </button>
+
+            <div class="divider"><span>Or paste manually</span></div>
+
+            <textarea id="keyInput" placeholder="Paste 64 hex characters here..." spellcheck="false" oninput="onKeyChange()"></textarea>
+            <div class="char-counter" id="charCounter">0 / 64 hex characters</div>
+            <button class="btn-submit" id="btnSubmit" onclick="submitCurrentKey()">
+                <span id="btnSubmitText">Send Key</span>
+            </button>
+        </div>
+
+        <div id="statusMsg" class="status-msg"></div>
+    </div>
+
+    <script>
+        let isResendMode = false;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            checkInitialStatus();
+        });
+
+        async function checkInitialStatus() {
+            try {
+                const resp = await fetch('/api/key-status');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.hex_key_set) {
+                        showSuccessCard('Key Already Configured on PC!', 'A 64-digit WhatsApp key is already configured on your PC. You can resend or update it if needed.');
+                    }
+                }
+            } catch (e) {}
+        }
+
+        function showSuccessCard(title, subtitle) {
+            document.getElementById('inputSection').style.display = 'none';
+            document.getElementById('successSection').style.display = 'block';
+            if (title) document.getElementById('successTitle').innerText = title;
+            if (subtitle) document.getElementById('successSubtitle').innerText = subtitle;
+            const statusEl = document.getElementById('statusMsg');
+            statusEl.className = 'status-msg';
+            statusEl.style.display = 'none';
+        }
+
+        function enableResendMode() {
+            isResendMode = true;
+            document.getElementById('successSection').style.display = 'none';
+            document.getElementById('inputSection').style.display = 'block';
+            document.getElementById('inputTitle').innerText = 'Resend Key to PC';
+            document.getElementById('inputSubtitle').innerText = 'Paste your 64-digit key below to update the key stored on your PC.';
+            document.getElementById('btnPasteText').innerText = 'Paste & Resend to PC';
+            document.getElementById('btnSubmitText').innerText = 'Resend Key';
+            document.getElementById('btnPaste').disabled = false;
+            document.getElementById('btnPaste').style.opacity = '1';
+            document.getElementById('btnSubmit').disabled = false;
+            const statusEl = document.getElementById('statusMsg');
+            statusEl.className = 'status-msg';
+            statusEl.style.display = 'none';
+        }
+
+        function cleanHex(raw) {
+            if (!raw) return "";
+            return raw.replace(/[^0-9a-fA-F]/g, "").toLowerCase();
+        }
+
+        function onKeyChange() {
+            const val = cleanHex(document.getElementById('keyInput').value);
+            document.getElementById('charCounter').textContent = val.length + ' / 64 hex characters';
+            if (val.length === 64) {
+                document.getElementById('charCounter').style.color = 'var(--accent)';
+            } else {
+                document.getElementById('charCounter').style.color = 'var(--text-secondary)';
+            }
+        }
+
+        async function handlePasteFromClipboard() {
+            const statusEl = document.getElementById('statusMsg');
+            statusEl.className = 'status-msg';
+            try {
+                let text = "";
+                if (navigator.clipboard && navigator.clipboard.readText) {
+                    text = await navigator.clipboard.readText();
+                }
+                if (!text) {
+                    statusEl.className = 'status-msg error';
+                    statusEl.style.display = 'block';
+                    statusEl.textContent = 'Clipboard is empty or permission denied. Please paste manually in the box below.';
+                    return;
+                }
+                const cleaned = cleanHex(text);
+                if (cleaned.length !== 64) {
+                    document.getElementById('keyInput').value = text;
+                    onKeyChange();
+                    statusEl.className = 'status-msg error';
+                    statusEl.style.display = 'block';
+                    statusEl.textContent = 'Found ' + cleaned.length + ' hex characters in clipboard. A valid WhatsApp key must be exactly 64 hex characters.';
+                    return;
+                }
+                document.getElementById('keyInput').value = cleaned;
+                onKeyChange();
+                await sendKeyToBackend(cleaned);
+            } catch (err) {
+                statusEl.className = 'status-msg error';
+                statusEl.style.display = 'block';
+                statusEl.textContent = 'Could not access clipboard directly: ' + err.message + '. Please paste manually below.';
+            }
+        }
+
+        async function submitCurrentKey() {
+            const raw = document.getElementById('keyInput').value;
+            const cleaned = cleanHex(raw);
+            const statusEl = document.getElementById('statusMsg');
+            if (cleaned.length !== 64) {
+                statusEl.className = 'status-msg error';
+                statusEl.style.display = 'block';
+                statusEl.textContent = 'Please enter exactly 64 hex characters (currently ' + cleaned.length + ').';
+                return;
+            }
+            await sendKeyToBackend(cleaned);
+        }
+
+        async function sendKeyToBackend(hexKey) {
+            const statusEl = document.getElementById('statusMsg');
+            statusEl.className = 'status-msg';
+            statusEl.style.display = 'block';
+            statusEl.textContent = 'Sending key over USB...';
+
+            try {
+                const resp = await fetch('/api/submit-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hex_key: hexKey })
+                });
+                const res = await resp.json();
+                if (resp.ok && res.status === 'success') {
+                    showSuccessCard(
+                        isResendMode ? 'Key Resent to PC!' : 'Key Received on PC!',
+                        'Your 64-digit WhatsApp key was securely saved in config.json. You can now close this browser tab.'
+                    );
+                } else {
+                    statusEl.className = 'status-msg error';
+                    statusEl.textContent = res.message || 'Error saving key on PC.';
+                }
+            } catch (err) {
+                statusEl.className = 'status-msg error';
+                statusEl.textContent = 'Connection error: ' + err.message + '. Ensure the USB cable remains connected.';
+            }
+        }
+    </script>
+</body>
+</html>
+"""
 from core.gallery import (
     get_chat_media,
     get_chats_summary,
@@ -324,6 +692,49 @@ def find_open_port(preferred_port=8000, max_attempts=10, host="127.0.0.1"):
     return preferred_port
 
 
+def purge_all_backup_keys(output_dir=None, key_file=None):
+    """
+    Deletes all encrypted_backup.key files across workspace and output folders,
+    guaranteeing no trace of the key remains on disk.
+    """
+    targets = [
+        "encrypted_backup.key",
+        "Backups/encrypted_backup.key",
+        "Backups/temp/encrypted_backup.key",
+        "Databases/encrypted_backup.key",
+    ]
+    if key_file:
+        targets.append(str(key_file))
+    if output_dir:
+        out_p = Path(output_dir)
+        targets.extend([
+            str(out_p / "encrypted_backup.key"),
+            str(out_p / "Backups" / "encrypted_backup.key"),
+            str(out_p / "Backups" / "temp" / "encrypted_backup.key"),
+            str(out_p / "Databases" / "encrypted_backup.key"),
+        ])
+    for t in targets:
+        try:
+            p = Path(t)
+            if p.is_file():
+                p.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    # Targeted search in Backups, Databases, and output
+    for sub in [Path("./Backups"), Path("./Databases")]:
+        if sub.is_dir():
+            try:
+                for k in sub.rglob("encrypted_backup.key"):
+                    try:
+                        if k.is_file():
+                            k.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+
 class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
     """
     Multi-threaded HTTP request handler serving static files, RFC 7233 video streaming,
@@ -518,9 +929,67 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "mode": cfg.get("mode", "copy"),
                     "output_dir": cfg.get("output_dir", "./output"),
                     "has_local_db": check_has_local_db(str(self.output_dir), cfg.get("db_dir")),
+                    "onboarding_completed": cfg.get("onboarding_completed", False),
                 },
             )
             return
+
+        # /api/phone/oem (detect connected phone brand/OEM)
+        if path == "/api/phone/oem":
+            oem_info = detect_device_oem()
+            self._send_json(200, oem_info)
+            return
+
+        # /api/key-status (status of 64-digit key and received key from mobile)
+        if path == "/api/key-status":
+            cfg = load_config()
+            self._send_json(
+                200,
+                {
+                    "hex_key_set": bool(cfg.get("hex_key")),
+                    "latest_received_key": _latest_received_key,
+                    "received_key": _latest_received_key,
+                    "onboarding_completed": cfg.get("onboarding_completed", False),
+                },
+            )
+            return
+
+        # /paste-key (Mobile USB reverse tethered page)
+        if path == "/paste-key":
+            content = PASTE_KEY_HTML.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(content)
+            return
+
+        # /assets/tutorial/ (Serve tutorial WebP slides)
+        if path.startswith("/assets/tutorial/"):
+            filename = os.path.basename(path)
+            asset_path = Path(__file__).parent / "assets" / "tutorial" / filename
+            if not asset_path.is_file():
+                asset_path = self.output_dir / "assets" / "tutorial" / filename
+            if asset_path.is_file():
+                try:
+                    with open(asset_path, "rb") as f:
+                        data = f.read()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/webp")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Cache-Control", "public, max-age=86400")
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+                except Exception as e:
+                    self._send_json(500, {"error": f"Failed to serve asset: {e}"})
+                    return
+            else:
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(b"Asset not found")
+                return
 
         # /api/chats (lightweight chat summary list: ~70KB instead of 28.4MB)
         if path == "/api/chats":
@@ -765,6 +1234,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
+        global _latest_received_key
         parsed_url = urllib.parse.urlparse(self.path)
         path = parsed_url.path
 
@@ -790,6 +1260,12 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     )
                     return
 
+            if "hex_key" in body and not hex_key:
+                # Key is being cleared: clean up files and memory
+                _latest_received_key = None
+                cfg_curr = load_config()
+                purge_all_backup_keys(output_dir=self.output_dir, key_file=cfg_curr.get("key_file"))
+
             config_payload = dict(body)
             config_payload.pop("skip_db_pull", None)
             save_config(config_payload)
@@ -802,6 +1278,68 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "has_local_db": check_has_local_db(str(self.output_dir)),
                 },
             )
+            return
+
+        # /api/delete-key (permanently removes backup key and deletes key files)
+        if path == "/api/delete-key":
+            _latest_received_key = None
+            cfg = load_config()
+            purge_all_backup_keys(output_dir=self.output_dir, key_file=cfg.get("key_file"))
+            save_config({"hex_key": ""})
+            self._send_json(
+                200,
+                {
+                    "status": "success",
+                    "message": "Key deleted successfully",
+                    "masked_key": "",
+                    "has_local_db": check_has_local_db(str(self.output_dir)),
+                },
+            )
+            return
+
+        # /api/submit-key (received from mobile /paste-key or direct transfer)
+        if path == "/api/submit-key":
+            body = self._read_json_body()
+            if not body or "hex_key" not in body:
+                self._send_json(400, {"status": "error", "message": "Missing hex_key"})
+                return
+            raw_key = body.get("hex_key", "").strip()
+            clean_key = re.sub(r"[^0-9a-fA-F]", "", raw_key).lower()
+            is_valid, err = validate_hex_key(clean_key)
+            if not is_valid:
+                self._send_json(400, {"status": "error", "message": err})
+                return
+            # Staged in memory for review and user confirmation.
+            # Do NOT write to config.json or create encrypted_backup.key until user clicks Save.
+            _latest_received_key = clean_key
+            self._send_json(200, {"status": "success", "message": "Key transferred to PC successfully!"})
+            return
+
+        # /api/phone/clear-received-key (clears staged in-memory transferred key)
+        if path == "/api/phone/clear-received-key":
+            _latest_received_key = None
+            self._send_json(200, {"status": "success"})
+            return
+
+        # /api/phone/open-key-portal (opens http://localhost:PORT/paste-key on phone via adb reverse)
+        if path == "/api/phone/open-key-portal":
+            cfg = load_config()
+            port = cfg.get("port", 8000)
+            rev_ok, rev_msg = setup_reverse_port(port)
+            if not rev_ok:
+                self._send_json(400, {"status": "error", "message": rev_msg})
+                return
+            open_ok, open_msg = open_url_on_phone(f"http://localhost:{port}/paste-key")
+            if not open_ok:
+                self._send_json(400, {"status": "error", "message": open_msg})
+                return
+            self._send_json(200, {"status": "success", "message": "Portal opened on phone screen."})
+            return
+
+        # /api/onboarding/complete
+        if path == "/api/onboarding/complete":
+            save_config({"onboarding_completed": True})
+            self._send_json(200, {"status": "success"})
             return
 
         # /api/wait-authorize (polling loop for USB debugging)
@@ -1168,7 +1706,9 @@ def start_gallery_server(
     if auto_open:
         import webbrowser
 
-        url = f"http://127.0.0.1:{bound_port}/gallery.html"
+        cfg_onboard = load_config()
+        query = "?onboarding=1" if not cfg_onboard.get("onboarding_completed", False) else ""
+        url = f"http://127.0.0.1:{bound_port}/gallery.html{query}"
         print(f"[Server] Opening {url} in your default browser...")
         threading.Timer(1.0, webbrowser.open, args=[url]).start()
 

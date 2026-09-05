@@ -68,6 +68,7 @@ def load_config(config_path=DEFAULT_CONFIG_FILE):
         "media_dir": DEFAULT_MEDIA_DIR,
         "db_dir": DEFAULT_DB_DIR,
         "allow_lan": False,
+        "onboarding_completed": False,
     }
     if not cfg_file.exists():
         return defaults
