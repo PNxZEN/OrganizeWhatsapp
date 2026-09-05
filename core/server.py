@@ -26,7 +26,7 @@ from core.adb import (
     setup_reverse_port,
     wait_for_adb_device,
 )
-from core.config import load_config, mask_key, save_config
+from core.config import find_ffmpeg_binary, load_config, mask_key, save_config
 from core.decrypt import create_key_file, validate_hex_key
 
 _latest_received_key: Optional[str] = None
@@ -1151,7 +1151,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             if not preview_file.is_file() or preview_file.stat().st_size == 0:
                 try:
                     cmd = [
-                        "ffmpeg",
+                        find_ffmpeg_binary(),
                         "-y",
                         "-i",
                         str(actual_path),
@@ -1186,7 +1186,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     try:
                         thumb_dir.mkdir(parents=True, exist_ok=True)
                         cmd_thumb = [
-                            "ffmpeg",
+                            find_ffmpeg_binary(),
                             "-y",
                             "-ss",
                             "00:00:00.500",

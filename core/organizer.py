@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from core.config import to_long_path
+from core.config import find_ffmpeg_binary, to_long_path
 
 INVALID_CHARS_RE = re.compile(r'[<>:"/\\|?*]')
 DUP_SUFFIX_RE = re.compile(r"(_dup\d+|-\d+)$")
@@ -336,7 +336,7 @@ def organize_media(
                         try:
                             thumb_dir.mkdir(parents=True, exist_ok=True)
                             cmd = [
-                                "ffmpeg",
+                                find_ffmpeg_binary(),
                                 "-y",
                                 "-ss",
                                 "00:00:00.500",
