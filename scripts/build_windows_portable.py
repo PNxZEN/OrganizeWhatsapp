@@ -296,7 +296,7 @@ def build(version: str, dry_run: bool = False) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build Windows Portable ZIP")
-    parser.add_argument("--version", default="1.0.0", help="Release version string (e.g. 1.0.0)")
+    parser.add_argument("--version", default="1.0.1", help="Release version string (e.g. 1.0.1)")
     parser.add_argument("--dry-run", action="store_true", help="Print plan without downloading or building")
     args = parser.parse_args()
     build(args.version, dry_run=args.dry_run)
