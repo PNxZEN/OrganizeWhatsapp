@@ -153,6 +153,8 @@ def build(version: str, dry_run: bool = False) -> None:
                 lines.append("import site")
             else:
                 lines.append(line)
+        if "Lib/site-packages.zip" not in pth_text:
+            lines.append("Lib/site-packages.zip")
         if "Lib/site-packages" not in pth_text:
             lines.append("Lib/site-packages")
         if "." not in pth_text.splitlines():
@@ -191,6 +193,63 @@ def build(version: str, dry_run: bool = False) -> None:
 
     # Clean up pip installer
     get_pip.unlink(missing_ok=True)
+
+    # --------------------------------------------------------
+    # Optimization: Reduce extracted file count for fast unzipping
+    # --------------------------------------------------------
+    print("\n  [OPTIMIZE] Pruning build artifacts to minimize extracted file count...")
+    site_packages = runtime_dir / "Lib" / "site-packages"
+
+    # Point 1: Strip pip and its command-line wrappers (not used at runtime)
+    pip_dir = site_packages / "pip"
+    if pip_dir.exists():
+        shutil.rmtree(pip_dir, ignore_errors=True)
+    for pip_info in site_packages.glob("pip-*.dist-info"):
+        shutil.rmtree(pip_info, ignore_errors=True)
+    scripts_dir = runtime_dir / "Scripts"
+    if scripts_dir.exists():
+        for p in scripts_dir.glob("pip*"):
+            p.unlink(missing_ok=True)
+    print("    -> Stripped pip installation tools")
+
+    # Point 2: Remove all *.dist-info metadata folders and IDE type stubs (.pyi)
+    for dist_info in site_packages.glob("*.dist-info"):
+        shutil.rmtree(dist_info, ignore_errors=True)
+    for pyi in site_packages.rglob("*.pyi"):
+        pyi.unlink(missing_ok=True)
+    for doc in site_packages.rglob("*.rst"):
+        doc.unlink(missing_ok=True)
+    for doc in site_packages.rglob("*.md"):
+        doc.unlink(missing_ok=True)
+    print("    -> Removed package metadata (.dist-info) and type stubs (.pyi)")
+
+    # Point 3: Archive verified pure-Python packages into Lib/site-packages.zip
+    # Only 100% pure Python packages with explicit __init__.py files are archived.
+    # Packages containing C-extensions (.pyd, .dll) remain on disk.
+    pure_candidates = ["javaobj", "imagehash"]
+    archived_packages = []
+    zip_target = runtime_dir / "Lib" / "site-packages.zip"
+
+    with zipfile.ZipFile(zip_target, "w", zipfile.ZIP_DEFLATED) as zf:
+        for pkg_name in pure_candidates:
+            pkg_path = site_packages / pkg_name
+            if pkg_path.exists() and pkg_path.is_dir():
+                has_binaries = any(
+                    f.suffix.lower() in (".pyd", ".dll", ".so")
+                    for f in pkg_path.rglob("*")
+                )
+                if not has_binaries:
+                    for f in pkg_path.rglob("*"):
+                        if f.is_file() and not f.name.endswith(".pyc") and "__pycache__" not in f.parts:
+                            arcname = f.relative_to(site_packages)
+                            zf.write(f, str(arcname))
+                    archived_packages.append(pkg_name)
+
+    # Remove archived packages from disk
+    for pkg_name in archived_packages:
+        shutil.rmtree(site_packages / pkg_name, ignore_errors=True)
+    if archived_packages:
+        print(f"    -> Consolidated pure packages ({', '.join(archived_packages)}) into site-packages.zip")
 
     # Remove unnecessary __pycache__ bloat
     for p in runtime_dir.rglob("__pycache__"):
@@ -260,6 +319,41 @@ def build(version: str, dry_run: bool = False) -> None:
         json.dumps(default_config, indent=2) + "\n", encoding="utf-8"
     )
     print("  [WRITE] config.json (clean defaults)")
+
+    # --------------------------------------------------------
+    # Verification: Validate runtime execution before archiving
+    # --------------------------------------------------------
+    print("\n  [VERIFY] Validating portable runtime execution...")
+    portable_python = runtime_dir / "python.exe"
+    verify_cmd = [
+        str(portable_python),
+        "-c",
+        (
+            "import sys; "
+            "import Cryptodome.Cipher.AES; "
+            "import PIL.Image; "
+            "import pillow_heif; "
+            "import imagehash; "
+            "import javaobj; "
+            "from wa_crypt_tools.lib.key.key15 import Key15; "
+            "from core.adb import check_adb_device, find_adb_binary; "
+            "from core.decrypt import validate_hex_key; "
+            "print('PORTABLE_RUNTIME_VERIFIED_OK')"
+        ),
+    ]
+    verify_res = subprocess.run(
+        verify_cmd, cwd=str(BUILD_DIR), capture_output=True, text=True
+    )
+    if verify_res.returncode != 0 or "PORTABLE_RUNTIME_VERIFIED_OK" not in verify_res.stdout:
+        print(f"  [ERROR] Runtime verification failed:\n{verify_res.stderr}")
+        raise RuntimeError("Portable runtime verification failed!")
+
+    help_cmd = [str(portable_python), "wa_media_organizer.py", "--help"]
+    help_res = subprocess.run(help_cmd, cwd=str(BUILD_DIR), capture_output=True, text=True)
+    if help_res.returncode != 0:
+        print(f"  [ERROR] wa_media_organizer.py execution check failed:\n{help_res.stderr}")
+        raise RuntimeError("Application invocation check failed!")
+    print("  [OK] Portable runtime successfully verified with all dependencies.")
 
     # --------------------------------------------------------
     # 7. Package as ZIP
