@@ -51,15 +51,18 @@ class TestTutorialAPIs(unittest.TestCase):
         body = resp.read().decode("utf-8")
         self.assertIn("Send 64-Digit Key to PC", body)
         self.assertIn("handlePasteFromClipboard", body)
+        self.assertIn("onKeyChange", body)
 
-    def test_02_get_tutorial_asset(self):
+    def test_02_get_tutorial_assets(self):
         conn = HTTPConnection("127.0.0.1", self.port)
-        conn.request("GET", "/assets/tutorial/wa_step0.webp")
-        resp = conn.getresponse()
-        self.assertEqual(resp.status, 200)
-        self.assertIn("image/webp", resp.getheader("Content-Type", ""))
-        data = resp.read()
-        self.assertGreater(len(data), 1000)
+        for i in range(11):
+            asset_path = f"/assets/tutorial/wa_step{i}.webp"
+            conn.request("GET", asset_path)
+            resp = conn.getresponse()
+            self.assertEqual(resp.status, 200, f"Failed to fetch {asset_path}")
+            self.assertIn("image/webp", resp.getheader("Content-Type", ""))
+            data = resp.read()
+            self.assertGreater(len(data), 1000, f"Asset {asset_path} is empty or too small")
 
     def test_03_get_phone_oem(self):
         conn = HTTPConnection("127.0.0.1", self.port)

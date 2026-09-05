@@ -235,17 +235,18 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
             <h1 id="inputTitle">Send 64-Digit Key to PC</h1>
             <p class="subtitle" id="inputSubtitle">Tap the button below to paste your copied 64-digit key directly into your PC via the USB cable.</p>
 
-            <button class="btn-paste" id="btnPaste" onclick="handlePasteFromClipboard()">
+            <button class="btn-paste" id="btnPaste" onclick="handlePasteFromClipboard()" style="box-shadow:0 4px 18px rgba(0,168,132,0.35);">
                 <svg style="width:20px;height:20px;fill:currentColor;" viewBox="0 0 24 24"><path d="M19 2h-4.18C14.4 0.84 13.3 0 12 0c-1.3 0-2.4 0.84-2.82 2H5c-1.1 0-2 0.9-2 2v16c0 1.1 0.9 2 2 2h14c1.1 0 2-0.9 2-2V4c0-1.1-0.9-2-2-2zm-7 0c0.55 0 1 0.45 1 1s-0.45 1-1 1-1-0.45-1-1 0.45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/></svg>
-                <span id="btnPasteText">Paste &amp; Send to PC</span>
+                <span id="btnPasteText">&#x26A1; 1-Tap Paste &amp; Send to PC</span>
             </button>
+            <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:8px;margin-bottom:4px;">Reads key directly from your phone clipboard</div>
 
-            <div class="divider"><span>Or paste manually</span></div>
+            <div class="divider"><span>Or paste into box below</span></div>
 
-            <textarea id="keyInput" placeholder="Paste 64 hex characters here..." spellcheck="false" oninput="onKeyChange()"></textarea>
-            <div class="char-counter" id="charCounter">0 / 64 hex characters</div>
+            <textarea id="keyInput" placeholder="Long-press here to paste..." spellcheck="false" oninput="onKeyChange()"></textarea>
+            <div class="char-counter" id="charCounter">0 / 64 hex characters (auto-sends on paste)</div>
             <button class="btn-submit" id="btnSubmit" onclick="submitCurrentKey()">
-                <span id="btnSubmitText">Send Key</span>
+                <span id="btnSubmitText">Send Key to PC</span>
             </button>
         </div>
 
@@ -254,9 +255,14 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
 
     <script>
         let isResendMode = false;
+        let isSubmitting = false;
 
         window.addEventListener('DOMContentLoaded', () => {
             checkInitialStatus();
+            const inputEl = document.getElementById('keyInput');
+            if (inputEl) {
+                inputEl.addEventListener('paste', () => setTimeout(onKeyChange, 40));
+            }
         });
 
         async function checkInitialStatus() {
@@ -279,16 +285,18 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
             const statusEl = document.getElementById('statusMsg');
             statusEl.className = 'status-msg';
             statusEl.style.display = 'none';
+            isSubmitting = false;
         }
 
         function enableResendMode() {
             isResendMode = true;
+            isSubmitting = false;
             document.getElementById('successSection').style.display = 'none';
             document.getElementById('inputSection').style.display = 'block';
             document.getElementById('inputTitle').innerText = 'Resend Key to PC';
             document.getElementById('inputSubtitle').innerText = 'Paste your 64-digit key below to update the key stored on your PC.';
-            document.getElementById('btnPasteText').innerText = 'Paste & Resend to PC';
-            document.getElementById('btnSubmitText').innerText = 'Resend Key';
+            document.getElementById('btnPasteText').innerText = '&#x26A1; 1-Tap Paste & Resend';
+            document.getElementById('btnSubmitText').innerText = 'Resend Key to PC';
             document.getElementById('btnPaste').disabled = false;
             document.getElementById('btnPaste').style.opacity = '1';
             document.getElementById('btnSubmit').disabled = false;
@@ -303,12 +311,17 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
         }
 
         function onKeyChange() {
-            const val = cleanHex(document.getElementById('keyInput').value);
-            document.getElementById('charCounter').textContent = val.length + ' / 64 hex characters';
+            const raw = document.getElementById('keyInput').value;
+            const val = cleanHex(raw);
+            const counter = document.getElementById('charCounter');
+            counter.textContent = val.length + ' / 64 hex characters' + (val.length === 64 ? ' (Ready!)' : '');
             if (val.length === 64) {
-                document.getElementById('charCounter').style.color = 'var(--accent)';
+                counter.style.color = 'var(--accent)';
+                if (!isSubmitting) {
+                    submitCurrentKey();
+                }
             } else {
-                document.getElementById('charCounter').style.color = 'var(--text-secondary)';
+                counter.style.color = 'var(--text-secondary)';
             }
         }
 
@@ -323,7 +336,7 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
                 if (!text) {
                     statusEl.className = 'status-msg error';
                     statusEl.style.display = 'block';
-                    statusEl.textContent = 'Clipboard is empty or permission denied. Please paste manually in the box below.';
+                    statusEl.textContent = 'Clipboard permission denied or empty. Please long-press in the box below to paste.';
                     return;
                 }
                 const cleaned = cleanHex(text);
@@ -332,20 +345,20 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
                     onKeyChange();
                     statusEl.className = 'status-msg error';
                     statusEl.style.display = 'block';
-                    statusEl.textContent = 'Found ' + cleaned.length + ' hex characters in clipboard. A valid WhatsApp key must be exactly 64 hex characters.';
+                    statusEl.textContent = 'Found ' + cleaned.length + ' hex characters. A valid WhatsApp key must be exactly 64 hex characters.';
                     return;
                 }
                 document.getElementById('keyInput').value = cleaned;
                 onKeyChange();
-                await sendKeyToBackend(cleaned);
             } catch (err) {
                 statusEl.className = 'status-msg error';
                 statusEl.style.display = 'block';
-                statusEl.textContent = 'Could not access clipboard directly: ' + err.message + '. Please paste manually below.';
+                statusEl.textContent = 'Could not access clipboard directly: ' + err.message + '. Please long-press in the box below to paste.';
             }
         }
 
         async function submitCurrentKey() {
+            if (isSubmitting) return;
             const raw = document.getElementById('keyInput').value;
             const cleaned = cleanHex(raw);
             const statusEl = document.getElementById('statusMsg');
@@ -355,6 +368,7 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
                 statusEl.textContent = 'Please enter exactly 64 hex characters (currently ' + cleaned.length + ').';
                 return;
             }
+            isSubmitting = true;
             await sendKeyToBackend(cleaned);
         }
 

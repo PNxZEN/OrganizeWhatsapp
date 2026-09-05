@@ -263,126 +263,219 @@ def process_slide_6():
     # Box [50, 2185, 1030, 2305] with tight label and long arrow starting at Y=1500
     out = draw_focus_spotlight(im, [50, 2185, 1030, 2305], color=ACCENT_GREEN, label="7. Tap Generate key", badge_pos="above", arrow_dir="down", arrow_from_y=1500)
     return out
+def normalize_canvas(im_raw: Image.Image) -> Image.Image:
+    """Pad raw 1080x2340 image to standard 1080x2412 canvas with clean navigation bar."""
+    out = Image.new("RGB", (1080, 2412), (11, 16, 20))
+    out.paste(im_raw, (0, 0))
+    draw = ImageDraw.Draw(out)
+    draw.rectangle([0, 2300, 1080, 2412], fill=(11, 16, 20))
+    draw.rounded_rectangle([398, 2376, 681, 2386], radius=5, fill=(236, 236, 236))
+    return out
 
-def generate_slide_7():
-    """
-    Slide 7: Realistic WhatsApp screen showing the 4x4 matrix,
-    native Android Copy popup tooltip, and authentic WhatsApp bottom button (NO arrows on slide 7).
-    """
-    im = Image.new('RGB', (1080, 2412), BG_DARK)
+EXAMPLE_KEY_BLOCKS = [
+    ["a874", "3d1e", "663d", "ee5f"],
+    ["b94a", "f05c", "02e3", "179b"],
+    ["93d0", "c92a", "be97", "342a"],
+    ["976b", "c1f8", "6843", "65ca"]
+]
+
+def redact_key_table(draw: ImageDraw.Draw, card_y_top: int = 704):
+    """Cover real key and render safe synthetic hex blocks."""
+    draw.rectangle([120, card_y_top + 16, 960, card_y_top + 325], fill=(19, 24, 28))
+    font_key = get_font(44)
+    for r, row in enumerate(EXAMPLE_KEY_BLOCKS):
+        y = card_y_top + 20 + r * 84
+        for c, block in enumerate(row):
+            x = 143 + c * 225
+            draw.text((x, y), block, fill=(248, 250, 249), font=font_key)
+
+def draw_ripple(draw: ImageDraw.Draw, cx: int, cy: int, r_max: int = 36, color=ACCENT_GREEN):
+    """Draw subtle translucent touch ripple circles."""
+    for r in [r_max, r_max - 12, r_max - 22]:
+        if r > 0:
+            draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=color, width=3)
+
+def draw_button_highlight(draw: ImageDraw.Draw, btn_box: tuple, badge_num: int, badge_text: str, arrow_len: int = 70):
+    """Draw standard green rounded bounding box with badge pill and arrow."""
+    x0, y0, x1, y1 = btn_box
+    box_x0 = x0 - 14
+    box_y0 = y0 - 14
+    box_x1 = x1 + 14
+    box_y1 = y1 + 14
+
+    draw.rounded_rectangle([box_x0, box_y0, box_x1, box_y1], radius=32, outline=ACCENT_GREEN, width=4)
+
+    ripple_cx = x1 - 80
+    ripple_cy = (y0 + y1) // 2
+    draw_ripple(draw, ripple_cx, ripple_cy, r_max=36, color=BRIGHT_GREEN)
+
+    font_badge = get_font(36, bold=True)
+    full_text = f"{badge_num}. {badge_text}"
+    t_box = font_badge.getbbox(full_text)
+    tw = t_box[2] - t_box[0]
+    th = t_box[3] - t_box[1]
+
+    pad_x = 24
+    pad_y = 12
+    badge_w = tw + pad_x * 2
+    badge_h = th + pad_y * 2
+
+    badge_x0 = box_x0 + 36
+    badge_y0 = box_y0 - badge_h - arrow_len
+    badge_x1 = badge_x0 + badge_w
+    badge_y1 = badge_y0 + badge_h
+
+    draw.rounded_rectangle([badge_x0, badge_y0, badge_x1, badge_y1], radius=24, fill=ACCENT_GREEN)
+    tx = badge_x0 + pad_x
+    ty = badge_y0 + (badge_h - th) // 2 - 2
+    draw.text((tx, ty), full_text, fill=(0, 0, 0), font=font_badge)
+
+    arrow_x = (x0 + x1) // 2
+    arrow_y0 = badge_y1 + 4
+    arrow_y1 = box_y0 - 2
+    draw.line([arrow_x, arrow_y0, arrow_x, arrow_y1], fill=ACCENT_GREEN, width=6)
+    draw.polygon([
+        (arrow_x, arrow_y1 + 12),
+        (arrow_x - 14, arrow_y1 - 10),
+        (arrow_x + 14, arrow_y1 - 10),
+    ], fill=ACCENT_GREEN)
+
+def process_slide_7() -> Image.Image:
+    """Step 8 (Slide 7): Long press on key table & tap Copy."""
+    raw = Image.open(os.path.join(RAW_DIR, "7.png"))
+    im = normalize_canvas(raw)
     draw = ImageDraw.Draw(im)
-    draw_clean_status_bar(im)
-    
-    # Back arrow (<)
-    draw.polygon([(80, 185), (55, 170), (80, 155)], fill=TEXT_PRIMARY)
-    draw.rectangle([55, 166, 110, 174], fill=TEXT_PRIMARY)
-    
-    # Header
-    font_h1 = get_font(56, bold=True)
-    draw.text((280, 140), "Your encryption key", font=font_h1, fill=TEXT_PRIMARY)
-    
-    # Subtitle
-    font_sub = get_font(36)
-    draw.text((180, 270), "Write down your 64-digit key or copy it.", font=font_sub, fill=TEXT_MUTED)
-    draw.text((140, 320), "You will need this key to decrypt your media.", font=font_sub, fill=TEXT_MUTED)
-    
-    # 4x4 Key Grid Container Card
-    card_x1, card_y1, card_x2, card_y2 = 60, 460, 1020, 1420
-    draw.rounded_rectangle([card_x1, card_y1, card_x2, card_y2], radius=28, fill=CARD_BG, outline=(32, 44, 51), width=2)
-    
-    sample_blocks = [
-        ["a874", "3d1e", "663d", "ee5f"],
-        ["b94a", "ff69", "02e3", "179b"],
-        ["93d0", "c92a", "be97", "342a"],
-        ["976b", "c1f8", "6843", "65ca"]
-    ]
-    
-    font_mono = get_font(46, bold=True)
-    col_width = (card_x2 - card_x1) / 4
-    row_height = (card_y2 - card_y1) / 4
-    
-    for r in range(4):
-        for c in range(4):
-            bx = card_x1 + c * col_width + col_width / 2
-            by = card_y1 + r * row_height + row_height / 2
-            txt = sample_blocks[r][c]
-            pw, ph = 180, 70
-            draw.rounded_rectangle([bx - pw//2, by - ph//2, bx + pw//2, by + ph//2], radius=12, fill=(11, 20, 26))
-            draw.text((bx - 55, by - 26), txt, font=font_mono, fill=(233, 237, 239))
-            
-    # Floating Native Android Text Selection Popup [ Copy | Select all ]
-    popup_x1, popup_y1, popup_x2, popup_y2 = 280, 880, 800, 985
-    draw.rounded_rectangle([popup_x1, popup_y1, popup_x2, popup_y2], radius=26, fill=(30, 41, 59), outline=(16, 185, 129), width=3)
-    
-    font_pop = get_font(40, bold=True)
-    draw.text((340, 910), "Copy", font=font_pop, fill=(52, 211, 153))
-    draw.line([490, 900, 490, 965], fill=(71, 85, 105), width=2)
-    draw.text((540, 910), "Select all", font=font_pop, fill=TEXT_PRIMARY)
-    
-    # Tap instruction badge directly above popup (NO arrows on slide 7)
-    font_badge = get_font(32, bold=True)
-    draw.rounded_rectangle([280, 810, 620, 868], radius=16, fill=(16, 185, 129))
-    draw.text((305, 822), "Long-press & Copy", font=font_badge, fill=(11, 20, 26))
-    
-    # Selection glow box around the key card
-    draw.rounded_rectangle([card_x1 - 6, card_y1 - 6, card_x2 + 6, card_y2 + 6], radius=32, outline=ACCENT_GREEN, width=4)
-    
-    # WhatsApp instructions text
-    font_inst = get_font(36)
-    draw.text((100, 1550), "1. Press and hold anywhere on the numbers to copy.", font=font_inst, fill=TEXT_PRIMARY)
-    draw.text((100, 1630), "2. Keep this key safe. WhatsApp cannot recover it.", font=font_inst, fill=TEXT_PRIMARY)
-    draw.text((100, 1710), "3. Never share your 64-digit key with anyone.", font=font_inst, fill=TEXT_MUTED)
-    
-    # Authentic WhatsApp bottom button: "I saved my 64-digit key"
-    btn_x1, btn_y1, btn_x2, btn_y2 = 60, 2240, 1020, 2350
-    draw.rounded_rectangle([btn_x1, btn_y1, btn_x2, btn_y2], radius=55, fill=WA_GREEN)
-    font_btn = get_font(42, bold=True)
-    draw.text((290, 2270), "I saved my 64-digit key", font=font_btn, fill=(11, 20, 26))
-    
+
+    redact_key_table(draw, card_y_top=704)
+
+    touch_x = 540
+    touch_y = 880
+    draw_ripple(draw, touch_x, touch_y, r_max=44, color=ACCENT_GREEN)
+
+    pop_w = 230
+    pop_h = 76
+    pop_x0 = touch_x - pop_w // 2
+    pop_y0 = touch_y - pop_h - 42
+    pop_x1 = pop_x0 + pop_w
+    pop_y1 = pop_y0 + pop_h
+
+    draw.rounded_rectangle([pop_x0, pop_y0, pop_x1, pop_y1], radius=20, fill=(32, 44, 51), outline=(60, 78, 88), width=2)
+    draw.polygon([(touch_x, touch_y - 28), (touch_x - 14, pop_y1), (touch_x + 14, pop_y1)], fill=(32, 44, 51))
+
+    font_pop = get_font(38, bold=True)
+    t_box = font_pop.getbbox("Copy")
+    tw = t_box[2] - t_box[0]
+    th = t_box[3] - t_box[1]
+    tx = pop_x0 + (pop_w - tw) // 2
+    ty = pop_y0 + (pop_h - th) // 2 - 2
+    draw.text((tx, ty), "Copy", fill=(255, 255, 255), font=font_pop)
+
+    box_pad = 10
+    draw.rounded_rectangle([pop_x0 - box_pad, pop_y0 - box_pad, pop_x1 + box_pad, pop_y1 + box_pad], radius=26, outline=ACCENT_GREEN, width=4)
+
+    badge_text = "8. Long-press table & tap Copy"
+    font_badge = get_font(36, bold=True)
+    t_box = font_badge.getbbox(badge_text)
+    bw = t_box[2] - t_box[0] + 48
+    bh = t_box[3] - t_box[1] + 24
+    bx0 = (1080 - bw) // 2
+    by0 = pop_y0 - bh - 50
+    draw.rounded_rectangle([bx0, by0, bx0 + bw, by0 + bh], radius=24, fill=ACCENT_GREEN)
+    draw.text((bx0 + 24, by0 + 8), badge_text, fill=(0, 0, 0), font=font_badge)
+
+    arrow_y0 = by0 + bh + 4
+    arrow_y1 = pop_y0 - box_pad - 4
+    draw.line([540, arrow_y0, 540, arrow_y1], fill=ACCENT_GREEN, width=6)
+    draw.polygon([(540, arrow_y1 + 10), (540 - 12, arrow_y1 - 8), (540 + 12, arrow_y1 - 8)], fill=ACCENT_GREEN)
+
+    return im
+
+def process_slide_8() -> Image.Image:
+    """Step 9 (Slide 8): Tap Continue."""
+    raw = Image.open(os.path.join(RAW_DIR, "7.png"))
+    im = normalize_canvas(raw)
+    draw = ImageDraw.Draw(im)
+    redact_key_table(draw, card_y_top=704)
+    btn_box = (62, 2129, 1017, 2241)
+    draw_button_highlight(draw, btn_box, badge_num=9, badge_text="Tap Continue", arrow_len=80)
+    return im
+
+def process_slide_9() -> Image.Image:
+    """Step 10 (Slide 9): Confirm I Saved My 64-digit Key."""
+    raw = Image.open(os.path.join(RAW_DIR, "8.png"))
+    im = normalize_canvas(raw)
+    draw = ImageDraw.Draw(im)
+    redact_key_table(draw, card_y_top=727)
+    btn_box = (62, 1995, 1017, 2105)
+    draw_button_highlight(draw, btn_box, badge_num=10, badge_text="Tap 'I Saved My Key'", arrow_len=75)
+    return im
+
+def process_slide_10() -> Image.Image:
+    """Step 11 (Slide 10): Tap Create."""
+    raw = Image.open(os.path.join(RAW_DIR, "9.png"))
+    im = normalize_canvas(raw)
+    draw = ImageDraw.Draw(im)
+    btn_box = (62, 1995, 1017, 2105)
+    draw_button_highlight(draw, btn_box, badge_num=11, badge_text="Tap Create", arrow_len=75)
     return im
 
 def main():
-    print("[1/8] Processing Slide 0 (Main Menu -> Settings)...")
+    print("[1/11] Processing Slide 0 (Main Menu -> Settings)...")
     s0 = process_slide_0()
     s0.save(os.path.join(DEST_DIR_CORE, 'wa_step0.webp'), 'WEBP', quality=90)
     s0.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step0.webp'), 'WEBP', quality=90)
     
-    print("[2/8] Processing Slide 1 (Settings -> Chats)...")
+    print("[2/11] Processing Slide 1 (Settings -> Chats)...")
     s1 = process_slide_1()
     s1.save(os.path.join(DEST_DIR_CORE, 'wa_step1.webp'), 'WEBP', quality=90)
     s1.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step1.webp'), 'WEBP', quality=90)
     
-    print("[3/8] Processing Slide 2 (Chats -> Chat backup)...")
+    print("[3/11] Processing Slide 2 (Chats -> Chat backup)...")
     s2 = process_slide_2()
     s2.save(os.path.join(DEST_DIR_CORE, 'wa_step2.webp'), 'WEBP', quality=90)
     s2.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step2.webp'), 'WEBP', quality=90)
     
-    print("[4/8] Processing Slide 3 (Chat backup -> E2E Backup)...")
+    print("[4/11] Processing Slide 3 (Chat backup -> E2E Backup)...")
     s3 = process_slide_3()
     s3.save(os.path.join(DEST_DIR_CORE, 'wa_step3.webp'), 'WEBP', quality=90)
     s3.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step3.webp'), 'WEBP', quality=90)
     
-    print("[5/8] Processing Slide 4 (More options vs Passkey Alert)...")
+    print("[5/11] Processing Slide 4 (More options vs Passkey Alert)...")
     s4 = process_slide_4()
     s4.save(os.path.join(DEST_DIR_CORE, 'wa_step4.webp'), 'WEBP', quality=90)
     s4.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step4.webp'), 'WEBP', quality=90)
     
-    print("[6/8] Processing Slide 5 (More options -> 64-digit key)...")
+    print("[6/11] Processing Slide 5 (More options -> 64-digit key)...")
     s5 = process_slide_5()
     s5.save(os.path.join(DEST_DIR_CORE, 'wa_step5.webp'), 'WEBP', quality=90)
     s5.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step5.webp'), 'WEBP', quality=90)
     
-    print("[7/8] Processing Slide 6 (Generate key)...")
+    print("[7/11] Processing Slide 6 (Generate key)...")
     s6 = process_slide_6()
     s6.save(os.path.join(DEST_DIR_CORE, 'wa_step6.webp'), 'WEBP', quality=90)
     s6.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step6.webp'), 'WEBP', quality=90)
     
-    print("[8/8] Generating Slide 7 (Key Generated & Native Copy)...")
-    s7 = generate_slide_7()
+    print("[8/11] Processing Slide 7 (Long press key & Copy)...")
+    s7 = process_slide_7()
     s7.save(os.path.join(DEST_DIR_CORE, 'wa_step7.webp'), 'WEBP', quality=90)
     s7.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step7.webp'), 'WEBP', quality=90)
+
+    print("[9/11] Processing Slide 8 (Tap Continue)...")
+    s8 = process_slide_8()
+    s8.save(os.path.join(DEST_DIR_CORE, 'wa_step8.webp'), 'WEBP', quality=90)
+    s8.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step8.webp'), 'WEBP', quality=90)
+
+    print("[10/11] Processing Slide 9 (Tap I Saved My Key)...")
+    s9 = process_slide_9()
+    s9.save(os.path.join(DEST_DIR_CORE, 'wa_step9.webp'), 'WEBP', quality=90)
+    s9.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step9.webp'), 'WEBP', quality=90)
+
+    print("[11/11] Processing Slide 10 (Tap Create)...")
+    s10 = process_slide_10()
+    s10.save(os.path.join(DEST_DIR_CORE, 'wa_step10.webp'), 'WEBP', quality=90)
+    s10.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step10.webp'), 'WEBP', quality=90)
     
-    print("Successfully processed and exported all 8 tutorial slides in WebP format!")
+    print("Successfully processed and exported all 11 tutorial slides in WebP format!")
 
 if __name__ == '__main__':
     main()
