@@ -1806,6 +1806,15 @@
             animation: spin 2s linear infinite;
         }
 
+        .btn-pulse-emerald {
+            animation: syncBtnPulse 2s infinite ease-in-out !important;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .btn-pulse-emerald:hover {
+            transform: scale(1.03) !important;
+        }
+
         @keyframes spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
@@ -3363,7 +3372,7 @@
                             </div>
 
                             <div style="display:flex;justify-content:flex-end;margin-top:8px;">
-                                <button type="button" class="action-btn action-btn-primary" onclick="switchTutTab('key')" style="background:var(--accent);color:#ffffff;box-shadow:0 2px 10px rgba(16,185,129,0.3);font-weight:600;">
+                                <button type="button" class="action-btn action-btn-primary btn-pulse-emerald" onclick="switchTutTab('key')" style="background:var(--accent);color:#ffffff;box-shadow:0 2px 10px rgba(16,185,129,0.3);font-weight:600;">
                                     <span>Proceed to WhatsApp Key Guide &rarr;</span>
                                 </button>
                             </div>
@@ -3452,10 +3461,10 @@
                         <button type="button" class="action-btn action-btn-secondary" onclick="closeModal('modalTutorial')" style="font-size:12px;padding:6px 12px;">
                             Close Guide
                         </button>
-                        <button type="button" class="action-btn action-btn-primary" id="btnTutNextFooter" onclick="nextTutSlide()" style="font-size:12px;padding:6px 16px;background:var(--accent);color:#ffffff;font-weight:600;box-shadow:0 2px 8px rgba(16,185,129,0.3);">
+                        <button type="button" class="action-btn action-btn-primary btn-pulse-emerald" id="btnTutNextFooter" onclick="nextTutSlide()" style="font-size:12px;padding:6px 16px;background:var(--accent);color:#ffffff;font-weight:600;box-shadow:0 2px 8px rgba(16,185,129,0.3);">
                             <span>Next Step &rarr;</span>
                         </button>
-                        <button type="button" class="action-btn" id="btnTutFinishFooter" onclick="finishTutorialOnboarding(true)" style="display:none;font-size:12px;padding:6px 16px;background:var(--accent);color:#ffffff;font-weight:600;box-shadow:0 2px 8px rgba(16,185,129,0.3);">
+                        <button type="button" class="action-btn action-btn-primary btn-pulse-emerald" id="btnTutFinishFooter" onclick="finishTutorialOnboarding(true)" style="display:none;font-size:12px;padding:6px 16px;background:var(--accent);color:#ffffff;font-weight:600;box-shadow:0 2px 8px rgba(16,185,129,0.3);">
                             <span>Finish &amp; Sync Phone</span>
                         </button>
                     </div>
@@ -4776,6 +4785,8 @@
                 }, 300);
             }
         }
+        let _tutAutoOpened = false;
+
         async function checkConfigStatus() {
             if (!isHttpServer) return;
             try {
@@ -4783,9 +4794,10 @@
                 if (resp.ok) {
                     const cfg = await resp.json();
                     windowHasLocalDb = !!cfg.has_local_db;
-                    if (cfg.onboarding_completed === false && !cfg.hex_key_set) {
+                    if (!_tutAutoOpened && cfg.onboarding_completed === false) {
                         const params = new URLSearchParams(window.location.search);
                         if (!params.has('no_auto_tutorial')) {
+                            _tutAutoOpened = true;
                             setTimeout(() => openTutorialModal(), 500);
                         }
                     }
@@ -5948,6 +5960,13 @@
             setupInfiniteScroll();
             setupCollapsibleFilterPanel();
 
+            // Check URL onboarding flag or first-time launch
+            const urlParams = new URLSearchParams(window.location.search);
+            if (!_tutAutoOpened && urlParams.get('onboarding') === '1') {
+                _tutAutoOpened = true;
+                setTimeout(() => openTutorialModal(), 400);
+            }
+
             // Fast lazy load over HTTP
             if (isHttpServer) {
                 try {
@@ -5972,12 +5991,6 @@
 
             renderSidebar();
             restoreAppState();
-            // Check URL onboarding flag or first-time launch
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('onboarding') === '1') {
-                setTimeout(() => openTutorialModal(), 400);
-            }
-
         });
 
         // Render sidebar chats

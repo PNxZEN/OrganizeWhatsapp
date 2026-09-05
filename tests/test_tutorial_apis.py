@@ -92,7 +92,9 @@ class TestTutorialAPIs(unittest.TestCase):
         res2 = json.loads(resp2.read().decode("utf-8"))
         self.assertEqual(res2.get("latest_received_key"), test_key)
         self.assertEqual(res2.get("received_key"), test_key)
-        self.assertFalse(res2.get("hex_key_set"))
+        # Verify that submitting key did not persist it as active hex_key in config
+        from core.config import load_config
+        self.assertNotEqual(load_config().get("hex_key"), test_key)
 
     def test_06_onboarding_complete(self):
         conn = HTTPConnection("127.0.0.1", self.port)

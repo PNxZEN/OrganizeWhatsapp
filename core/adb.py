@@ -20,10 +20,22 @@ from core.organizer import normalize_filename
 def find_adb_binary(custom_path=None):
     """
     Locates the adb executable on the system.
-    Checks custom path, system PATH, and local Android SDK platform-tools.
+    Checks custom path, bundled local platform-tools, system PATH, and local Android SDK.
     """
     if custom_path and os.path.isfile(custom_path):
         return custom_path
+
+    # Check bundled local directories relative to application root
+    app_root = Path(__file__).resolve().parent.parent
+    exe_name = "adb.exe" if sys.platform == "win32" else "adb"
+    bundled_candidates = [
+        app_root / "bin" / "platform-tools" / exe_name,
+        app_root / "platform-tools" / exe_name,
+        app_root / "bin" / exe_name,
+    ]
+    for candidate in bundled_candidates:
+        if candidate.is_file():
+            return str(candidate)
 
     found = shutil.which("adb")
     if found:

@@ -38,6 +38,33 @@ def to_long_path(path_input):
     return path_str
 
 
+def find_ffmpeg_binary(custom_path=None):
+    """
+    Locates the ffmpeg executable on the system.
+    Checks custom path, bundled local bin directories, and system PATH.
+    """
+    if custom_path and os.path.isfile(custom_path):
+        return custom_path
+
+    app_root = Path(__file__).resolve().parent.parent
+    exe_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
+    bundled_candidates = [
+        app_root / "bin" / exe_name,
+        app_root / "bin" / "ffmpeg" / exe_name,
+        app_root / "ffmpeg" / exe_name,
+    ]
+    for candidate in bundled_candidates:
+        if candidate.is_file():
+            return str(candidate)
+
+    import shutil
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+
+    return "ffmpeg"
+
+
 def mask_key(hex_key):
     """
     Returns a masked representation of a 64-character hex key for safe UI display.
