@@ -198,13 +198,13 @@ jobs:
 
             | Platform | File | SHA256 |
             | :--- | :--- | :--- |
-            | **Windows** (zero-install portable) | `WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Windows-Portable.zip` | `${{ steps.checksums.outputs.WIN_SHA }}` |
-            | **macOS / Linux** (source + scripts) | `WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Unix-Source.tar.gz` | `${{ steps.checksums.outputs.UNIX_SHA }}` |
+            | **Windows** (zero-install portable) | [WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Windows-Portable.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.TAG }}/WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Windows-Portable.zip) | `${{ steps.checksums.outputs.WIN_SHA }}` |
+            | **macOS / Linux** (source + scripts) | [WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Unix-Source.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.TAG }}/WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Unix-Source.tar.gz) | `${{ steps.checksums.outputs.UNIX_SHA }}` |
 
             ---
 
             ### Windows Quick Start (zero-install)
-            1. Download `WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Windows-Portable.zip`
+            1. Download [WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Windows-Portable.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.TAG }}/WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Windows-Portable.zip)
             2. Right-click the ZIP -> **Extract All** (to any folder)
             3. Double-click **Start-Gallery.bat**
             4. Browser opens automatically with the interactive setup guide
