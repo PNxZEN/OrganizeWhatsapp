@@ -1,6 +1,23 @@
 # WhatsApp Offline Media Gallery
 
-> Browse, search, and back up your WhatsApp photos, videos, and documents — fully offline, private, and organized by chat.
+> Browse, search, and back up your WhatsApp photos, videos, and documents - fully offline, private, and organized by chat.
+
+<div align="center">
+
+[![Latest Release](https://img.shields.io/github/v/release/PNxZEN/OrganizeWhatsapp?style=for-the-badge&color=10b981&logo=github&label=Latest%20Release)](../../releases/latest)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=for-the-badge)](../../releases/latest)
+[![Offline and Private](https://img.shields.io/badge/100%25-Offline%20%26%20Private-success?style=for-the-badge)](../../)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+
+<br/>
+
+### [**Download Latest Release (Windows Portable & Unix Source)**](../../releases/latest)
+
+**Zero installation required for Windows:** Embedded Python 3.13 and Google ADB included. Just extract and double-click `Start-Gallery.bat`.
+
+[**Download Latest Release on GitHub ->**](../../releases/latest)
+
+</div>
 
 ---
 
@@ -49,11 +66,10 @@ Even if WhatsApp performs an automatic local backup or a cloud backup (Google Dr
 
 The easiest way. No Python, no setup, no installation required.
 
-1. Go to [**GitHub Releases**](../../releases/latest)
-2. Download `WhatsAppMediaOrganizer-vX.X.X-Windows-Portable.zip`
-3. **Right-click the ZIP → Extract All** (to any folder you like)
-4. **Double-click `Start-Gallery.bat`**
-5. Your browser opens automatically — follow the interactive setup guide
+1. Download the latest zero-install portable ZIP from [**GitHub Releases (Latest)**](../../releases/latest) (`WhatsAppMediaOrganizer-vX.X.X-Windows-Portable.zip`)
+2. **Right-click the ZIP -> Extract All** (to any folder you like)
+3. **Double-click `Start-Gallery.bat`**
+4. Your browser opens automatically - follow the interactive setup guide
 
 > **That's it.** The ZIP includes Python 3.13, Google ADB, and all dependencies. Nothing else to install.
 
@@ -62,7 +78,7 @@ The easiest way. No Python, no setup, no installation required.
 ## 3. Quick Start (macOS / Linux)
 
 ```bash
-# Download and extract the Unix source archive from GitHub Releases
+# 1. Download the latest Unix source archive from GitHub Releases (Releases -> Latest):
 tar -xzf WhatsAppMediaOrganizer-vX.X.X-Unix-Source.tar.gz
 cd WhatsAppMediaOrganizer-vX.X.X
 
@@ -114,10 +130,12 @@ python wa_media_organizer.py --serve --auto-open
 1. Start the app using your platform's launcher (see Quick Start above).
 2. **First launch** automatically opens the interactive setup guide. You can reopen it anytime from the **Setup Guide** button in the top navigation bar.
 3. In **Step 1 (Phone Connection)**, follow the tailored instructions for your phone brand:
-   - **Xiaomi / Redmi / POCO** — Enable MIUI Developer Options via Settings > About Phone (tap MIUI Version 7 times)
-   - **Samsung Galaxy** — Enable via Settings > About Phone > Software Information (tap Build Number 7 times)
-   - **OnePlus / OPPO / Realme** — Similar Developer Options path, brand-specific
-   - **Google Pixel / Stock Android** — Enable via Settings > About Phone (tap Build Number 7 times)
+   - **Xiaomi / Redmi / POCO** - Enable Developer Options via Settings > About Phone (tap OS/MIUI Version 7 times)
+   - **Samsung Galaxy** - Enable via Settings > About Phone > Software Information (tap Build Number 7 times)
+   - **OnePlus / OPPO / Realme** - Enable via Settings > About Device > Version (tap Build Number 7 times)
+   - **Vivo / iQOO** - Enable via Settings > About Phone > Software Info (tap Build Number 7 times)
+   - **Motorola / Nothing Phone** - Enable via Settings > About Phone (tap Build Number 7 times)
+   - **Google Pixel / Stock Android** - Enable via Settings > About Phone (tap Build Number 7 times)
 4. Connect your phone via USB cable. When your phone displays **"Allow USB debugging?"**, check **"Always allow from this computer"** and tap **Allow**.
 
 ---
@@ -197,6 +215,9 @@ Alternatively: Phone **Settings → Developer Options → toggle the master swit
 | **AES-256-GCM Decryption** | Decrypts WhatsApp databases locally with your 64-digit key |
 | **1-Tap USB Key Transfer** | Securely sends your key from phone to PC over the physical wire, zero internet |
 | **Interactive Visual Gallery** | Browse media organized by chat, sender, date, and media type |
+| **One-Click Chat ZIP Export** | Download an entire conversation's media as a standalone offline ZIP archive |
+| **HEIC / HEIF & WebP Native Decoding** | Decodes modern iPhone/Android camera HEIC photos and WhatsApp stickers seamlessly |
+| **Live Crypt15 Auto-Polling** | Automatically waits and synchronizes in real time if WhatsApp on phone is generating a backup |
 | **Month & Year Sliders** | Calendar picker with dedicated sliders for fast date-range filtering |
 | **Smart Duplicate Detection** | SHA-256 SQLite cache identifies forwarded and collision-avoided duplicates |
 | **60 FPS Virtualization** | DOM recycling renders 50,000+ media files without slowdown |
@@ -252,7 +273,7 @@ OrganizeWhatsapp/
 ├── .github/
 │   └── workflows/
 │       └── release.yml            # GitHub Actions: builds & publishes releases on git tag
-├── tests/                         # Automated unit test suite (75 tests)
+├── tests/                         # Automated unit test suite (77 tests)
 ├── output/                        # Organized media destination (gitignored)
 └── Databases/                     # Encrypted & decrypted databases (gitignored)
 ```
