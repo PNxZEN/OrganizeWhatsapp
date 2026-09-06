@@ -470,6 +470,7 @@ def run_streaming_pipeline(
     skip_decrypt=False,
     skip_contacts_pull=False,
     force_contacts_pull=False,
+    is_same_session_resume=False,
     session_manager=None,
     session_id=None,
     cancellation_token=None,
@@ -490,13 +491,41 @@ def run_streaming_pipeline(
     out_path.mkdir(parents=True, exist_ok=True)
     cleanup_nested_databases_folder(db_dir)
 
+    orig_status_cb = status_callback
+    def _emit_status(phase, label, total_files=None, detail=None):
+        if not orig_status_cb:
+            return
+        try:
+            orig_status_cb(phase, label, total_files=total_files, detail=detail)
+        except TypeError:
+            try:
+                orig_status_cb(phase, label, total=total_files, detail=detail)
+            except TypeError:
+                try:
+                    orig_status_cb(phase, label, total_files)
+                except TypeError:
+                    try:
+                        orig_status_cb(phase, label)
+                    except Exception:
+                        pass
+    status_callback = _emit_status if orig_status_cb else None
+
     cfg = load_config()
     saved_account_path = cfg.get("selected_account_path", "")
     cmd = find_adb_binary(adb_path)
+
+    if status_callback:
+        status_callback(
+            "database",
+            "Scanning WhatsApp accounts on phone...",
+            detail="Checking phone storage and multi-account directories over ADB",
+        )
+
     base_path = discover_android_base_path(
         cmd,
         hex_key=hex_key,
         preferred_account_path=saved_account_path,
+        status_callback=status_callback,
     )
     if not saved_account_path and base_path:
         acc_id = Path(base_path).name if "/accounts/" in base_path else "main"
@@ -506,12 +535,49 @@ def run_streaming_pipeline(
             "selected_account_id": acc_id,
             "selected_app_type": app_type,
         })
+    acc_name = os.path.basename(base_path) if "/accounts/" in base_path else "Primary WhatsApp"
     print(f"[ADB] Active WhatsApp storage: {base_path}")
+    if status_callback:
+        status_callback(
+            "database",
+            f"Active Storage: {acc_name}",
+            detail=f"Target: {base_path}",
+        )
+
+    # Fast In-Session Resume Check:
+    # If resuming a session within the same server runtime and msgstore.db is already decrypted:
+    msgstore = os.path.join(db_dir, "msgstore.db")
+    db_already_decrypted = False
+    if os.path.isfile(msgstore) and os.path.getsize(msgstore) > 0:
+        try:
+            import sqlite3
+            with sqlite3.connect(msgstore) as _c:
+                _cur = _c.cursor()
+                _cur.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='message'")
+                if _cur.fetchone()[0] > 0:
+                    db_already_decrypted = True
+        except Exception:
+            db_already_decrypted = False
+
+    if is_same_session_resume and db_already_decrypted:
+        skip_db_pull = True
+        skip_decrypt = True
+        if status_callback:
+            status_callback(
+                "database",
+                "Fast Resume: Using existing decrypted database",
+                detail="Skipping fresh download and decryption",
+            )
+        print(f"[Streaming] Fast in-session resume: Reusing already decrypted database at {msgstore}")
 
     # Phase 1: Fast Pull Databases only
     if not skip_pull and not skip_db_pull:
         if status_callback:
-            status_callback("database", "Downloading chat database from phone...")
+            status_callback(
+                "database",
+                "Retrieving chat database from phone...",
+                detail=f"Pulling encrypted backup from {base_path}/Databases",
+            )
         pull_db_ok = adb_pull(
             base=base_path,
             dest_db=db_dir,
@@ -652,6 +718,7 @@ def run_streaming_pipeline(
                 status_callback(
                     "decrypting",
                     f"Decrypting chat database ({mb_read} MB / {mb_tot} MB - {pct}%)",
+                    detail="Decrypting messages, chats, and attachments into msgstore.db",
                 )
 
         if crypt_file and os.path.isfile(crypt_file):
@@ -662,6 +729,37 @@ def run_streaming_pipeline(
                 cancellation_token=cancellation_token,
                 progress_callback=_on_decrypt_progress,
             )
+            # Extract real registered phone number from decrypted SQLite props
+            if os.path.isfile(msgstore):
+                if status_callback:
+                    status_callback(
+                        "decrypting",
+                        "Extracting registered phone number...",
+                        detail="Reading registration_jid from decrypted SQLite props",
+                    )
+                try:
+                    import sqlite3
+                    with sqlite3.connect(msgstore) as _conn:
+                        _cur = _conn.cursor()
+                        _cur.execute("SELECT value FROM props WHERE key = 'registration_jid'")
+                        _row = _cur.fetchone()
+                        if _row and _row[0]:
+                            _reg_jid = str(_row[0])
+                            _phone = _reg_jid.split("@")[0].strip("+")
+                            if _phone.isdigit() and len(_phone) >= 10:
+                                _fmt_phone = f"+{_phone}"
+                                cfg = load_config()
+                                known = cfg.get("known_accounts", {})
+                                known[base_path] = _fmt_phone
+                                app_type_str = "WhatsApp Business" if ("w4b" in base_path or "WhatsApp Business" in base_path) else "WhatsApp"
+                                save_config({
+                                    "known_accounts": known,
+                                    "selected_account_phone": _fmt_phone,
+                                    "selected_account_label": f"{app_type_str} ({_fmt_phone})",
+                                })
+                                print(f"[ADB] Resolved registered WhatsApp phone number: {_fmt_phone}")
+                except Exception as _e:
+                    sys.stderr.write(f"[ADB] Note: Could not extract registration_jid from db: {_e}\n")
         else:
             sys.stderr.write("[Streaming] Warning: No encrypted msgstore.db found.\n")
 
@@ -686,22 +784,48 @@ def run_streaming_pipeline(
 
     # Phase 3: Load Contacts & Build Metadata Index
     if status_callback:
-        status_callback("decrypting", "Reading messages and contact mappings...")
+        status_callback(
+            "decrypting",
+            "Retrieving phone contacts over ADB...",
+            detail="Querying Android contacts provider (content://contacts/phones)",
+        )
 
     contacts = load_contacts_mapping(
         adb_path=adb_path,
         skip_pull=skip_contacts_pull or skip_pull,
         force_pull=force_contacts_pull,
         device_checker=check_adb_device,
+        status_callback=status_callback,
     )
+    if status_callback:
+        status_callback(
+            "indexing",
+            f"Loaded {len(contacts):,} contacts from address book",
+            detail="Mapping contact names to WhatsApp chat identities",
+        )
+
     chat_names, lid_to_phone = load_db_mappings(msgstore)
     wa_db_path = os.path.join(db_dir, "wa.db")
     wa_db_active = wa_db_path if os.path.isfile(wa_db_path) else None
+
+    if status_callback:
+        status_callback(
+            "indexing",
+            "Analyzing chats and media records...",
+            detail="Querying messages and media attachments from msgstore.db",
+        )
 
     media_rows = []
     if os.path.isfile(msgstore):
         media_rows = build_media_index(
             msgstore, wa_db_active, contacts, lid_to_phone, chat_names
+        )
+
+    if status_callback:
+        status_callback(
+            "indexing",
+            f"Pre-indexed {len(media_rows):,} media attachments",
+            detail="Direct single-pass media streaming ready",
         )
 
     # Initialize the Streaming Media Router with all contact & identity mappings
@@ -720,7 +844,11 @@ def run_streaming_pipeline(
     # Phase 4: Stream Media from Phone Directly to Output Folder
     if not skip_pull:
         if status_callback:
-            status_callback("indexing", "Scanning media files on phone...")
+            status_callback(
+                "indexing",
+                "Scanning WhatsApp media on phone...",
+                detail=f"Checking storage folders ({base_path}/Media)",
+            )
 
         stream_ok = adb_pull(
             base=base_path,

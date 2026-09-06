@@ -57,11 +57,31 @@ def load_contacts_mapping(
     skip_pull=False,
     force_pull=False,
     device_checker=None,
+    status_callback=None,
 ):
     """
     Loads contact mappings from local JSON cache or queries the phone via ADB.
     Returns a dictionary mapping JID -> Display Name.
     """
+    orig_status_cb = status_callback
+    def _emit_status(phase, label, total_files=None, detail=None):
+        if not orig_status_cb:
+            return
+        try:
+            orig_status_cb(phase, label, total_files=total_files, detail=detail)
+        except TypeError:
+            try:
+                orig_status_cb(phase, label, total=total_files, detail=detail)
+            except TypeError:
+                try:
+                    orig_status_cb(phase, label, total_files)
+                except TypeError:
+                    try:
+                        orig_status_cb(phase, label)
+                    except Exception:
+                        pass
+    status_callback = _emit_status if orig_status_cb else None
+
     contacts = {}
     cache_file = Path(cache_path)
 
@@ -105,6 +125,12 @@ def load_contacts_mapping(
                 can_proceed = False
 
         if can_proceed:
+            if status_callback:
+                status_callback(
+                    "decrypting",
+                    "Querying phone contacts over ADB...",
+                    detail="Reading address book names via content://contacts/phones",
+                )
             try:
                 cmd = [
                     adb_path,
@@ -134,6 +160,12 @@ def load_contacts_mapping(
                                 phone_count += 1
 
                     if phone_count > 0:
+                        if status_callback:
+                            status_callback(
+                                "decrypting",
+                                f"Extracted {phone_count:,} phone contacts",
+                                detail=f"Mapped {len(contacts):,} contacts to WhatsApp chat identities",
+                            )
                         try:
                             with open(cache_file, "w", encoding="utf-8") as f:
                                 json.dump(contacts, f, indent=2, ensure_ascii=False)

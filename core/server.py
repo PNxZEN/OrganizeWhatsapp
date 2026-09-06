@@ -27,7 +27,7 @@ from core.adb import (
     setup_reverse_port,
     wait_for_adb_device,
 )
-from core.config import find_ffmpeg_binary, load_config, mask_key, save_config
+from core.config import find_ffmpeg_binary, is_ffmpeg_available, load_config, mask_key, save_config
 from core.decrypt import create_key_file, validate_hex_key
 
 _latest_received_key: Optional[str] = None
@@ -584,6 +584,9 @@ def _restore_paused_session():
 _restore_paused_session()
 
 
+_active_runtime_sessions = set()
+
+
 def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None):
     """Launches the organization pipeline in a separate background thread with session tracking and pause/resume."""
     global sync_status
@@ -593,13 +596,16 @@ def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None
     _sync_skip_db_token.clear()
     sync_status["active"] = True
     sync_status["user_action"] = None
-    sync_status["phase"] = "database"
     sync_status["status"] = "syncing"
     sync_status["error"] = None
     sync_status["can_resume"] = False
-    sync_status["phase_label"] = "Synchronizing WhatsApp data..."
+    sync_status["interrupted_by_device"] = False
+    sync_status["phase"] = "database"
+    sync_status["phase_label"] = "Connecting to phone over ADB..."
+    sync_status["phase_detail"] = "Checking USB connection and scanning WhatsApp accounts"
 
     session_id = resume_session_id
+    is_same_runtime_session = (session_id in _active_runtime_sessions) if session_id else False
     if not session_id:
         session_id = str(uuid.uuid4())
         dev = check_adb_device()
@@ -622,6 +628,8 @@ def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None
             sync_status["device_serial"] = sess.get("device_serial")
             sync_status["device_model"] = sess.get("device_model")
 
+    _active_runtime_sessions.add(session_id)
+
     def _worker():
         global sync_status
         sess = _session_manager.get_session(session_id)
@@ -631,14 +639,21 @@ def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None
             sync_status["device_serial"] = sess.get("device_serial")
             sync_status["device_model"] = sess.get("device_model")
 
-        sync_status["phase_label"] = "Synchronizing WhatsApp data..."
+        sync_status["phase_label"] = "Scanning WhatsApp on phone..."
+        sync_status["phase_detail"] = "Probing storage directories and account paths over ADB"
 
-        def _on_status(phase, label, total_files=None):
+        def _on_status(phase, label, total_files=None, detail=None):
             sync_status["phase"] = phase
             sync_status["phase_label"] = label
+            if detail is not None:
+                sync_status["phase_detail"] = detail
+            elif phase in ("indexing", "decrypting", "building_gallery", "database"):
+                sync_status["phase_detail"] = label
             if phase in ("indexing", "decrypting", "building_gallery"):
                 sync_status["current_file"] = None
-            if total_files is not None and total_files > 0:
+            if phase == "database":
+                sync_status["progress_percent"] = 0
+            elif total_files is not None and total_files > 0:
                 sync_status["total_files"] = total_files
                 tot = total_files
                 synced = sync_status.get("synced_files", 0)
@@ -646,18 +661,19 @@ def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None
 
         def _on_progress(filename, file_size):
             sync_status["current_file"] = filename
-            sync_status["synced_files"] = sync_status.get("synced_files", 0) + 1
-            sync_status["synced_bytes"] = sync_status.get("synced_bytes", 0) + file_size
-            tot = max(1, sync_status.get("total_files", 1))
-            sync_status["progress_percent"] = min(100.0, round((sync_status["synced_files"] / tot) * 100, 1))
-            if sync_status.get("phase") == "database" or filename.startswith("Databases/"):
+            is_db_file = (sync_status.get("phase") == "database" or filename.startswith("Databases/") or "/Databases/" in filename)
+            if is_db_file:
                 sync_status["phase"] = "database"
-                sync_status["phase_label"] = f"Transferring chat database ({sync_status['synced_files']:,} / {tot:,} files)"
+                sync_status["phase_label"] = f"Transferring chat database ({os.path.basename(filename)})"
             else:
+                sync_status["synced_files"] = sync_status.get("synced_files", 0) + 1
+                sync_status["synced_bytes"] = sync_status.get("synced_bytes", 0) + file_size
+                tot = max(1, sync_status.get("total_files", 1))
+                sync_status["progress_percent"] = min(100.0, round((sync_status["synced_files"] / tot) * 100, 1))
                 sync_status["phase"] = "syncing"
                 sync_status["phase_label"] = f"Transferring media ({sync_status['synced_files']:,} / {tot:,} files)"
-            if sync_status["synced_files"] % 50 == 0:
-                sync_status["version"] = sync_status.get("version", 1) + 1
+                if sync_status["synced_files"] % 50 == 0:
+                    sync_status["version"] = sync_status.get("version", 1) + 1
 
         def _on_in_flight(filename, total_bytes, written_bytes):
             mb_written = round(written_bytes / (1024 * 1024), 1)
@@ -686,6 +702,7 @@ def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None
                 output_dir=output_dir,
                 mode=cfg.get("mode", "copy"),
                 skip_db_pull=effective_skip_db,
+                is_same_session_resume=is_same_runtime_session,
                 session_manager=_session_manager,
                 session_id=session_id,
                 cancellation_token=_sync_cancellation_token,
@@ -695,10 +712,12 @@ def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None
                 in_flight_callback=_on_in_flight,
             )
             if sync_status.get("user_action") == "cancel":
+                _active_runtime_sessions.discard(session_id)
                 _session_manager.cancel_session(session_id)
                 sync_status["status"] = "idle"
                 sync_status["phase"] = "idle"
                 sync_status["can_resume"] = False
+                sync_status["interrupted_by_device"] = False
                 sync_status["phase_label"] = "Ready"
                 sync_status["current_file"] = None
             elif _sync_cancellation_token.is_set() or sync_status.get("user_action") == "pause":
@@ -706,16 +725,27 @@ def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None
                 sync_status["status"] = "paused"
                 sync_status["phase"] = "paused"
                 sync_status["can_resume"] = True
+                sync_status["interrupted_by_device"] = False
                 pct = sync_status.get("progress_percent", 0)
                 sync_status["phase_label"] = f"Paused ({pct}% completed - ready to resume)"
             elif success:
+                _active_runtime_sessions.discard(session_id)
                 _session_manager.complete_session(session_id)
                 sync_status["status"] = "done"
                 sync_status["phase"] = "done"
                 sync_status["phase_label"] = "Synchronization complete"
+                sync_status["phase_detail"] = "All databases decrypted and media files organized"
                 sync_status["progress_percent"] = 100
                 sync_status["can_resume"] = False
+                sync_status["has_completed_sync"] = True
+                sync_status["interrupted_by_device"] = False
                 sync_status["version"] = sync_status.get("version", 0) + 1
+                try:
+                    c = load_config()
+                    c["last_sync_time"] = time.time()
+                    save_config(c)
+                except Exception:
+                    pass
 
                 # Auto-transition from transient done state to idle after 10 seconds
                 def _reset_done_to_idle():
@@ -727,30 +757,41 @@ def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None
                 threading.Timer(10.0, _reset_done_to_idle).start()
             else:
                 if sync_status.get("user_action") == "cancel":
+                    _active_runtime_sessions.discard(session_id)
                     _session_manager.cancel_session(session_id)
                     sync_status["status"] = "idle"
                     sync_status["phase"] = "idle"
                     sync_status["can_resume"] = False
+                    sync_status["interrupted_by_device"] = False
                     sync_status["phase_label"] = "Ready"
                 else:
                     _session_manager.pause_session(session_id, "Sync stopped or interrupted")
                     sync_status["status"] = "paused"
                     sync_status["phase"] = "paused"
                     sync_status["can_resume"] = True
-                    sync_status["phase_label"] = "Sync interrupted. Ready to resume."
+                    sync_status["interrupted_by_device"] = True
+                    sync_status["phase_label"] = "Sync interrupted (Phone disconnected). Waiting for phone reconnection to resume automatically..."
         except Exception as e:
             if sync_status.get("user_action") == "cancel":
+                _active_runtime_sessions.discard(session_id)
                 sync_status["status"] = "idle"
                 sync_status["phase"] = "idle"
                 sync_status["can_resume"] = False
+                sync_status["interrupted_by_device"] = False
                 sync_status["phase_label"] = "Ready"
             else:
                 _session_manager.pause_session(session_id, str(e))
                 sync_status["status"] = "paused"
                 sync_status["phase"] = "error"
-                sync_status["phase_label"] = "Sync interrupted"
                 sync_status["error"] = str(e)
                 sync_status["can_resume"] = True
+                dev = check_adb_device()
+                if not dev.connected or not dev.authorized:
+                    sync_status["interrupted_by_device"] = True
+                    sync_status["phase_label"] = "Sync interrupted (Phone disconnected). Waiting for phone reconnection to resume automatically..."
+                else:
+                    sync_status["interrupted_by_device"] = False
+                    sync_status["phase_label"] = "Sync interrupted"
         finally:
             sync_status["active"] = False
 
@@ -975,7 +1016,15 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                         pct = min(100.0, round((sync_status["synced_files"] / sync_status["total_files"]) * 100, 1))
                         sync_status["progress_percent"] = pct
             resp_data = dict(sync_status)
-            resp_data["has_local_db"] = check_has_local_db(str(self.output_dir))
+            cfg = load_config()
+            has_db = check_has_local_db(str(self.output_dir))
+            resp_data["has_local_db"] = has_db
+            resp_data["has_completed_sync"] = bool(
+                sync_status.get("has_completed_sync", False)
+                or cfg.get("last_sync_time")
+                or cfg.get("selected_account_path")
+                or has_db
+            )
             self._send_json(200, resp_data)
             return
 
@@ -1157,9 +1206,18 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(400, {"error": "Missing path parameter"})
                 return
 
-            thumb_path = get_or_create_thumbnail(self.output_dir, rel_path)
+            try:
+                thumb_path = get_or_create_thumbnail(self.output_dir, rel_path)
+            except Exception as e:
+                self._send_json(404, {"error": f"Thumbnail generation failed: {e}"})
+                return
+
             if not thumb_path or not thumb_path.is_file():
-                self._send_json(404, {"error": "Thumbnail not found or could not be generated"})
+                is_video = rel_path.lower().endswith((".mp4", ".3gp", ".mov", ".m4v", ".avi", ".mkv"))
+                if is_video and not is_ffmpeg_available():
+                    self._send_json(404, {"error": "ffmpeg_not_available"})
+                else:
+                    self._send_json(404, {"error": "Thumbnail not found or could not be generated"})
                 return
 
             try:

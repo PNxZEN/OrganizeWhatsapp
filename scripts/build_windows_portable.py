@@ -51,6 +51,8 @@ ADB_URL = (
 )
 ADB_BINARIES = ["adb.exe", "AdbWinApi.dll", "AdbWinUsbApi.dll"]
 
+FFMPEG_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+
 APP_ROOT = Path(__file__).resolve().parent.parent
 DIST_DIR = APP_ROOT / "dist"
 BUILD_DIR = APP_ROOT / "build" / "staging"
@@ -338,6 +340,34 @@ def dct(x, type=2, n=None, axis=-1, norm=None, overwrite_x=False):
                 print(f"\n    -> {basename}", end="")
     adb_zip_local.unlink(missing_ok=True)
     print("\n  [OK] ADB binaries extracted")
+
+    # --------------------------------------------------------
+    # 5b. Fetch static ffmpeg for Windows (video thumbnail engine)
+    # --------------------------------------------------------
+    print("\n[5b/7] Fetching static ffmpeg for Windows...")
+    ffmpeg_dir = BUILD_DIR / "bin"
+    ffmpeg_dir.mkdir(parents=True, exist_ok=True)
+    ffmpeg_zip_local = BUILD_DIR / "ffmpeg-release.zip"
+    try:
+        download(FFMPEG_URL, ffmpeg_zip_local, "Static ffmpeg (video thumbnails)")
+        print("  [EXTRACT] ffmpeg binary...", end=" ", flush=True)
+        found_ffmpeg = False
+        with zipfile.ZipFile(ffmpeg_zip_local, "r") as zf:
+            for member in zf.namelist():
+                if member.endswith("/ffmpeg.exe") or member.endswith("\\ffmpeg.exe") or member == "ffmpeg.exe":
+                    data = zf.read(member)
+                    (ffmpeg_dir / "ffmpeg.exe").write_bytes(data)
+                    found_ffmpeg = True
+                    print("-> ffmpeg.exe", end="")
+                    break
+        ffmpeg_zip_local.unlink(missing_ok=True)
+        if found_ffmpeg:
+            print("\n  [OK] ffmpeg binary extracted to bin/ffmpeg.exe")
+        else:
+            print("\n  [WARN] ffmpeg.exe not found in downloaded zip archive.")
+    except Exception as e:
+        print(f"\n  [WARN] Failed to bundle ffmpeg ({e}); continuing build.")
+        ffmpeg_zip_local.unlink(missing_ok=True)
 
     # --------------------------------------------------------
     # 6. Copy application payload

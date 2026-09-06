@@ -65,6 +65,17 @@ def find_ffmpeg_binary(custom_path=None):
     return "ffmpeg"
 
 
+def is_ffmpeg_available(custom_path=None) -> bool:
+    """
+    Checks if a functional ffmpeg binary is available on the system or bundled locally.
+    """
+    bin_path = find_ffmpeg_binary(custom_path)
+    if os.path.isabs(bin_path) and os.path.isfile(bin_path):
+        return True
+    import shutil
+    return bool(shutil.which(bin_path))
+
+
 def mask_key(hex_key):
     """
     Returns a masked representation of a 64-character hex key for safe UI display.
@@ -126,10 +137,27 @@ def save_config(config_data, config_path=DEFAULT_CONFIG_FILE):
     existing = load_config(config_path)
     existing.update(config_data)
 
+    import time
+    for attempt in range(5):
+        try:
+            with open(temp_file, "w", encoding="utf-8") as f:
+                json.dump(existing, f, indent=2)
+            os.replace(temp_file, cfg_file)
+            return True
+        except PermissionError:
+            time.sleep(0.05 * (attempt + 1))
+        except Exception as e:
+            break
+
+    # Fallback if atomic rename is blocked by an open file handle on Windows
     try:
-        with open(temp_file, "w", encoding="utf-8") as f:
+        with open(cfg_file, "w", encoding="utf-8") as f:
             json.dump(existing, f, indent=2)
-        os.replace(temp_file, cfg_file)
+        if temp_file.exists():
+            try:
+                os.remove(temp_file)
+            except OSError:
+                pass
         return True
     except Exception as e:
         sys.stderr.write(f"[Config] Error saving {config_path}: {e}\n")

@@ -215,12 +215,12 @@
             gap: 14px;
             border-bottom: 1px solid var(--border-color);
             background: var(--bg-main);
-            transition: max-height 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+            transition: max-height 0.28s cubic-bezier(0.25, 1, 0.5, 1),
                         opacity 0.22s ease,
-                        padding-top 0.32s cubic-bezier(0.16, 1, 0.3, 1),
-                        padding-bottom 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+                        padding-top 0.28s cubic-bezier(0.25, 1, 0.5, 1),
+                        padding-bottom 0.28s cubic-bezier(0.25, 1, 0.5, 1),
                         border-bottom-color 0.22s ease;
-            max-height: 400px;
+            max-height: 280px;
             opacity: 1;
             overflow: visible;
             flex-shrink: 0;
@@ -788,6 +788,7 @@
         .gallery-content {
             flex-grow: 1;
             overflow-y: auto;
+            scrollbar-gutter: stable;
             padding: 24px;
             position: relative;
         }
@@ -3227,7 +3228,7 @@
                         <div class="sync-spinner" id="syncModalSpinner" style="width:24px;height:24px;border-width:3px;"></div>
                         <div style="flex:1;">
                             <div style="font-size:14px;font-weight:600;color:var(--text-primary);" id="syncPhaseLabel">Initializing sync pipeline...</div>
-                            <div style="font-size:12px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:380px;" id="syncPhaseSub">Connecting to Android device over ADB</div>
+                            <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.4;word-break:break-word;" id="syncPhaseSub">Connecting to Android device over ADB</div>
                         </div>
                     </div>
                     <div style="background:rgba(255,255,255,0.08);border-radius:9999px;height:8px;overflow:hidden;margin-bottom:16px;">
@@ -3877,6 +3878,9 @@
                     fetch('/api/phone/clear-received-key', { method: 'POST' }).catch(() => {});
                 }
             }
+            if (id === 'modalSync') {
+                if (typeof stopDeviceReconnectWatcher === 'function') stopDeviceReconnectWatcher();
+            }
         }
 
         let consecutiveServerFailures = 0;
@@ -4288,7 +4292,8 @@
                 const badgeColor = isBiz ? '#3b82f6' : 'var(--accent)';
                 const badgeBg = isBiz ? 'rgba(59,130,246,0.15)' : 'rgba(16,185,129,0.15)';
                 const badgeText = isBiz ? 'WhatsApp Business' : 'WhatsApp';
-                const phoneOrId = acc.phone_number ? acc.phone_number : (acc.account_id !== 'main' ? `Account ${acc.account_id}` : 'Primary Account');
+                const hasValidPhone = acc.phone_number && !['whatsapp', 'whatsapp business', 'unknown'].includes(acc.phone_number.toLowerCase());
+                const phoneOrId = hasValidPhone ? acc.phone_number : (acc.account_id !== 'main' ? `Account ${acc.account_id}` : (isBiz ? 'Business Account' : 'Primary Account'));
                 const isRec = Boolean(acc.is_active_recommendation);
 
                 html += `
@@ -4344,6 +4349,10 @@
                     showToast('WhatsApp account updated.', 'success');
                     await checkDeviceStatus();
                     closeModal('modalAccountSelector');
+                    if (window._pendingSyncAfterAccountSelect) {
+                        window._pendingSyncAfterAccountSelect = false;
+                        setTimeout(() => openSyncModal(), 300);
+                    }
                 } else {
                     showToast(res.message || 'Failed to update account.', 'error');
                 }
@@ -5168,8 +5177,23 @@
             }
             showToast('Setup complete! Ready to sync WhatsApp.', 'success');
             if (autoStartSync) {
-                setTimeout(() => {
-                    openSyncModal();
+                setTimeout(async () => {
+                    await checkDeviceStatus();
+                    let hasSelectedAccount = false;
+                    try {
+                        const r = await fetch('/api/config');
+                        if (r.ok) {
+                            const c = await r.json();
+                            if (c && c.selected_account_path) hasSelectedAccount = true;
+                        }
+                    } catch (e) {}
+
+                    if (currentDeviceStatus && currentDeviceStatus.has_multiple_accounts && !hasSelectedAccount) {
+                        window._pendingSyncAfterAccountSelect = true;
+                        openAccountSelectorModal();
+                    } else {
+                        openSyncModal();
+                    }
                 }, 300);
             }
         }
@@ -5458,6 +5482,17 @@
             }
         }
 
+        function hasCompletedPriorSync(st) {
+            const chats = getChatsArray();
+            const totalFiles = chats.reduce((acc, c) => acc + (c.file_count || 0), 0);
+            return (
+                totalFiles > 0 ||
+                !!windowHasLocalDb ||
+                (st && (st.has_local_db || st.has_completed_sync)) ||
+                localStorage.getItem('wa_sync_completed_once') === 'true'
+            );
+        }
+
         function updateSyncButtonUI(st) {
             const btn = document.getElementById('btnControlSync');
             if (!btn) return;
@@ -5468,7 +5503,9 @@
                 if (span) span.innerText = 'Syncing...';
             } else {
                 btn.classList.remove('control-btn-syncing');
-                if (span) span.innerText = 'Sync Phone';
+                if (span) {
+                    span.innerText = hasCompletedPriorSync(st) ? 'Refresh Sync' : 'Sync Phone';
+                }
             }
         }
 
@@ -5493,7 +5530,15 @@
 
         function renderSyncModalSummary(st) {
             const title = document.getElementById('syncModalTitle');
-            if (title) title.innerText = 'WhatsApp Synchronization';
+            const btnStart = document.getElementById('btnStartSyncNow');
+            const priorSync = hasCompletedPriorSync(st);
+
+            if (title) {
+                title.innerText = priorSync ? 'Refresh WhatsApp Synchronization' : 'WhatsApp Synchronization';
+            }
+            if (btnStart) {
+                btnStart.innerText = priorSync ? 'Refresh Sync' : 'Start Sync';
+            }
 
             // Populate organized library statistics
             const statsText = document.getElementById('syncSummaryStatsText');
@@ -5502,7 +5547,9 @@
                 const totalChats = chats.length;
                 const totalFiles = chats.reduce((acc, c) => acc + (c.file_count || 0), 0);
                 if (totalFiles > 0) {
-                    statsText.innerHTML = `<strong>${totalFiles.toLocaleString()}</strong> media files organized across <strong>${totalChats}</strong> chats.`;
+                    statsText.innerHTML = `<strong>${totalFiles.toLocaleString()}</strong> media files organized across <strong>${totalChats}</strong> chats. Ready to check for newest updates.`;
+                } else if (priorSync) {
+                    statsText.innerHTML = '<strong>Archive initialized.</strong> Ready to refresh synchronization with latest phone backups.';
                 } else {
                     statsText.innerHTML = '<strong>No media files organized yet.</strong> Ready for initial sync.';
                 }
@@ -5615,6 +5662,25 @@
                 console.warn('Pre-flight key check failed:', e);
             }
 
+            // Pre-flight Check 4: Multiple accounts selection
+            if (currentDeviceStatus && currentDeviceStatus.has_multiple_accounts) {
+                let hasSelectedAccount = false;
+                try {
+                    const cfgResp = await fetch('/api/config');
+                    if (cfgResp.ok) {
+                        const cfg = await cfgResp.json();
+                        if (cfg && cfg.selected_account_path) hasSelectedAccount = true;
+                    }
+                } catch (e) {}
+
+                if (!hasSelectedAccount) {
+                    showToast('Multiple WhatsApp accounts detected. Please select an account to sync.', 'info');
+                    window._pendingSyncAfterAccountSelect = true;
+                    openAccountSelectorModal();
+                    return;
+                }
+            }
+
             // Check current sync status
             let st = null;
             try {
@@ -5683,7 +5749,13 @@
 
             if (title) title.innerText = 'Sync Paused';
             if (label) label.innerText = st.phase_label || 'Sync Paused';
-            if (sub) sub.innerText = st.error || 'Progress safely saved to checkpoint. Ready to resume.';
+            if (st.interrupted_by_device) {
+                if (sub) sub.innerText = 'Phone disconnected. Sync will resume automatically as soon as the phone is plugged back in!';
+                startDeviceReconnectWatcher();
+            } else {
+                if (sub) sub.innerText = st.error || 'Progress safely saved to checkpoint. Ready to resume.';
+                stopDeviceReconnectWatcher();
+            }
             const pct = st.progress_percent || 0;
             if (bar) {
                 bar.style.width = `${pct}%`;
@@ -5691,6 +5763,31 @@
             }
             if (statsOrg) statsOrg.innerText = `Saved: ${st.synced_files || 0} / ${st.total_files || 0} files`;
             if (statsSt) statsSt.innerText = 'Status: Paused';
+        }
+
+        let _deviceReconnectWatcherTimer = null;
+        function startDeviceReconnectWatcher() {
+            if (_deviceReconnectWatcherTimer) return;
+            _deviceReconnectWatcherTimer = setInterval(async () => {
+                try {
+                    const r = await fetch('/api/phone/status');
+                    if (r.ok) {
+                        const dev = await r.json();
+                        if (dev && dev.connected && dev.authorized) {
+                            stopDeviceReconnectWatcher();
+                            showToast('Phone reconnected! Resuming sync automatically...', 'info');
+                            await handleSyncResume();
+                        }
+                    }
+                } catch (e) {}
+            }, 1500);
+        }
+
+        function stopDeviceReconnectWatcher() {
+            if (_deviceReconnectWatcherTimer) {
+                clearInterval(_deviceReconnectWatcherTimer);
+                _deviceReconnectWatcherTimer = null;
+            }
         }
 
         async function handleSyncPause() {
@@ -5713,6 +5810,7 @@
         }
 
         async function handleSyncResume() {
+            stopDeviceReconnectWatcher();
             const btnResume = document.getElementById('btnSyncResume');
             if (btnResume) {
                 btnResume.disabled = true;
@@ -5762,6 +5860,7 @@
         }
 
         async function handleSyncCancel() {
+            stopDeviceReconnectWatcher();
             if (!confirm('Are you sure you want to cancel the synchronization? Incomplete files will be cleaned up.')) return;
             if (syncPollingTimer) {
                 clearInterval(syncPollingTimer);
@@ -5969,8 +6068,10 @@
                         if (sub) {
                             if (st.current_file) {
                                 sub.innerText = st.current_file;
+                            } else if (st.phase_detail) {
+                                sub.innerText = st.phase_detail;
                             } else if (st.phase === 'database') {
-                                sub.innerText = 'Downloading chat database from phone...';
+                                sub.innerText = 'Retrieving chat database from phone...';
                             } else if (st.phase === 'decrypting') {
                                 sub.innerText = 'Decrypting chat database with backup key...';
                             } else if (st.phase === 'indexing') {
@@ -6000,8 +6101,8 @@
                         }
 
                         const phaseDisplayMap = {
-                            'database': 'Chat Database',
-                            'decrypting': 'Database Decryption',
+                            'database': 'Storage & Database',
+                            'decrypting': 'Decryption & Contacts',
                             'indexing': 'Scanning Phone',
                             'syncing': 'Media Streaming',
                             'organizing': 'Organizing Media',
@@ -6033,7 +6134,9 @@
                             }
                             if (title) title.innerText = 'Sync Complete';
                             if (label) label.innerText = 'Synchronization Complete';
-                            if (sub) sub.innerText = 'All databases decrypted and media files organized.';
+                            if (sub) sub.innerText = st.phase_detail || 'All databases decrypted and media files organized.';
+                            try { localStorage.setItem('wa_sync_completed_once', 'true'); } catch (e) {}
+                            updateSyncButtonUI(st);
                             clearInterval(syncPollingTimer);
                             syncPollingTimer = null;
                             showToast('Synchronization complete!', 'success');
@@ -6531,14 +6634,81 @@
         let isFilterCollapsed = false;
         let lastFilterScrollTop = 0;
         let isProgrammaticScroll = false;
+        let isFilterTransitioning = false;
+        let userWheelDirection = 0;
+        let wheelDirectionTimer = null;
+
+        function setFilterPanelCollapsed(collapsed, isManual = false) {
+            const filterPanel = document.getElementById('filterPanel');
+            const container = document.getElementById('galleryContent');
+            if (!filterPanel) return;
+            if (isFilterCollapsed === collapsed) return;
+
+            isFilterCollapsed = collapsed;
+            isFilterTransitioning = true;
+
+            if (collapsed) {
+                filterPanel.classList.add('collapsed');
+            } else {
+                filterPanel.classList.remove('collapsed');
+            }
+            updateFilterToggleBtnState(collapsed);
+
+            // Lock scroll evaluation during the CSS transition window to completely
+            // decouple browser layout reflow / scroll clamping from user intent
+            setTimeout(() => {
+                isFilterTransitioning = false;
+                if (container) {
+                    lastFilterScrollTop = container.scrollTop;
+                }
+            }, 320);
+        }
+
+        function toggleFilterPanelManual() {
+            setFilterPanelCollapsed(!isFilterCollapsed, true);
+        }
 
         function setupCollapsibleFilterPanel() {
             const container = document.getElementById('galleryContent');
             const filterPanel = document.getElementById('filterPanel');
             if (!container || !filterPanel) return;
 
+            // Track physical user input direction (mouse wheel / touchpad)
+            container.addEventListener('wheel', (e) => {
+                userWheelDirection = e.deltaY;
+                clearTimeout(wheelDirectionTimer);
+                wheelDirectionTimer = setTimeout(() => {
+                    userWheelDirection = 0;
+                }, 200);
+            }, { passive: true });
+
+            let touchStartY = 0;
+            container.addEventListener('touchstart', (e) => {
+                if (e.touches && e.touches.length > 0) {
+                    touchStartY = e.touches[0].clientY;
+                }
+            }, { passive: true });
+
+            container.addEventListener('touchmove', (e) => {
+                if (e.touches && e.touches.length > 0) {
+                    const currentY = e.touches[0].clientY;
+                    userWheelDirection = touchStartY - currentY;
+                    clearTimeout(wheelDirectionTimer);
+                    wheelDirectionTimer = setTimeout(() => {
+                        userWheelDirection = 0;
+                    }, 200);
+                }
+            }, { passive: true });
+
             container.addEventListener('scroll', () => {
-                if (isProgrammaticScroll) {
+                // Ignore programmatic scrolls and events during transition animations
+                if (isProgrammaticScroll || isFilterTransitioning) {
+                    lastFilterScrollTop = container.scrollTop;
+                    return;
+                }
+
+                // If user is interacting with an input or dropdown in the filter panel, do not collapse
+                if (filterPanel.contains(document.activeElement)) {
                     lastFilterScrollTop = container.scrollTop;
                     return;
                 }
@@ -6546,54 +6716,43 @@
                 const currentScrollTop = container.scrollTop;
                 const delta = currentScrollTop - lastFilterScrollTop;
 
-                // If user is near the very top of gallery (< 25px), always show filter panel
-                if (currentScrollTop <= 25) {
+                // 1. If at or near the very top (< 20px), expand the filter panel
+                if (currentScrollTop <= 20) {
                     if (isFilterCollapsed) {
-                        filterPanel.classList.remove('collapsed');
-                        isFilterCollapsed = false;
-                        updateFilterToggleBtnState(false);
+                        setFilterPanelCollapsed(false);
                     }
                     lastFilterScrollTop = currentScrollTop;
                     return;
                 }
 
-                // Ignore small jitter / layout shifts from media loading
-                if (Math.abs(delta) < 15) return;
+                // 2. Ignore micro-jitter / sub-pixel movements
+                if (Math.abs(delta) < 12) return;
 
-                // Scrolling DOWN past 60px: smoothly slide filter panel up (collapse)
-                if (delta > 0 && currentScrollTop > 60) {
-                    if (filterPanel.contains(document.activeElement)) {
-                        document.activeElement.blur();
-                    }
-                    if (!isFilterCollapsed) {
-                        filterPanel.classList.add('collapsed');
-                        isFilterCollapsed = true;
-                        updateFilterToggleBtnState(true);
+                // 3. Runway Check:
+                // Auto-collapsing is only appropriate when the gallery has ample scroll runway.
+                // If the chat media items match or are close to the bottom border of the screen,
+                // collapsing the panel would cause the items to fit entirely within the viewport,
+                // triggering browser scroll clamping and oscillation.
+                // We require at least (panelHeight + 120px) of extra scrollable height.
+                const panelHeight = filterPanel.offsetHeight || 170;
+                const availableRunway = container.scrollHeight - container.clientHeight;
+
+                // Scrolling DOWN:
+                // User must be moving down past 80px with positive scroll delta,
+                // confirmed downward user intent, and sufficient scroll runway.
+                if (delta > 0 && currentScrollTop > 80 && !isFilterCollapsed) {
+                    if (availableRunway >= panelHeight + 120) {
+                        setFilterPanelCollapsed(true);
                     }
                 }
-                // Scrolling UP with deliberate intent (> 25px delta): slide filter panel down
-                else if (delta < -25) {
-                    if (isFilterCollapsed) {
-                        filterPanel.classList.remove('collapsed');
-                        isFilterCollapsed = false;
-                        updateFilterToggleBtnState(false);
-                    }
+                // Scrolling UP:
+                // User must show deliberate upward intent (delta < -25 or userWheelDirection < 0).
+                else if ((delta < -25 || userWheelDirection < -10) && isFilterCollapsed) {
+                    setFilterPanelCollapsed(false);
                 }
 
                 lastFilterScrollTop = currentScrollTop;
             }, { passive: true });
-        }
-
-        function toggleFilterPanelManual() {
-            const filterPanel = document.getElementById('filterPanel');
-            if (!filterPanel) return;
-            isFilterCollapsed = !isFilterCollapsed;
-            if (isFilterCollapsed) {
-                filterPanel.classList.add('collapsed');
-            } else {
-                filterPanel.classList.remove('collapsed');
-            }
-            updateFilterToggleBtnState(isFilterCollapsed);
         }
 
         function updateFilterToggleBtnState(collapsed) {
@@ -7581,6 +7740,109 @@
             return `${m}:${s < 10 ? '0' : ''}${s}`;
         }
 
+        const _videoThumbCanvas = document.createElement('canvas');
+        const _videoThumbCtx = _videoThumbCanvas.getContext('2d');
+        const _videoThumbQueue = [];
+        let _videoThumbProcessing = false;
+        const _videoThumbCache = new Map();
+
+        function captureVideoFrame(src, callback) {
+            if (_videoThumbCache.has(src)) {
+                callback(_videoThumbCache.get(src));
+                return;
+            }
+            _videoThumbQueue.push({ src, callback });
+            _processNextVideoThumb();
+        }
+
+        function _processNextVideoThumb() {
+            if (_videoThumbProcessing || _videoThumbQueue.length === 0) return;
+            _videoThumbProcessing = true;
+            const item = _videoThumbQueue.shift();
+            const src = item.src;
+            const callback = item.callback;
+
+            const video = document.createElement('video');
+            video.crossOrigin = 'anonymous';
+            video.preload = 'metadata';
+            video.muted = true;
+            video.playsInline = true;
+
+            let timeoutId = setTimeout(() => {
+                cleanup();
+                callback(null);
+                _videoThumbProcessing = false;
+                _processNextVideoThumb();
+            }, 4000);
+
+            function cleanup() {
+                clearTimeout(timeoutId);
+                video.onloadeddata = null;
+                video.onseeked = null;
+                video.onerror = null;
+                video.src = '';
+            }
+
+            video.onloadeddata = () => {
+                try {
+                    video.currentTime = Math.min(0.5, (video.duration || 1) / 2);
+                } catch (e) {
+                    cleanup();
+                    callback(null);
+                    _videoThumbProcessing = false;
+                    _processNextVideoThumb();
+                }
+            };
+
+            video.onseeked = () => {
+                try {
+                    const w = 280;
+                    const h = Math.round((video.videoHeight / Math.max(1, video.videoWidth)) * 280) || 280;
+                    _videoThumbCanvas.width = w;
+                    _videoThumbCanvas.height = h;
+                    _videoThumbCtx.drawImage(video, 0, 0, w, h);
+                    const dataUrl = _videoThumbCanvas.toDataURL('image/jpeg', 0.8);
+                    _videoThumbCache.set(src, dataUrl);
+                    cleanup();
+                    callback(dataUrl);
+                } catch (e) {
+                    cleanup();
+                    callback(null);
+                }
+                _videoThumbProcessing = false;
+                _processNextVideoThumb();
+            };
+
+            video.onerror = () => {
+                cleanup();
+                callback(null);
+                _videoThumbProcessing = false;
+                _processNextVideoThumb();
+            };
+
+            video.src = src;
+        }
+
+        function handleVideoThumbFallback(img, encRelPath) {
+            img.onerror = null;
+            const videoUrl = isHttpServer ? ('/api/open-file?path=' + encRelPath) : decodeURIComponent(encRelPath);
+            captureVideoFrame(videoUrl, (dataUrl) => {
+                if (dataUrl) {
+                    img.src = dataUrl;
+                    img.style.display = 'block';
+                } else {
+                    img.style.display = 'none';
+                    let placeholder = img.nextElementSibling;
+                    while (placeholder && !placeholder.classList.contains('video-placeholder-container')) {
+                        placeholder = placeholder.nextElementSibling;
+                    }
+                    if (placeholder) {
+                        placeholder.style.display = 'flex';
+                    }
+                }
+            });
+        }
+
         function createMediaCard(item, originalIndex) {
             const card = document.createElement('div');
             
@@ -7654,7 +7916,12 @@
                 
                 if (thumbSrc) {
                     contentHTML = `
-                        <img src="${thumbSrc}" loading="lazy" decoding="async" alt="${item.filename}">
+                        <img src="${thumbSrc}" loading="lazy" decoding="async" alt="${item.filename}"
+                             onerror="handleVideoThumbFallback(this, '${encodeURIComponent(item.rel_path)}')">
+                        <div class="video-placeholder-container" style="display:none;">
+                            <svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                            <span class="doc-name">${item.filename}</span>
+                        </div>
                         <div class="badge badge-video">
                             <svg class="icon" viewBox="0 0 24 24" style="width:12px;height:12px;"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
                             ${durStr ? durStr : 'VIDEO'}

@@ -4,6 +4,7 @@ Handles device detection, authorization status checking, base path discovery,
 incremental streaming tar pull, and folder synchronization.
 """
 
+import functools
 import os
 import re
 import shutil
@@ -414,6 +415,66 @@ def cleanup_nested_databases_folder(dest_db="./Databases"):
 
 
 
+def get_device_sim_phone_numbers(adb_path=None, device_serial=None) -> list:
+    """
+    Extracts active SIM phone numbers from Android telephony service or siminfo.
+    Returns a list of clean phone number strings (e.g. ['+919876543210']).
+    """
+    cmd = find_adb_binary(adb_path)
+    adb_base = [cmd, "-s", device_serial] if device_serial else [cmd]
+    sim_numbers = []
+
+    # 1. Probe content://telephony/siminfo
+    try:
+        res = subprocess.run(
+            adb_base + ["shell", "content query --uri content://telephony/siminfo --projection number"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if res.returncode == 0 and res.stdout:
+            for line in res.stdout.splitlines():
+                m = re.search(r"number=([+0-9]{10,16})", line)
+                if m:
+                    num = m.group(1).strip()
+                    if not num.startswith("+") and len(num) >= 10:
+                        num = f"+{num}"
+                    if num not in sim_numbers:
+                        sim_numbers.append(num)
+    except Exception:
+        pass
+
+    # 2. Probe dumpsys telephony.registry
+    if not sim_numbers:
+        try:
+            res = subprocess.run(
+                adb_base + ["shell", "dumpsys telephony.registry"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+                encoding="utf-8",
+                errors="replace",
+            )
+            if res.returncode == 0 and res.stdout:
+                for line in res.stdout.splitlines():
+                    if "mLine1Number" in line:
+                        m = re.search(r"mLine1Number=([+0-9]{10,16})", line)
+                        if m:
+                            num = m.group(1).strip()
+                            if not num.startswith("+") and len(num) >= 10:
+                                num = f"+{num}"
+                            if num not in sim_numbers:
+                                sim_numbers.append(num)
+        except Exception:
+            pass
+
+    return sim_numbers
+
+
 def get_registered_whatsapp_accounts(adb_path=None, device_serial=None) -> list:
     """
     Queries Android AccountManager via 'dumpsys account' to extract registered phone numbers
@@ -445,15 +506,21 @@ def get_registered_whatsapp_accounts(adb_path=None, device_serial=None) -> list:
                 continue
 
             acc_match = re.search(
-                r"Account\s*\{\s*name\s*[=:]\s*[\"']?([^,\s\"'}]+)[\"']?.*?type\s*[=:]\s*[\"']?(com\.whatsapp(?:\.w4b)?)[\"']?\s*\}",
+                r"Account\s*\{\s*name\s*[=:]\s*[\"']?([^,\"'}\r\n]+?)[\"']?\s*,\s*type\s*[=:]\s*[\"']?(com\.whatsapp(?:\.w4b)?)[\"']?\s*\}",
                 line,
             )
             if acc_match:
                 raw_name = acc_match.group(1).strip("\"'")
                 pkg = acc_match.group(2)
-                phone_display = raw_name
-                if re.match(r"^\d{10,15}$", raw_name):
-                    phone_display = f"+{raw_name}"
+                phone_display = ""
+                # Only treat raw_name as phone number if it contains valid digits
+                clean_digits = re.sub(r"\D", "", raw_name)
+                if (
+                    len(clean_digits) >= 10
+                    and raw_name.lower() not in ("whatsapp", "whatsapp business", "whatsapp messenger", "unknown")
+                ):
+                    phone_display = f"+{clean_digits}" if not raw_name.startswith("+") else raw_name
+
                 accounts.append(
                     {
                         "phone_number": phone_display,
@@ -468,7 +535,30 @@ def get_registered_whatsapp_accounts(adb_path=None, device_serial=None) -> list:
         return []
 
 
-def discover_whatsapp_accounts(adb_path=None, hex_key=None, device_serial=None) -> list:
+def _safe_status_emit(callback, phase, label, total_files=None, detail=None):
+    if not callback:
+        return
+    try:
+        callback(phase, label, total_files=total_files, detail=detail)
+    except TypeError:
+        try:
+            callback(phase, label, total=total_files, detail=detail)
+        except TypeError:
+            try:
+                callback(phase, label, total_files)
+            except TypeError:
+                try:
+                    callback(phase, label)
+                except Exception:
+                    pass
+
+
+def discover_whatsapp_accounts(
+    adb_path=None,
+    hex_key=None,
+    device_serial=None,
+    status_callback=None,
+) -> list:
     """
     Probes connected Android device storage across all user spaces (user 0, user 95, user 999),
     native WhatsApp multi-account folders (accounts/*), WhatsApp Business (com.whatsapp.w4b),
@@ -478,6 +568,14 @@ def discover_whatsapp_accounts(adb_path=None, hex_key=None, device_serial=None) 
     """
     cmd = find_adb_binary(adb_path)
     adb_base = [cmd, "-s", device_serial] if device_serial else [cmd]
+
+    status_callback = functools.partial(_safe_status_emit, status_callback) if status_callback else None
+    if status_callback:
+        status_callback(
+            "database",
+            "Scanning phone for WhatsApp accounts...",
+            detail="Checking storage directories and multi-account folders via ADB",
+        )
 
     probe_script = (
         "probe_dir() { "
@@ -552,6 +650,12 @@ def discover_whatsapp_accounts(adb_path=None, hex_key=None, device_serial=None) 
         return []
 
     # Query registered accounts from Android AccountManager
+    if status_callback:
+        status_callback(
+            "database",
+            "Scanning registered phone accounts...",
+            detail="Querying Android AccountManager via dumpsys account",
+        )
     registered = get_registered_whatsapp_accounts(cmd, device_serial=device_serial)
 
     has_hex = bool(hex_key)
@@ -606,11 +710,14 @@ def discover_whatsapp_accounts(adb_path=None, hex_key=None, device_serial=None) 
             account_id = "main"
             parent_path = p
 
-        # Correlate phone number from registered accounts
-        phone_number = ""
-        matched_reg = [r for r in registered if r["user_id"] == user_id and r["app_type"] == app_type]
-        if matched_reg:
-            phone_number = matched_reg[0]["phone_number"]
+        # Correlate phone number from known_accounts, registered accounts, or SIMs
+        cfg = load_config()
+        known_accounts = cfg.get("known_accounts", {})
+        phone_number = known_accounts.get(p, "")
+        if not phone_number:
+            matched_reg = [r for r in registered if r["user_id"] == user_id and r["app_type"] == app_type]
+            if matched_reg and matched_reg[0]["phone_number"]:
+                phone_number = matched_reg[0]["phone_number"]
 
         # Human-readable formatted date and size
         if db_mtime > 0:
@@ -627,8 +734,10 @@ def discover_whatsapp_accounts(adb_path=None, hex_key=None, device_serial=None) 
             label = f"{app_label} ({phone_number})"
         elif account_id != "main":
             label = f"{app_label} (Account {account_id})"
+        elif app_type == "whatsapp_business":
+            label = "WhatsApp Business (Business Account)"
         else:
-            label = f"{app_label} (Main Account)"
+            label = f"{app_label} (Primary Account)"
 
         # Calculate ranking score
         score = 0.0
@@ -687,6 +796,7 @@ def discover_android_base_path(
     hex_key=None,
     device_serial=None,
     preferred_account_path=None,
+    status_callback=None,
 ) -> str:
     """
     Auto-discovers the active WhatsApp or WhatsApp Business storage path on the Android device.
@@ -698,6 +808,7 @@ def discover_android_base_path(
     """
     cmd = find_adb_binary(adb_path)
     adb_base = [cmd, "-s", device_serial] if device_serial else [cmd]
+    status_callback = functools.partial(_safe_status_emit, status_callback) if status_callback else None
 
     # 1. Check if an account path was explicitly requested or saved in config.json
     target_path = preferred_account_path
@@ -706,6 +817,12 @@ def discover_android_base_path(
         target_path = cfg.get("selected_account_path")
 
     if target_path:
+        if status_callback:
+            status_callback(
+                "database",
+                "Verifying selected account storage...",
+                detail=f"Checking {target_path} on phone",
+            )
         test_cmd = adb_base + ["shell", f"[ -d '{target_path}' ] && echo 'FOUND'"]
         try:
             res = subprocess.run(test_cmd, capture_output=True, text=True, timeout=5, check=False)
@@ -715,7 +832,12 @@ def discover_android_base_path(
             pass
 
     # 2. Probe device dynamically for all accounts and pick top-ranked
-    accounts = discover_whatsapp_accounts(cmd, hex_key=hex_key, device_serial=device_serial)
+    accounts = discover_whatsapp_accounts(
+        cmd,
+        hex_key=hex_key,
+        device_serial=device_serial,
+        status_callback=status_callback,
+    )
     if accounts:
         return accounts[0]["path"]
 
@@ -914,6 +1036,9 @@ def is_skippable_system_path(rel_p: str) -> bool:
     )
 
 
+_session_inventory_cache = {}
+
+
 def adb_pull_tar(
     adb_path,
     base,
@@ -935,12 +1060,15 @@ def adb_pull_tar(
     Fast incremental tar pull from Android to PC using a single tar stream.
     Features:
     - High-speed in-process file inventory using find -printf
+    - Media Union: Automatically unions account-specific and parent/historical media folders
     - Atomic staging files (.part_{session_id}) with size validation to prevent corrupted files
     - Persistent session progress tracking in SQLite
     - Safe cooperative pause via cancellation_token
     """
+    global _session_inventory_cache
     cmd = find_adb_binary(adb_path)
     adb_base = [cmd, "-s", device_serial] if device_serial else [cmd]
+    status_callback = functools.partial(_safe_status_emit, status_callback) if status_callback else None
 
     if cancellation_token and cancellation_token.is_set():
         return False
@@ -949,15 +1077,57 @@ def adb_pull_tar(
     if session_manager:
         session_manager.cleanup_orphaned_part_files([dest_db, dest_media, "./Backups"])
 
-    # Check available subfolders on device
+    # Determine tar_root and target folders
+    # Media Union Architecture:
+    # If base is an account subfolder (e.g. /storage/emulated/0/Android/media/com.whatsapp/WhatsApp/accounts/1002):
+    # - For Databases: pull strictly from base/Databases
+    # - For Media: probe BOTH base/Media AND parent_path/Media to capture both post-migration and pre-migration media!
+    is_db_only = (folders_filter == ["Databases"])
+    tar_root = base
+    account_sub = ""
+    parent_path = ""
+
+    if "/accounts/" in base:
+        parent_path = base.rsplit("/accounts/", 1)[0]
+        account_sub = "accounts/" + base.rsplit("/accounts/", 1)[1].strip("/")
+
     folders_to_pull = []
-    for fld in ["Databases", "Media", "Backups"]:
-        if folders_filter is not None and fld not in folders_filter:
-            continue
-        check_cmd = adb_base + ["shell", f"ls -d '{base}/{fld}' 2>/dev/null"]
+    if is_db_only:
+        check_cmd = adb_base + ["shell", f"ls -d '{base}/Databases' 2>/dev/null"]
         check_res = subprocess.run(check_cmd, capture_output=True, text=True, check=False)
         if check_res.returncode == 0 and check_res.stdout.strip():
-            folders_to_pull.append(fld)
+            folders_to_pull.append("Databases")
+    else:
+        # Media / Backups pull
+        if parent_path and account_sub:
+            # Multi-account folder: Set tar_root to parent_path so find and tar can address both
+            tar_root = parent_path
+            # 1. Probe companion account folders
+            for fld in [f"{account_sub}/Media", f"{account_sub}/Backups"]:
+                if folders_filter is not None and "Media" not in folders_filter and "Media" in fld:
+                    continue
+                check_cmd = adb_base + ["shell", f"ls -d '{parent_path}/{fld}' 2>/dev/null"]
+                check_res = subprocess.run(check_cmd, capture_output=True, text=True, check=False)
+                if check_res.returncode == 0 and check_res.stdout.strip():
+                    folders_to_pull.append(fld)
+
+            # 2. Probe shared/historical parent folders (pre-migration media)
+            for fld in ["Media", "Backups"]:
+                if folders_filter is not None and fld not in folders_filter:
+                    continue
+                check_cmd = adb_base + ["shell", f"ls -d '{parent_path}/{fld}' 2>/dev/null"]
+                check_res = subprocess.run(check_cmd, capture_output=True, text=True, check=False)
+                if check_res.returncode == 0 and check_res.stdout.strip():
+                    folders_to_pull.append(fld)
+        else:
+            # Single account or root base
+            for fld in ["Media", "Backups"]:
+                if folders_filter is not None and fld not in folders_filter:
+                    continue
+                check_cmd = adb_base + ["shell", f"ls -d '{base}/{fld}' 2>/dev/null"]
+                check_res = subprocess.run(check_cmd, capture_output=True, text=True, check=False)
+                if check_res.returncode == 0 and check_res.stdout.strip():
+                    folders_to_pull.append(fld)
 
     if not folders_to_pull:
         return False
@@ -968,63 +1138,90 @@ def adb_pull_tar(
         return False
 
     if status_callback:
-        if folders_filter == ["Databases"]:
-            status_callback("database", "Checking WhatsApp database on phone...", total_files=0)
+        if is_db_only:
+            status_callback(
+                "database",
+                "Retrieving chat database from phone...",
+                detail="Checking Databases/ directory on phone over ADB",
+                total_files=0,
+            )
         else:
             status_callback(
                 "indexing",
-                "Scanning WhatsApp media on phone (this may take a few seconds)...",
+                "Scanning WhatsApp media on phone...",
+                detail=f"Checking storage folders ({folders_str})",
                 total_files=0,
             )
 
-    # Use -printf '%s:%p\n' as primary high-speed inventory (avoids ARG_MAX crash on 50k+ files)
-    find_cmd = adb_base + [
-        "shell",
-        f"cd '{base}' && find {folders_str} -type f -printf '%s:%p\\n' 2>/dev/null",
-    ]
+    phone_files = None
+    cache_key = f"{session_id}:{tar_root}:{folders_str}" if session_id else None
 
-    try:
-        res = subprocess.run(
-            find_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False
-        )
-        if not res.stdout.strip():
-            # Fallback for minimal toybox builds that lack -printf
-            fallback_cmd = adb_base + [
-                "shell",
-                f"cd '{base}' && find {folders_str} -type f -exec stat -c '%s:%n' {{}} + 2>/dev/null",
-            ]
-            res = subprocess.run(
-                fallback_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False
+    if cache_key and not is_db_only and cache_key in _session_inventory_cache:
+        phone_files = _session_inventory_cache[cache_key]
+        if status_callback:
+            status_callback(
+                "indexing",
+                f"Reusing media inventory ({len(phone_files):,} files)...",
+                detail="Instant in-session inventory cache active",
+                total_files=len(phone_files),
             )
-    except Exception as e:
-        sys.stderr.write(f"[ADB] Warning: Failed to inventory phone files: {e}\n")
-        if session_manager:
-            return False
-        return adb_pull_tar_full(
-            cmd,
-            base,
-            dest_db,
-            dest_media,
-            folders_str,
-            device_serial=device_serial,
-            cancellation_token=cancellation_token,
-            progress_callback=progress_callback,
-        )
 
-    phone_files = []
-    for line in res.stdout.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        parts = line.split(":", 1)
-        if len(parts) == 2:
-            try:
-                phone_files.append((parts[1], int(parts[0])))
-            except ValueError:
+    if phone_files is None:
+        # Use -printf '%s:%p\n' as primary high-speed inventory (avoids ARG_MAX crash on 50k+ files)
+        find_cmd = adb_base + [
+            "shell",
+            f"cd '{tar_root}' && find {folders_str} -type f -printf '%s:%p\\n' 2>/dev/null",
+        ]
+
+        try:
+            res = subprocess.run(
+                find_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False
+            )
+            if not res.stdout.strip():
+                # Fallback for minimal toybox builds that lack -printf
+                fallback_cmd = adb_base + [
+                    "shell",
+                    f"cd '{tar_root}' && find {folders_str} -type f -exec stat -c '%s:%n' {{}} + 2>/dev/null",
+                ]
+                res = subprocess.run(
+                    fallback_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False
+                )
+        except Exception as e:
+            sys.stderr.write(f"[ADB] Warning: Failed to inventory phone files: {e}\n")
+            if session_manager:
+                return False
+            return adb_pull_tar_full(
+                cmd,
+                base,
+                dest_db,
+                dest_media,
+                folders_str,
+                device_serial=device_serial,
+                cancellation_token=cancellation_token,
+                progress_callback=progress_callback,
+            )
+
+        phone_files = []
+        for line in res.stdout.splitlines():
+            line = line.strip()
+            if not line:
                 continue
+            parts = line.split(":", 1)
+            if len(parts) == 2:
+                try:
+                    sz = int(parts[0])
+                    rel_p = parts[1].strip()
+                    if rel_p.startswith("./"):
+                        rel_p = rel_p[2:]
+                    phone_files.append((rel_p, sz))
+                except ValueError:
+                    continue
 
-    # Filter out Android system marker files (.nomedia) and link preview cache (.Links)
-    phone_files = [(p, sz) for p, sz in phone_files if not is_skippable_system_path(p)]
+        # Filter out Android system marker files (.nomedia) and link preview cache (.Links)
+        phone_files = [(p, sz) for p, sz in phone_files if not is_skippable_system_path(p)]
+
+        if cache_key and not is_db_only and phone_files:
+            _session_inventory_cache[cache_key] = phone_files
 
     if not phone_files:
         if session_manager:
@@ -1045,16 +1242,25 @@ def adb_pull_tar(
         return False
 
     def get_local_path(rel_path):
-        parts = rel_path.split("/")
+        clean = rel_path.lstrip("/").replace("\\", "/")
+        if "/Media/" in clean:
+            sub = clean.split("/Media/", 1)[1].split("/")
+            sanitized_sub = [re.sub(r'[<>:"/\\|?*]', "_", p).rstrip(". ") or "unknown" for p in sub]
+            return os.path.join(dest_media, *sanitized_sub)
+        elif clean.startswith("Media/"):
+            sub = clean[len("Media/") :].split("/")
+            sanitized_sub = [re.sub(r'[<>:"/\\|?*]', "_", p).rstrip(". ") or "unknown" for p in sub]
+            return os.path.join(dest_media, *sanitized_sub)
+        elif "/Databases/" in clean or clean.startswith("Databases/"):
+            sub = clean.split("Databases/", 1)[1].split("/")
+            sanitized_sub = [re.sub(r'[<>:"/\\|?*]', "_", p).rstrip(". ") or "unknown" for p in sub]
+            return os.path.join(dest_db, *sanitized_sub)
+        elif "/Backups/" in clean or clean.startswith("Backups/"):
+            sub = clean.split("Backups/", 1)[1].split("/")
+            sanitized_sub = [re.sub(r'[<>:"/\\|?*]', "_", p).rstrip(". ") or "unknown" for p in sub]
+            return os.path.join("./Backups", *sanitized_sub)
+        parts = clean.split("/")
         sanitized_parts = [re.sub(r'[<>:"/\\|?*]', "_", p).rstrip(". ") or "unknown" for p in parts]
-        root_dir = sanitized_parts[0]
-        sub = sanitized_parts[1:]
-        if root_dir == "Databases":
-            return os.path.join(dest_db, *sub)
-        elif root_dir == "Media":
-            return os.path.join(dest_media, *sub)
-        elif root_dir == "Backups":
-            return os.path.join("./Backups", *sub)
         return os.path.join(".", *sanitized_parts)
 
     files_to_pull = []
@@ -1128,6 +1334,7 @@ def adb_pull_tar(
             status_callback(
                 phase_key,
                 f"Transferring {len(files_to_pull):,} {type_label} files from phone...",
+                detail="Direct streaming to organized folders in progress",
                 total_files=sess_info.get("total_files", len(phone_files)),
             )
     else:
@@ -1230,7 +1437,7 @@ def adb_pull_tar(
             progress_callback=progress_callback,
         )
 
-    tar_cmd = adb_base + ["exec-out", f"tar -C '{base}/' -cf - -T '{phone_list_path}' 2>/dev/null"]
+    tar_cmd = adb_base + ["exec-out", f"tar -C '{tar_root}/' -cf - -T '{phone_list_path}' 2>/dev/null"]
 
     try:
         proc = subprocess.Popen(tar_cmd, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL)
@@ -1260,12 +1467,15 @@ def adb_pull_tar(
                 matched_row = None
                 if destination_resolver:
                     dest_p, matched_row = destination_resolver(clean_name, member.size)
-                elif clean_name.startswith("Databases/"):
-                    dest_p = Path(dest_db) / clean_name[len("Databases/") :]
-                elif clean_name.startswith("Media/"):
-                    dest_p = Path(dest_media) / clean_name[len("Media/") :]
-                elif clean_name.startswith("Backups/"):
-                    dest_p = Path("./Backups") / clean_name[len("Backups/") :]
+                elif "/Databases/" in clean_name or clean_name.startswith("Databases/"):
+                    sub_p = clean_name.split("Databases/", 1)[1]
+                    dest_p = Path(dest_db) / sub_p
+                elif "/Media/" in clean_name or clean_name.startswith("Media/"):
+                    sub_p = clean_name.split("Media/", 1)[1]
+                    dest_p = Path(dest_media) / sub_p
+                elif "/Backups/" in clean_name or clean_name.startswith("Backups/"):
+                    sub_p = clean_name.split("Backups/", 1)[1]
+                    dest_p = Path("./Backups") / sub_p
                 else:
                     continue
 

@@ -11,7 +11,7 @@ import sys
 import threading
 from pathlib import Path
 from PIL import Image, ImageOps
-from core.config import find_ffmpeg_binary
+from core.config import find_ffmpeg_binary, is_ffmpeg_available
 
 # Ensure HEIC/HEIF format opener is registered
 try:
@@ -102,6 +102,9 @@ def get_or_create_thumbnail(output_dir, rel_path: str, max_size=(280, 280)) -> P
 
         # 2. Handle Videos
         elif ext in (".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv", ".3gp", ".flv"):
+            if not is_ffmpeg_available():
+                return None
+
             ffmpeg_cmd = find_ffmpeg_binary()
             tmp_file = thumb_file.with_suffix(".tmp.jpg")
             
