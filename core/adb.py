@@ -82,20 +82,56 @@ ANDROID_USB_VIDS = {
     "0bb4": "HTC",
     "17ef": "Lenovo",
     "22b8": "Motorola",
-    "05c6": "Qualcomm",
     "0fce": "Sony",
     "0b05": "Asus",
     "1949": "Amazon",
     "29a9": "Realme",
     "3318": "Nothing",
+    "35bf": "Nothing",
+    "2ae5": "Infinix",
+    "1bbb": "TCL",
+    "20a0": "Fairphone",
     "1004": "LG",
 }
+
+NON_PHONE_PERIPHERAL_KEYWORDS = [
+    "bluetooth",
+    "adapter",
+    "wireless",
+    "wi-fi",
+    "wifi",
+    "ethernet",
+    "network",
+    "audio",
+    "sound",
+    "speaker",
+    "headset",
+    "headphones",
+    "earphone",
+    "earbuds",
+    "buds",
+    "keyboard",
+    "mouse",
+    "camera",
+    "webcam",
+    "hub",
+    "controller",
+    "touchpad",
+    "trackpad",
+    "hid",
+    "receiver",
+    "dongle",
+    "composite device",
+    "mass storage",
+    "flash drive",
+]
 
 
 def detect_usb_android_hardware() -> list[dict]:
     """
     Directly queries Windows PnP hardware via cfgmgr32 to detect if an Android device
     is physically connected over USB, even if USB debugging / ADB is currently disabled.
+    Excludes internal PC components (Bluetooth, Wi-Fi, audio) and USB peripherals.
     Execution time: <2 ms.
     """
     if sys.platform != "win32":
@@ -124,6 +160,10 @@ def detect_usb_android_hardware() -> list[dict]:
         matches = []
         for dev_id in dev_ids:
             dev_id_lower = dev_id.lower()
+            # Skip composite sub-interfaces (&MI_00, etc.)
+            if "&mi_" in dev_id_lower:
+                continue
+
             m = re.search(r"vid_([0-9a-f]{4})&pid_([0-9a-f]{4})", dev_id_lower)
             if not m:
                 continue
@@ -153,11 +193,17 @@ def detect_usb_android_hardware() -> list[dict]:
                     ):
                         name = prop_buf.value
 
+            name_lower = name.lower()
+            # Exclude known PC peripherals, Bluetooth adapters, sound cards, etc.
+            if any(kw in name_lower for kw in NON_PHONE_PERIPHERAL_KEYWORDS):
+                continue
+
             vendor = ANDROID_USB_VIDS.get(vid, "")
-            is_android = bool(vendor) or any(
-                k in name.lower()
-                for k in ["android", "pixel", "phone", "mobile", "mtp", "galaxy", "oneplus", "xiaomi"]
+            is_phone_name = any(
+                k in name_lower
+                for k in ["android", "pixel", "phone", "mobile", "mtp", "galaxy", "oneplus", "xiaomi", "redmi", "poco"]
             )
+            is_android = bool(vendor) or is_phone_name
             if is_android:
                 parts = dev_id.split("\\")
                 serial = parts[2] if len(parts) > 2 and "&" not in parts[2] else ""
@@ -1242,7 +1288,7 @@ def detect_device_oem(adb_path=None):
         pass
 
     try:
-        usb_devices = detect_usb_android_hardware(adb_path)
+        usb_devices = detect_usb_android_hardware()
         if usb_devices:
             first = usb_devices[0]
             vendor = (first.get("vendor") or "").lower()

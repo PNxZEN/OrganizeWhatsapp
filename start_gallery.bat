@@ -42,6 +42,7 @@ set "PYTHON_EXE="
 
 if exist "%~dp0runtime\python.exe" (
     set "PYTHON_EXE=%~dp0runtime\python.exe"
+    set "PYTHONNOUSERSITE=1"
     goto :found_python
 )
 

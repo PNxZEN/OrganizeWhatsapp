@@ -55,7 +55,7 @@ class TestTutorialAPIs(unittest.TestCase):
 
     def test_02_get_tutorial_assets(self):
         conn = HTTPConnection("127.0.0.1", self.port)
-        for i in range(11):
+        for i in range(12):
             asset_path = f"/assets/tutorial/wa_step{i}.webp"
             conn.request("GET", asset_path)
             resp = conn.getresponse()

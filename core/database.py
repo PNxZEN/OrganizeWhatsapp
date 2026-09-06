@@ -55,8 +55,15 @@ def build_media_index(
             sys.stderr.write(f"[DB] Warning: Failed to attach wa.db: {e}\n")
 
     # Get list of tables in msgstore.db
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    tables = [row[0] for row in cur.fetchall()]
+    try:
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cur.fetchall()]
+    except sqlite3.DatabaseError as e_db:
+        conn.close()
+        raise RuntimeError(
+            f"Failed to read database '{msgstore_path}': {e_db}. "
+            "The chat database file appears corrupt or was not completely decrypted."
+        )
 
     has_fwd_table = "message_forwarded" in tables
     select_fwd = "COALESCE(m_fwd.forward_score, 0)" if has_fwd_table else "0"

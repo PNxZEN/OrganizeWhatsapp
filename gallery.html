@@ -2180,99 +2180,122 @@
             position: relative;
         }
 
-        /* SVG Micro-animation keyframes */
-        @keyframes cableDockAnim {
-            0% { transform: translateY(22px); }
-            34% { transform: translateY(0px); }
-            86% { transform: translateY(0px); }
-            100% { transform: translateY(22px); }
+        /* SVG Device States: Disconnected, Authorizing, Ready */
+        @keyframes cableHoverAnim {
+            0%, 100% { transform: translateY(24px); }
+            50% { transform: translateY(18px); }
+        }
+
+        @keyframes tapRippleLoop {
+            0% { opacity: 0.9; transform: scale(0.6); }
+            60%, 100% { opacity: 0; transform: scale(1.6); }
+        }
+
+        @keyframes portBurstGlow {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.25); opacity: 0.9; }
         }
 
         @keyframes dataPulseFlow {
-            0%, 34% { opacity: 0; stroke-dashoffset: 80; }
-            36% { opacity: 1; }
-            84% { opacity: 1; stroke-dashoffset: -120; }
-            88%, 100% { opacity: 0; }
+            0% { stroke-dashoffset: 80; opacity: 1; }
+            100% { stroke-dashoffset: -120; opacity: 1; }
         }
 
-        @keyframes screenLightUp {
-            0%, 32% { fill: #0b1320; }
-            36%, 86% { fill: #0d1929; }
-            92%, 100% { fill: #0b1320; }
-        }
-
-        @keyframes portBurst {
-            0%, 32% { transform: scale(0.6); opacity: 0; }
-            36% { transform: scale(1.4); opacity: 0.9; }
-            44% { transform: scale(1); opacity: 0.35; }
-            64% { transform: scale(1.3); opacity: 0.8; }
-            72% { transform: scale(1); opacity: 0.35; }
-            86% { opacity: 0.35; }
-            92%, 100% { opacity: 0; }
-        }
-
-        @keyframes screenWaitingAnim {
-            0%, 30% { opacity: 1; transform: scale(1); }
-            34%, 92% { opacity: 0; transform: scale(0.92); }
-            96%, 100% { opacity: 1; transform: scale(1); }
-        }
-
-        @keyframes screenPromptAnim {
-            0%, 32% { opacity: 0; transform: scale(0.88); }
-            36%, 60% { opacity: 1; transform: scale(1); }
-            64%, 100% { opacity: 0; transform: scale(0.95); }
-        }
-
-        @keyframes tapRippleAnim {
-            0%, 46% { opacity: 0; transform: scale(0.4); }
-            52% { opacity: 0.9; transform: scale(1.1); }
-            58% { opacity: 0; transform: scale(1.8); }
-            100% { opacity: 0; }
-        }
-
-        @keyframes screenAuthAnim {
-            0%, 62% { opacity: 0; transform: scale(0.85); }
-            66%, 86% { opacity: 1; transform: scale(1); }
-            90%, 100% { opacity: 0; transform: scale(0.9); }
-        }
-
-        .anim-cable-dock {
-            animation: cableDockAnim 5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        /* Default / State 1: Disconnected */
+        .tut-svg-cable-box .anim-cable-dock,
+        .tut-svg-cable-box.state-disconnected .anim-cable-dock {
+            transform: translateY(24px);
+            animation: cableHoverAnim 2.6s ease-in-out infinite;
             transform-origin: center bottom;
+            transition: transform 0.4s ease;
+        }
+        .tut-svg-cable-box .anim-screen-waiting,
+        .tut-svg-cable-box.state-disconnected .anim-screen-waiting {
+            display: block;
+            opacity: 1;
+        }
+        .tut-svg-cable-box .anim-screen-prompt,
+        .tut-svg-cable-box.state-disconnected .anim-screen-prompt {
+            display: none;
+        }
+        .tut-svg-cable-box .anim-screen-auth,
+        .tut-svg-cable-box.state-disconnected .anim-screen-auth {
+            display: none;
+        }
+        .tut-svg-cable-box .anim-port-burst,
+        .tut-svg-cable-box.state-disconnected .anim-port-burst {
+            display: none;
+        }
+        .tut-svg-cable-box .anim-data-flow,
+        .tut-svg-cable-box.state-disconnected .anim-data-flow {
+            display: none;
+        }
+        .tut-svg-cable-box .anim-screen-glow,
+        .tut-svg-cable-box.state-disconnected .anim-screen-glow {
+            fill: #0b1320;
         }
 
-        .anim-data-flow {
-            stroke-dasharray: 8 16;
-            animation: dataPulseFlow 5s linear infinite;
+        /* State 2: Authorizing (Phone plugged in, waiting for USB Debugging permission) */
+        .tut-svg-cable-box.state-authorizing .anim-cable-dock {
+            transform: translateY(0px);
+            animation: none;
+            transition: transform 0.4s ease;
         }
-
-        .anim-screen-glow {
-            animation: screenLightUp 5s ease-in-out infinite;
+        .tut-svg-cable-box.state-authorizing .anim-screen-waiting {
+            display: none;
         }
-
-        .anim-port-burst {
-            animation: portBurst 5s ease-in-out infinite;
-            transform-origin: 170px 206px;
+        .tut-svg-cable-box.state-authorizing .anim-screen-prompt {
+            display: block;
+            opacity: 1;
         }
-
-        .anim-screen-waiting {
-            animation: screenWaitingAnim 5s ease-in-out infinite;
-            transform-origin: 170px 110px;
-        }
-
-        .anim-screen-prompt {
-            animation: screenPromptAnim 5s ease-in-out infinite;
-            transform-origin: 170px 110px;
-        }
-
-        .anim-tap-ripple {
-            animation: tapRippleAnim 5s ease-out infinite;
+        .tut-svg-cable-box.state-authorizing .anim-tap-ripple {
+            animation: tapRippleLoop 1.6s ease-out infinite;
             transform-origin: 170px 118px;
         }
+        .tut-svg-cable-box.state-authorizing .anim-screen-auth {
+            display: none;
+        }
+        .tut-svg-cable-box.state-authorizing .anim-port-burst {
+            display: block;
+            opacity: 0.5;
+            transform-origin: 170px 206px;
+        }
+        .tut-svg-cable-box.state-authorizing .anim-data-flow {
+            display: none;
+        }
+        .tut-svg-cable-box.state-authorizing .anim-screen-glow {
+            fill: #0d1929;
+        }
 
-        .anim-screen-auth {
-            animation: screenAuthAnim 5s ease-in-out infinite;
-            transform-origin: 170px 110px;
+        /* State 3: Ready / Authorized */
+        .tut-svg-cable-box.state-ready .anim-cable-dock {
+            transform: translateY(0px);
+            animation: none;
+            transition: transform 0.4s ease;
+        }
+        .tut-svg-cable-box.state-ready .anim-screen-waiting {
+            display: none;
+        }
+        .tut-svg-cable-box.state-ready .anim-screen-prompt {
+            display: none;
+        }
+        .tut-svg-cable-box.state-ready .anim-screen-auth {
+            display: block;
+            opacity: 1;
+        }
+        .tut-svg-cable-box.state-ready .anim-port-burst {
+            display: block;
+            opacity: 0.8;
+            animation: portBurstGlow 2s ease-in-out infinite;
+            transform-origin: 170px 206px;
+        }
+        .tut-svg-cable-box.state-ready .anim-data-flow {
+            display: block;
+            stroke-dasharray: 8 16;
+            animation: dataPulseFlow 1.6s linear infinite;
+        }
+        .tut-svg-cable-box.state-ready .anim-screen-glow {
+            fill: #0d1929;
         }
 
         .tut-live-status-box {
@@ -2462,31 +2485,30 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            width: 235px;
-            max-height: 470px;
+            width: fit-content;
+            max-width: 240px;
             margin: 0 auto;
             position: relative;
         }
 
         .tut-phone-notch {
-            width: 66px;
-            height: 10px;
+            width: 52px;
+            height: 9px;
             background: #090d16;
-            border-bottom-left-radius: 8px;
-            border-bottom-right-radius: 8px;
+            border-bottom-left-radius: 7px;
+            border-bottom-right-radius: 7px;
             position: absolute;
             top: 8px;
             z-index: 10;
         }
 
         .tut-phone-screen-wrap {
-            width: 100%;
+            height: min(440px, 50vh);
+            aspect-ratio: 1080 / 2412;
             border-radius: 16px;
             overflow: hidden;
-            background: #000000;
+            background: #12181c;
             position: relative;
-            max-height: 440px;
-            aspect-ratio: 9 / 19.5;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -3296,7 +3318,7 @@
                                 Physical Cable Connection
                             </div>
 
-                            <div class="tut-svg-cable-box">
+                            <div id="tutPhoneSvgBox" class="tut-svg-cable-box state-disconnected">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 280" style="width:100%;height:100%;overflow:visible;">
                                     <defs>
                                         <linearGradient id="cablePlugGrad" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -3469,38 +3491,11 @@
                             <!-- Callout Alert (Dynamic per slide) -->
                             <div id="tutStepAlert" style="display:none;"></div>
 
-                            <!-- Slide 10 (Step 11) Specific Action Box: Two-Stage Flow (Tap Create first, then USB transfer) -->
+                            <!-- Slide 11 (Step 12) Specific Action Box: Transfer 64-digit key -->
                             <div id="tutSlide7UsbBox" style="display:none;" class="tut-usb-action-box">
-                                <!-- Stage 1: Tap Create on Phone Prompt -->
-                                <div id="tutStep11StageCreate" style="display:flex;flex-direction:column;gap:10px;width:100%;">
-                                    <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px 14px;">
-                                        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                                            <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,0.08);color:var(--text-secondary);font-size:10px;font-weight:700;">1</span>
-                                            <span>Action Required on Phone Screen</span>
-                                        </div>
-                                        <div style="font-size:12px;color:var(--text-secondary);line-height:1.45;">
-                                            Look at your mobile device and tap the green <strong>Create</strong> button (highlighted on the left). WhatsApp will start generating your encrypted backup in the background (~1-2 minutes).
-                                        </div>
-                                    </div>
-                                    <button type="button" class="btn-step11-ack" id="btnTutAcknowledgeCreate" onclick="revealStep11UsbTransfer()">
-                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                        <span>I have tapped "Create" on my phone &rarr; Next</span>
-                                    </button>
-                                </div>
-
-                                <!-- Stage 2: While Backup is Processing (Prompt to Send Key via USB) -->
-                                <div id="tutStep11StageUsb" style="display:none;flex-direction:column;gap:10px;width:100%;">
-                                    <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-                                        <div style="display:flex;align-items:center;gap:8px;">
-                                            <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#3b82f6;color:#fff;font-size:11px;font-weight:800;">2</span>
-                                            <div style="font-size:12px;font-weight:600;color:#60a5fa;">Backup is creating on phone! Send key now:</div>
-                                        </div>
-                                        <button type="button" class="action-btn action-btn-secondary" onclick="resetStep11StageCreate()" style="font-size:11px;padding:2px 8px;height:auto;" title="Back to step 1 instructions">
-                                            &larr; Back
-                                        </button>
-                                    </div>
-                                    <div style="font-size:12px;color:var(--text-secondary);line-height:1.4;">
-                                        While WhatsApp processes the backup on your phone, transfer the copied key to PC so everything is ready:
+                                <div style="display:flex;flex-direction:column;gap:10px;width:100%;">
+                                    <div style="font-size:12px;color:var(--text-secondary);line-height:1.45;">
+                                        While WhatsApp processes the backup on your phone, transfer the copied key to your PC:
                                     </div>
                                     <button type="button" class="btn-usb-send-action" id="btnTutSendUsb" onclick="handleSendKeyViaUsb()">
                                         <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
@@ -3511,10 +3506,7 @@
                                     <!-- Manual Paste Alternative -->
                                     <div style="margin-top:2px;border-top:1px solid rgba(255,255,255,0.08);padding-top:10px;">
                                         <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Or paste 64-character key directly here:</div>
-                                        <div style="display:flex;gap:8px;">
-                                            <input type="text" id="tutManualKeyInput" class="key-input" placeholder="Paste 64 hex characters..." maxlength="64" spellcheck="false" style="padding:8px 12px;font-size:12px;" oninput="onTutManualKeyChange(this.value)">
-                                            <button type="button" class="action-btn action-btn-secondary" id="btnTutManualSave" onclick="saveTutManualKey()" disabled style="font-size:12px;padding:6px 12px;">Save</button>
-                                        </div>
+                                        <input type="text" id="tutManualKeyInput" class="key-input" placeholder="Paste 64 hex characters..." maxlength="64" spellcheck="false" style="padding:8px 12px;font-size:12px;width:100%;" oninput="onTutManualKeyChange(this.value)">
                                     </div>
                                 </div>
                             </div>
@@ -4390,13 +4382,12 @@
         let tutKeyStatusPollTimer = null;
         let tutOemDetected = false;
         let tutUserManuallySelectedOem = false;
-        let tutStep11CreateAcknowledged = false;
         let tutHasAutoSwitchedToKey = false;
         let tutUserManuallySelectedTab = false;
 
         const TUTORIAL_SLIDES_DATA = [
             {
-                badge: 'Step 1 of 11',
+                badge: 'Step 1 of 12',
                 title: 'Open WhatsApp Settings',
                 desc: 'On your Android phone, open WhatsApp. Tap the <strong>3-dot menu</strong> (top right) or tap your <strong>Settings / Profile tab</strong> (bottom right) and select <strong>Settings</strong>.',
                 alert: {
@@ -4407,19 +4398,19 @@
                 }
             },
             {
-                badge: 'Step 2 of 11',
+                badge: 'Step 2 of 12',
                 title: 'Select "Chats"',
                 desc: 'In WhatsApp Settings, scroll slightly down and tap <strong>Chats</strong> (located between Account and Notifications).',
                 alert: null
             },
             {
-                badge: 'Step 3 of 11',
+                badge: 'Step 3 of 12',
                 title: 'Select "Chat backup"',
                 desc: 'Scroll all the way to the bottom of the Chats screen and tap <strong>Chat backup</strong>.',
                 alert: null
             },
             {
-                badge: 'Step 4 of 11',
+                badge: 'Step 4 of 12',
                 title: 'Open "End-to-end encrypted backup"',
                 desc: 'At the bottom of the Chat backup screen, tap <strong>End-to-end encrypted backup</strong>.',
                 alert: {
@@ -4430,7 +4421,7 @@
                 }
             },
             {
-                badge: 'Step 5 of 11',
+                badge: 'Step 5 of 12',
                 title: 'Tap "More options" (Crucial Step)',
                 desc: 'On the setup screen, tap <strong>More options</strong> at the bottom of the page.',
                 alert: {
@@ -4441,19 +4432,19 @@
                 }
             },
             {
-                badge: 'Step 6 of 11',
+                badge: 'Step 6 of 12',
                 title: 'Select "Use 64-digit encryption key"',
                 desc: 'In the options dialog, select <strong>Use 64-digit encryption key</strong>. WhatsApp provides this key specifically for physical backup access.',
                 alert: null
             },
             {
-                badge: 'Step 7 of 11',
+                badge: 'Step 7 of 12',
                 title: 'Generate Your 64-Digit Key',
                 desc: 'Tap the green button <strong>Generate your 64-digit key</strong> (or "Turn on"). WhatsApp will generate your 16-block hexadecimal key.',
                 alert: null
             },
             {
-                badge: 'Step 8 of 11',
+                badge: 'Step 8 of 12',
                 title: 'Long-Press Table & Tap "Copy"',
                 desc: 'WhatsApp displays your 64-digit key in a 16-block grid. <strong>Press and hold anywhere inside the key box</strong> until the floating menu appears, then tap <strong>Copy</strong>.',
                 alert: {
@@ -4464,27 +4455,33 @@
                 }
             },
             {
-                badge: 'Step 9 of 11',
+                badge: 'Step 9 of 12',
                 title: 'Tap "Continue"',
                 desc: 'After copying your 64-digit key to clipboard, tap the green <strong>Continue</strong> button at the bottom of the screen.',
                 alert: null
             },
             {
-                badge: 'Step 10 of 11',
+                badge: 'Step 10 of 12',
                 title: 'Confirm "I Saved My 64-digit Key"',
                 desc: 'WhatsApp prompts to verify that you have safely stored your key. Tap <strong>"I Saved My 64-digit Key"</strong> to confirm.',
                 alert: null
             },
             {
-                badge: 'Step 11 of 11',
-                title: 'Tap "Create" on Phone & Transfer Key',
-                desc: 'First, tap <strong>Create</strong> on your phone screen to start generating your backup. <strong>While backup creates in the background</strong>, transfer your 64-digit key via USB so the PC is ready immediately!',
+                badge: 'Step 11 of 12',
+                title: 'Tap "Create" on Phone',
+                desc: 'Look at your mobile device and tap the green <strong>Create</strong> button (highlighted on the left). WhatsApp will start generating your encrypted backup in the background.',
                 alert: {
                     type: 'tip',
                     icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
-                    title: 'Backup Takes 1-2 Minutes',
-                    text: 'After tapping "Create" on your phone, you can send your copied key right away while the phone works in the background!'
+                    title: 'Backup Generates in Background',
+                    text: 'Tapping Create initiates the WhatsApp encryption process. Proceed to Step 12 to transfer your key while it finishes.'
                 }
+            },
+            {
+                badge: 'Step 12 of 12',
+                title: 'Send Key to PC while Backup Finishes',
+                desc: 'Your phone now displays the <em>"Backing up..."</em> screen with the spinning progress circle. While WhatsApp finishes packaging your messages, transfer the 64-digit key copied in Step 8 to your PC.',
+                alert: null
             }
         ];
 
@@ -4659,7 +4656,7 @@
             `).join('');
         }
 
-        function tutPollDeviceStatus() {
+        async function tutPollDeviceStatus() {
             const modal = document.getElementById('modalTutorial');
             if (!modal || !modal.classList.contains('open')) {
                 if (tutDevicePollInterval) {
@@ -4669,13 +4666,21 @@
                 return;
             }
 
+            if (isHttpServer) {
+                try {
+                    await checkDeviceStatus();
+                } catch (e) {}
+            }
+
             const dot = document.getElementById('tutPhoneStatusDot');
             const title = document.getElementById('tutPhoneStatusTitle');
             const sub = document.getElementById('tutPhoneStatusSub');
+            const svgBox = document.getElementById('tutPhoneSvgBox');
             if (!dot || !title || !sub) return;
 
             const st = currentDeviceStatus || {};
             if (st.connected && st.authorized) {
+                if (svgBox) svgBox.className = 'tut-svg-cable-box state-ready';
                 dot.className = 'tut-pulse-indicator ready';
                 title.innerText = (st.model || st.serial || 'Android Device') + ': Ready';
                 sub.innerText = 'USB Debugging authorized. Proceed to WhatsApp Key guide.';
@@ -4692,10 +4697,17 @@
                     }, 800);
                 }
             } else if (st.connected && !st.authorized) {
+                if (svgBox) svgBox.className = 'tut-svg-cable-box state-authorizing';
                 dot.className = 'tut-pulse-indicator action';
-                title.innerText = 'Device Detected: Authorization Required';
-                sub.innerText = 'Unlock your phone and tap "Allow USB debugging" on screen.';
+                if (st.usb_debugging === false) {
+                    title.innerText = (st.model || 'Phone') + ' Connected: USB Debugging OFF';
+                    sub.innerText = 'Phone detected, but USB Debugging is not enabled. Follow the steps below.';
+                } else {
+                    title.innerText = 'Device Detected: Authorization Required';
+                    sub.innerText = 'Unlock your phone and tap "Allow USB debugging" on screen.';
+                }
             } else {
+                if (svgBox) svgBox.className = 'tut-svg-cable-box state-disconnected';
                 dot.className = 'tut-pulse-indicator';
                 title.innerText = 'No Device Detected';
                 sub.innerText = 'Plug your phone into PC with a USB data cable.';
@@ -4727,22 +4739,6 @@
                 bar.appendChild(fill);
                 container.appendChild(bar);
             }
-        }
-
-        function revealStep11UsbTransfer() {
-            tutStep11CreateAcknowledged = true;
-            const s1 = document.getElementById('tutStep11StageCreate');
-            const s2 = document.getElementById('tutStep11StageUsb');
-            if (s1) s1.style.display = 'none';
-            if (s2) s2.style.display = 'flex';
-        }
-
-        function resetStep11StageCreate() {
-            tutStep11CreateAcknowledged = false;
-            const s1 = document.getElementById('tutStep11StageCreate');
-            const s2 = document.getElementById('tutStep11StageUsb');
-            if (s1) s1.style.display = 'flex';
-            if (s2) s2.style.display = 'none';
         }
 
         function setTutSlide(idx) {
@@ -4810,26 +4806,12 @@
                 if (btnNextFooter) btnNextFooter.style.display = 'none';
                 if (btnFinishFooter) btnFinishFooter.style.display = 'inline-flex';
 
-                const s1 = document.getElementById('tutStep11StageCreate');
-                const s2 = document.getElementById('tutStep11StageUsb');
-
-                if (tutStep11CreateAcknowledged) {
-                    if (s1) s1.style.display = 'none';
-                    if (s2) s2.style.display = 'flex';
-                } else {
-                    if (s1) s1.style.display = 'flex';
-                    if (s2) s2.style.display = 'none';
-                }
-
-                // Check if key is already configured on load of Step 11
+                // Check if key is already configured on load of Step 12
                 if (isHttpServer) {
                     fetch('/api/config').then(r => r.json()).then(cfg => {
                         const btnText = document.getElementById('btnTutSendUsbText');
-                        if (cfg && cfg.hex_key_set) {
-                            if (btnText) btnText.innerText = 'Resend Key from Phone via USB';
-                            tutStep11CreateAcknowledged = true;
-                            if (s1) s1.style.display = 'none';
-                            if (s2) s2.style.display = 'flex';
+                        if (cfg && cfg.hex_key_set && btnText) {
+                            btnText.innerText = 'Resend Key from Phone via USB';
                         }
                     }).catch(() => {});
                 }
@@ -4898,6 +4880,22 @@
                     const resp = await fetch('/api/key-status');
                     if (resp.ok) {
                         const data = await resp.json();
+                        const btn = document.getElementById('btnTutSendUsb');
+                        const text = document.getElementById('btnTutSendUsbText');
+                        const statusEl = document.getElementById('tutUsbPortalStatus');
+
+                        if (data.device_connected === false) {
+                            if (btn) {
+                                btn.disabled = false;
+                                btn.classList.remove('waiting');
+                            }
+                            if (text) text.innerText = 'Send Key from Phone via USB';
+                            if (statusEl) {
+                                statusEl.innerHTML = '<span style="color:#ef4444;">Phone disconnected. Please check USB cable connection.</span>';
+                            }
+                            return;
+                        }
+
                         if (data.received_key || data.hex_key_set) {
                             clearInterval(tutKeyStatusPollTimer);
                             tutKeyStatusPollTimer = null;
@@ -4924,51 +4922,97 @@
                 statusEl.innerHTML = `
                     <div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:8px 12px;color:var(--accent);font-weight:600;display:flex;align-items:center;gap:8px;">
                         <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                        <span>64-digit key received and encrypted in config.json!</span>
+                        <span>64-digit key received and saved!</span>
                     </div>
                 `;
             }
             const manualInput = document.getElementById('tutManualKeyInput');
             if (manualInput && key) {
                 manualInput.value = key;
-                onTutManualKeyChange(key);
             }
-            showToast('64-digit WhatsApp key received over USB!', 'success');
+            if (key && key.length === 64 && isHttpServer) {
+                fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hex_key: key })
+                }).then(() => checkConfigStatus()).catch(() => {});
+            }
+            showToast('64-digit WhatsApp key received and saved!', 'success');
             checkConfigStatus();
         }
 
         function onTutManualKeyChange(val) {
             const cleaned = val.replace(/[^0-9a-fA-F]/g, '').toLowerCase();
-            document.getElementById('tutManualKeyInput').value = cleaned;
-            const btn = document.getElementById('btnTutManualSave');
-            btn.disabled = (cleaned.length !== 64);
-        }
+            const manualInput = document.getElementById('tutManualKeyInput');
+            if (manualInput) manualInput.value = cleaned;
 
-        async function saveTutManualKey() {
-            const key = document.getElementById('tutManualKeyInput').value.trim();
-            if (key.length !== 64) {
-                showToast('Key must be exactly 64 hexadecimal characters.', 'error');
-                return;
-            }
-            try {
-                const resp = await fetch('/api/submit-key', {
+            if (cleaned.length === 64 && isHttpServer) {
+                fetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ hex_key: key })
-                });
-                const res = await resp.json();
-                if (resp.ok && res.status === 'success') {
-                    showToast('Key saved successfully!', 'success');
-                    onTutKeyReceivedSuccess(key);
-                } else {
-                    showToast(res.message || 'Failed to save key.', 'error');
-                }
-            } catch (e) {
-                showToast('Save failed: ' + e.message, 'error');
+                    body: JSON.stringify({ hex_key: cleaned })
+                }).then(r => r.json()).then(res => {
+                    if (res && res.status === 'success') {
+                        showToast('64-digit key verified and saved!', 'success');
+                        checkConfigStatus();
+                        const statusEl = document.getElementById('tutUsbPortalStatus');
+                        if (statusEl) {
+                            statusEl.innerHTML = `
+                                <div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:8px 12px;color:var(--accent);font-weight:600;display:flex;align-items:center;gap:8px;">
+                                    <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                    <span>64-digit key verified and saved!</span>
+                                </div>
+                            `;
+                        }
+                    }
+                }).catch(() => {});
             }
         }
 
         async function finishTutorialOnboarding(autoStartSync = false) {
+            let keyToSave = '';
+            const manualInput = document.getElementById('tutManualKeyInput');
+            if (manualInput && manualInput.value.trim().length === 64) {
+                keyToSave = manualInput.value.trim();
+            }
+
+            let keyConfigured = false;
+            if (isHttpServer) {
+                try {
+                    const r = await fetch('/api/config');
+                    if (r.ok) {
+                        const cfg = await r.json();
+                        if (cfg && cfg.hex_key_set) {
+                            keyConfigured = true;
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            if (!keyConfigured && !keyToSave) {
+                showToast('Please transfer or paste your 64-digit WhatsApp key first before finishing.', 'error');
+                if (manualInput) {
+                    manualInput.focus();
+                    manualInput.style.borderColor = '#ef4444';
+                    manualInput.style.boxShadow = '0 0 12px rgba(239, 68, 68, 0.4)';
+                    setTimeout(() => {
+                        manualInput.style.borderColor = '';
+                        manualInput.style.boxShadow = '';
+                    }, 2500);
+                }
+                return;
+            }
+
+            if (keyToSave && isHttpServer) {
+                try {
+                    await fetch('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ hex_key: keyToSave })
+                    });
+                } catch (e) {}
+            }
+
             closeModal('modalTutorial');
             if (isHttpServer) {
                 try {

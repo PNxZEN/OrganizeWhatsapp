@@ -191,7 +191,9 @@ def run_pipeline(
             create_key_file(hex_key, key_file)
 
         crypt_file = None
-        for ext in [".crypt15", ".crypt14", ".crypt12"]:
+        # When 64-digit key is used, strictly prioritize modern Crypt15
+        extensions = [".crypt15"] if hex_key else [".crypt15", ".crypt14", ".crypt12"]
+        for ext in extensions:
             cand = os.path.join(db_dir, f"msgstore.db{ext}")
             if os.path.isfile(cand):
                 crypt_file = cand
@@ -202,10 +204,62 @@ def run_pipeline(
                 os.path.join(db_dir, f)
                 for f in os.listdir(db_dir)
                 if f.startswith("msgstore")
-                and any(f.endswith(e) for e in [".crypt15", ".crypt14", ".crypt12"])
+                and any(f.endswith(e) for e in extensions)
             ]
             if candidates:
                 crypt_file = sorted(candidates, key=os.path.getmtime, reverse=True)[0]
+
+        # If 64-digit key is set and no crypt15 was found, check if only legacy crypt14/12 exists
+        if hex_key and not crypt_file and os.path.isdir(db_dir):
+            legacy_cands = [
+                os.path.join(db_dir, f)
+                for f in os.listdir(db_dir)
+                if f.startswith("msgstore") and any(f.endswith(e) for e in [".crypt14", ".crypt12"])
+            ]
+            if legacy_cands and not skip_pull and not skip_db_pull:
+                print("\n[DB] WhatsApp backup is generating on phone. Polling for msgstore.db.crypt15 (up to 4m)...")
+                start_poll_time = time.time()
+                while time.time() - start_poll_time < 240:
+                    if cancellation_token and cancellation_token.is_set():
+                        return False
+                    elapsed = int(time.time() - start_poll_time)
+                    print(f"\r[DB] Waiting for backup to complete on phone... ({elapsed}s elapsed)", end="", flush=True)
+                    time.sleep(3)
+                    adb_pull(
+                        dest_db=db_dir,
+                        dest_media=media_dir,
+                        folders_filter=["Databases"],
+                        cancellation_token=cancellation_token,
+                    )
+                    cands15 = [
+                        os.path.join(db_dir, f)
+                        for f in os.listdir(db_dir)
+                        if f.startswith("msgstore") and f.endswith(".crypt15")
+                    ]
+                    if cands15:
+                        cand_latest = sorted(cands15, key=os.path.getmtime, reverse=True)[0]
+                        if os.path.isfile(cand_latest) and os.path.getsize(cand_latest) > 0:
+                            s1 = os.path.getsize(cand_latest)
+                            time.sleep(2)
+                            adb_pull(
+                                dest_db=db_dir,
+                                dest_media=media_dir,
+                                folders_filter=["Databases"],
+                                cancellation_token=cancellation_token,
+                            )
+                            s2 = os.path.getsize(cand_latest)
+                            if s1 == s2 and s2 > 0:
+                                crypt_file = cand_latest
+                                print(f"\n[DB] Encrypted backup ready: {crypt_file}")
+                                break
+
+            if not crypt_file and legacy_cands:
+                raise RuntimeError(
+                    "WhatsApp backup is still in progress on your phone...\n\n"
+                    "Only an older backup (msgstore.db.crypt14) was found. The 64-digit encrypted backup "
+                    "(msgstore.db.crypt15) was not completed within 4 minutes.\n\n"
+                    "Please wait for WhatsApp on your phone to complete its backup (100%), then run again."
+                )
 
         if crypt_file and os.path.isfile(crypt_file):
             print(f"[DB] Decrypting: {crypt_file} -> {msgstore}")
@@ -449,7 +503,8 @@ def run_streaming_pipeline(
             create_key_file(hex_key, key_file)
 
         crypt_file = None
-        for ext in [".crypt15", ".crypt14", ".crypt12"]:
+        extensions = [".crypt15"] if hex_key else [".crypt15", ".crypt14", ".crypt12"]
+        for ext in extensions:
             cand = os.path.join(db_dir, f"msgstore.db{ext}")
             if os.path.isfile(cand):
                 crypt_file = cand
@@ -460,10 +515,79 @@ def run_streaming_pipeline(
                 os.path.join(db_dir, f)
                 for f in os.listdir(db_dir)
                 if f.startswith("msgstore")
-                and any(f.endswith(e) for e in [".crypt15", ".crypt14", ".crypt12"])
+                and any(f.endswith(e) for e in extensions)
             ]
             if candidates:
                 crypt_file = sorted(candidates, key=os.path.getmtime, reverse=True)[0]
+
+        # If 64-digit key is configured but only legacy Crypt14/12 exists,
+        # WhatsApp on the phone might still be packaging the new Crypt15 backup.
+        if hex_key and not crypt_file and os.path.isdir(db_dir):
+            legacy_cands = [
+                os.path.join(db_dir, f)
+                for f in os.listdir(db_dir)
+                if f.startswith("msgstore") and any(f.endswith(e) for e in [".crypt14", ".crypt12"])
+            ]
+            if legacy_cands and not skip_pull and not skip_db_pull:
+                max_wait_seconds = 240  # Poll phone for up to 4 minutes
+                poll_interval = 3
+                start_poll_time = time.time()
+                while time.time() - start_poll_time < max_wait_seconds:
+                    if cancellation_token and cancellation_token.is_set():
+                        return False
+                    if skip_db_token and skip_db_token.is_set():
+                        break
+
+                    elapsed = int(time.time() - start_poll_time)
+                    if status_callback:
+                        status_callback(
+                            "decrypting",
+                            f"Waiting for WhatsApp backup to finish on phone... ({elapsed}s elapsed)",
+                        )
+
+                    time.sleep(poll_interval)
+
+                    adb_pull(
+                        dest_db=db_dir,
+                        dest_media=media_dir,
+                        folders_filter=["Databases"],
+                        cancellation_token=cancellation_token,
+                        skip_db_token=skip_db_token,
+                    )
+                    cands15 = [
+                        os.path.join(db_dir, f)
+                        for f in os.listdir(db_dir)
+                        if f.startswith("msgstore") and f.endswith(".crypt15")
+                    ]
+                    if cands15:
+                        cand_latest = sorted(cands15, key=os.path.getmtime, reverse=True)[0]
+                        if os.path.isfile(cand_latest) and os.path.getsize(cand_latest) > 0:
+                            s1 = os.path.getsize(cand_latest)
+                            time.sleep(2)
+                            adb_pull(
+                                dest_db=db_dir,
+                                dest_media=media_dir,
+                                folders_filter=["Databases"],
+                                cancellation_token=cancellation_token,
+                                skip_db_token=skip_db_token,
+                            )
+                            s2 = os.path.getsize(cand_latest)
+                            if s1 == s2 and s2 > 0:
+                                crypt_file = cand_latest
+                                if status_callback:
+                                    status_callback(
+                                        "decrypting",
+                                        "Encrypted WhatsApp backup ready! Starting decryption...",
+                                    )
+                                break
+
+            if not crypt_file and legacy_cands:
+                raise RuntimeError(
+                    "WhatsApp backup is still in progress on your phone...\n\n"
+                    "Only an older backup (msgstore.db.crypt14) was found. The 64-digit encrypted backup "
+                    "(msgstore.db.crypt15) was not completed within 4 minutes.\n\n"
+                    "Please wait for WhatsApp on your phone to complete its backup (100%), then click 'Resume Sync'."
+                )
 
         def _on_decrypt_progress(bytes_read, total_bytes):
             if status_callback:

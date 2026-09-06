@@ -37,10 +37,10 @@ def get_font(size, bold=False):
                 pass
     return ImageFont.load_default()
 
-def draw_clean_status_bar(im):
+def draw_clean_status_bar(im, bg_color=None):
     """Replaces personal status bar (y: 0 to 115) with a clean neutral status bar."""
     draw = ImageDraw.Draw(im)
-    draw.rectangle([0, 0, im.width, 115], fill=BG_DARK)
+    draw.rectangle([0, 0, im.width, 115], fill=bg_color if bg_color is not None else BG_DARK)
     
     # Time 9:41
     font_time = get_font(38, bold=True)
@@ -224,10 +224,10 @@ def process_slide_4():
     d_over.line([(140, 2085), (940, 2180)], fill=(239, 68, 68, 255), width=8)
     d_over.line([(940, 2085), (140, 2180)], fill=(239, 68, 68, 255), width=8)
     
-    # Crisp warning pill in the center: '✕ DO NOT USE PASSKEY'
+    # Crisp warning pill in the center: '[X] DO NOT USE PASSKEY'
     font_w = get_font(32, bold=True)
     d_over.rounded_rectangle([250, 2106, 830, 2162], radius=14, fill=(220, 38, 38, 255), outline=(255, 255, 255, 200), width=2)
-    d_over.text((285, 2116), "✕  DO NOT USE PASSKEY", font=font_w, fill=(255, 255, 255))
+    d_over.text((285, 2116), "[X]  DO NOT USE PASSKEY", font=font_w, fill=(255, 255, 255))
     
     im_merged = Image.alpha_composite(im, overlay).convert('RGB')
     
@@ -443,63 +443,117 @@ def process_slide_10() -> Image.Image:
     final = Image.alpha_composite(im_rgba, glow_layer).convert('RGB')
     return final
 
+def process_slide_11():
+    """Slide 11: Backup in progress with calm rotating spinner (24 frames, 300ms/frame)."""
+    raw_10_1 = os.path.join(RAW_DIR, '10_1.png')
+    raw_10_2 = os.path.join(RAW_DIR, '10_2.png')
+    raw_10_3 = os.path.join(RAW_DIR, '10_3.png')
+    if not (os.path.exists(raw_10_1) and os.path.exists(raw_10_2) and os.path.exists(raw_10_3)):
+        return None
+
+    im1 = Image.open(raw_10_1).convert('RGB')
+    im2 = Image.open(raw_10_2).convert('RGB')
+    im3 = Image.open(raw_10_3).convert('RGB')
+
+    cx, cy = 235, 1308
+    r = 65
+    box = (cx - r, cy - r, cx + r, cy + r)
+    spinners = [im.crop(box) for im in (im1, im2, im3)]
+
+    # Draw clean generic status bar (9:41, 5G, signal, battery) with dimmed background
+    draw_clean_status_bar(im1, bg_color=(7, 11, 14))
+
+    # Redact Google account email to user@example.com
+    draw1 = ImageDraw.Draw(im1)
+    draw1.rectangle([40, 948, 550, 995], fill=(7, 11, 14))
+    font_email = get_font(38)
+    draw1.text((45, 951), "user@example.com", font=font_email, fill=(96, 102, 105))
+
+    frames = []
+    for rot in (0, 45, 90, 135, 180, 225, 270, 315):
+        for s in spinners:
+            f = im1.copy()
+            rotated_s = s.rotate(-rot, resample=Image.Resampling.BICUBIC)
+            f.paste(rotated_s, box)
+            frames.append(f)
+
+    return frames
+
 def main():
-    print("[1/11] Processing Slide 0 (Main Menu -> Settings)...")
+    print("[1/12] Processing Slide 0 (Main Menu -> Settings)...")
     s0 = process_slide_0()
     s0.save(os.path.join(DEST_DIR_CORE, 'wa_step0.webp'), 'WEBP', quality=90)
     s0.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step0.webp'), 'WEBP', quality=90)
     
-    print("[2/11] Processing Slide 1 (Settings -> Chats)...")
+    print("[2/12] Processing Slide 1 (Settings -> Chats)...")
     s1 = process_slide_1()
     s1.save(os.path.join(DEST_DIR_CORE, 'wa_step1.webp'), 'WEBP', quality=90)
     s1.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step1.webp'), 'WEBP', quality=90)
     
-    print("[3/11] Processing Slide 2 (Chats -> Chat backup)...")
+    print("[3/12] Processing Slide 2 (Chats -> Chat backup)...")
     s2 = process_slide_2()
     s2.save(os.path.join(DEST_DIR_CORE, 'wa_step2.webp'), 'WEBP', quality=90)
     s2.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step2.webp'), 'WEBP', quality=90)
     
-    print("[4/11] Processing Slide 3 (Chat backup -> E2E Backup)...")
+    print("[4/12] Processing Slide 3 (Chat backup -> E2E Backup)...")
     s3 = process_slide_3()
     s3.save(os.path.join(DEST_DIR_CORE, 'wa_step3.webp'), 'WEBP', quality=90)
     s3.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step3.webp'), 'WEBP', quality=90)
     
-    print("[5/11] Processing Slide 4 (More options vs Passkey Alert)...")
+    print("[5/12] Processing Slide 4 (More options vs Passkey Alert)...")
     s4 = process_slide_4()
     s4.save(os.path.join(DEST_DIR_CORE, 'wa_step4.webp'), 'WEBP', quality=90)
     s4.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step4.webp'), 'WEBP', quality=90)
     
-    print("[6/11] Processing Slide 5 (More options -> 64-digit key)...")
+    print("[6/12] Processing Slide 5 (More options -> 64-digit key)...")
     s5 = process_slide_5()
     s5.save(os.path.join(DEST_DIR_CORE, 'wa_step5.webp'), 'WEBP', quality=90)
     s5.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step5.webp'), 'WEBP', quality=90)
     
-    print("[7/11] Processing Slide 6 (Generate key)...")
+    print("[7/12] Processing Slide 6 (Generate key)...")
     s6 = process_slide_6()
     s6.save(os.path.join(DEST_DIR_CORE, 'wa_step6.webp'), 'WEBP', quality=90)
     s6.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step6.webp'), 'WEBP', quality=90)
     
-    print("[8/11] Processing Slide 7 (Long press key & Copy)...")
+    print("[8/12] Processing Slide 7 (Long press key & Copy)...")
     s7 = process_slide_7()
     s7.save(os.path.join(DEST_DIR_CORE, 'wa_step7.webp'), 'WEBP', quality=90)
     s7.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step7.webp'), 'WEBP', quality=90)
 
-    print("[9/11] Processing Slide 8 (Tap Continue)...")
+    print("[9/12] Processing Slide 8 (Tap Continue)...")
     s8 = process_slide_8()
     s8.save(os.path.join(DEST_DIR_CORE, 'wa_step8.webp'), 'WEBP', quality=90)
     s8.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step8.webp'), 'WEBP', quality=90)
 
-    print("[10/11] Processing Slide 9 (Tap I Saved My Key)...")
+    print("[10/12] Processing Slide 9 (Tap I Saved My Key)...")
     s9 = process_slide_9()
     s9.save(os.path.join(DEST_DIR_CORE, 'wa_step9.webp'), 'WEBP', quality=90)
     s9.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step9.webp'), 'WEBP', quality=90)
 
-    print("[11/11] Processing Slide 10 (Tap Create)...")
+    print("[11/12] Processing Slide 10 (Tap Create)...")
     s10 = process_slide_10()
     s10.save(os.path.join(DEST_DIR_CORE, 'wa_step10.webp'), 'WEBP', quality=90)
     s10.save(os.path.join(DEST_DIR_OUTPUT, 'wa_step10.webp'), 'WEBP', quality=90)
+
+    print("[12/12] Processing Slide 11 (Backup in progress spinner)...")
+    frames11 = process_slide_11()
+    if frames11:
+        frames11[0].save(
+            os.path.join(DEST_DIR_CORE, 'wa_step11.webp'),
+            save_all=True,
+            append_images=frames11[1:],
+            duration=300,
+            loop=0,
+            quality=85,
+            method=6
+        )
+        import shutil
+        shutil.copyfile(
+            os.path.join(DEST_DIR_CORE, 'wa_step11.webp'),
+            os.path.join(DEST_DIR_OUTPUT, 'wa_step11.webp')
+        )
     
-    print("Successfully processed and exported all 11 tutorial slides in WebP format!")
+    print("Successfully processed and exported all 12 tutorial slides in WebP format!")
 
 if __name__ == '__main__':
     main()

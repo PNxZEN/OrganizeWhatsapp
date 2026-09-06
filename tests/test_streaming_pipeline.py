@@ -197,6 +197,89 @@ class TestSyncManifestTraceability(unittest.TestCase):
         finally:
             shutil.rmtree(str(temp_out), ignore_errors=True)
 
+    @mock.patch("time.sleep", return_value=None)
+    @mock.patch("core.pipeline.decrypt_db")
+    @mock.patch("core.pipeline.adb_pull")
+    def test_legacy_crypt14_polls_and_auto_resumes_when_crypt15_ready(
+        self, mock_adb_pull, mock_decrypt, mock_sleep
+    ):
+        """Verify that streaming pipeline polls for crypt15 when legacy crypt14 exists, and auto-resumes once ready."""
+        from core.pipeline import run_streaming_pipeline
+
+        temp_dir = Path(tempfile.mkdtemp(prefix="test_poll_crypt_"))
+        db_dir = temp_dir / "Databases"
+        db_dir.mkdir(parents=True, exist_ok=True)
+        # Create legacy crypt14 initially
+        (db_dir / "msgstore.db.crypt14").write_bytes(b"LEGACY_CRYPT14_DATA")
+
+        # Side effect on adb_pull: Step 1 pull does not create crypt15, but second call (during polling) creates it
+        call_count = [0]
+
+        def fake_adb_pull(**kwargs):
+            call_count[0] += 1
+            if call_count[0] >= 2:
+                (db_dir / "msgstore.db.crypt15").write_bytes(b"CRYPT15_DATA_READY")
+            return True
+
+        mock_adb_pull.side_effect = fake_adb_pull
+
+        statuses = []
+
+        def on_status(phase, label, total=None):
+            statuses.append((phase, label))
+
+        try:
+            run_streaming_pipeline(
+                hex_key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                db_dir=str(db_dir),
+                output_dir=str(temp_dir / "out"),
+                skip_pull=False,
+                skip_db_pull=False,
+                status_callback=on_status,
+            )
+            # Verify decrypt_db was called for the newly discovered crypt15 file
+            self.assertTrue(mock_decrypt.call_count >= 1)
+            called_crypt = mock_decrypt.call_args_list[0][0][1]
+            self.assertTrue(called_crypt.endswith("msgstore.db.crypt15"))
+
+            # Verify status_callback was triggered with waiting and ready messages
+            self.assertTrue(any("Waiting for WhatsApp backup to finish" in s[1] for s in statuses))
+            self.assertTrue(any("Encrypted WhatsApp backup ready" in s[1] for s in statuses))
+        finally:
+            shutil.rmtree(str(temp_dir), ignore_errors=True)
+
+    @mock.patch("core.pipeline.adb_pull", return_value=True)
+    def test_legacy_crypt14_raises_after_timeout_if_crypt15_not_ready(self, mock_adb_pull):
+        """Verify that streaming pipeline raises RuntimeError if crypt15 does not appear after timeout."""
+        from core.pipeline import run_streaming_pipeline
+
+        temp_dir = Path(tempfile.mkdtemp(prefix="test_timeout_crypt_"))
+        db_dir = temp_dir / "Databases"
+        db_dir.mkdir(parents=True, exist_ok=True)
+        (db_dir / "msgstore.db.crypt14").write_bytes(b"LEGACY_CRYPT14_DATA")
+
+        # Mock time.time to advance past 240 seconds
+        time_state = [1000.0]
+
+        def fake_time():
+            val = time_state[0]
+            time_state[0] += 120.0
+            return val
+
+        try:
+            with mock.patch("time.time", side_effect=fake_time), mock.patch("time.sleep", return_value=None):
+                with self.assertRaises(RuntimeError) as ctx:
+                    run_streaming_pipeline(
+                        hex_key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                        db_dir=str(db_dir),
+                        output_dir=str(temp_dir / "out"),
+                        skip_pull=False,
+                        skip_db_pull=False,
+                    )
+                self.assertIn("was not completed within 4 minutes", str(ctx.exception))
+        finally:
+            shutil.rmtree(str(temp_dir), ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()

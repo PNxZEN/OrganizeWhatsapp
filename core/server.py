@@ -221,8 +221,11 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
                 </div>
                 <h1 id="successTitle" style="color:var(--accent);font-size:1.15rem;">Key Received on PC!</h1>
                 <p class="subtitle" id="successSubtitle" style="margin-bottom:0;font-size:0.85rem;">
-                    Your 64-digit WhatsApp key has been received and safely encrypted on your PC. You can close this browser tab.
+                    Your 64-digit WhatsApp key has been received and safely encrypted on your PC.
                 </p>
+                <button type="button" class="btn-submit" onclick="tryCloseTab()" style="margin-top:14px;width:100%;font-size:0.88rem;padding:10px;">
+                    Close Tab
+                </button>
             </div>
             <button class="btn-resend" id="btnResend" onclick="enableResendMode()">
                 <svg style="width:16px;height:16px;fill:currentColor;" viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
@@ -232,12 +235,16 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
 
         <!-- INPUT SECTION: Shown when entering key or resending -->
         <div id="inputSection">
+            <div id="disconnectBanner" class="status-msg error" style="display:none;margin-bottom:14px;text-align:left;">
+                USB connection interrupted. Reconnecting automatically when the cable is plugged back in...
+            </div>
+
             <h1 id="inputTitle">Send 64-Digit Key to PC</h1>
             <p class="subtitle" id="inputSubtitle">Tap the button below to paste your copied 64-digit key directly into your PC via the USB cable.</p>
 
             <button class="btn-paste" id="btnPaste" onclick="handlePasteFromClipboard()" style="box-shadow:0 4px 18px rgba(0,168,132,0.35);">
                 <svg style="width:20px;height:20px;fill:currentColor;" viewBox="0 0 24 24"><path d="M19 2h-4.18C14.4 0.84 13.3 0 12 0c-1.3 0-2.4 0.84-2.82 2H5c-1.1 0-2 0.9-2 2v16c0 1.1 0.9 2 2 2h14c1.1 0 2-0.9 2-2V4c0-1.1-0.9-2-2-2zm-7 0c0.55 0 1 0.45 1 1s-0.45 1-1 1-1-0.45-1-1 0.45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/></svg>
-                <span id="btnPasteText">&#x26A1; 1-Tap Paste &amp; Send to PC</span>
+                <span id="btnPasteText">Paste &amp; Send to PC</span>
             </button>
             <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:8px;margin-bottom:4px;">Reads key directly from your phone clipboard</div>
 
@@ -256,6 +263,7 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
     <script>
         let isResendMode = false;
         let isSubmitting = false;
+        let autoCloseTimer = null;
 
         window.addEventListener('DOMContentLoaded', () => {
             checkInitialStatus();
@@ -263,7 +271,33 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
             if (inputEl) {
                 inputEl.addEventListener('paste', () => setTimeout(onKeyChange, 40));
             }
+            startHeartbeat();
         });
+
+        function startHeartbeat() {
+            setInterval(async () => {
+                const inputSec = document.getElementById('inputSection');
+                if (inputSec && inputSec.style.display !== 'none') {
+                    try {
+                        const controller = new AbortController();
+                        const to = setTimeout(() => controller.abort(), 2000);
+                        const r = await fetch('/api/key-status', { signal: controller.signal });
+                        clearTimeout(to);
+                        const banner = document.getElementById('disconnectBanner');
+                        if (banner) {
+                            if (r.ok) {
+                                banner.style.display = 'none';
+                            } else {
+                                banner.style.display = 'block';
+                            }
+                        }
+                    } catch (e) {
+                        const banner = document.getElementById('disconnectBanner');
+                        if (banner) banner.style.display = 'block';
+                    }
+                }
+            }, 2500);
+        }
 
         async function checkInitialStatus() {
             try {
@@ -288,14 +322,43 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
             isSubmitting = false;
         }
 
+        function tryCloseTab() {
+            try {
+                window.open('', '_self', '');
+                window.close();
+            } catch (e) {}
+        }
+
+        function startAutoCloseCountdown() {
+            let seconds = 5;
+            const subtitleEl = document.getElementById('successSubtitle');
+            if (autoCloseTimer) clearInterval(autoCloseTimer);
+            autoCloseTimer = setInterval(() => {
+                if (seconds > 0) {
+                    if (subtitleEl) {
+                        subtitleEl.innerHTML = 'Your 64-digit WhatsApp key was securely saved on your PC.<br><span style="display:inline-block;margin-top:8px;font-size:0.8rem;color:var(--text-secondary);">This tab will close automatically in <strong>' + seconds + 's</strong>.</span>';
+                    }
+                    seconds--;
+                } else {
+                    clearInterval(autoCloseTimer);
+                    autoCloseTimer = null;
+                    tryCloseTab();
+                }
+            }, 1000);
+        }
+
         function enableResendMode() {
+            if (autoCloseTimer) {
+                clearInterval(autoCloseTimer);
+                autoCloseTimer = null;
+            }
             isResendMode = true;
             isSubmitting = false;
             document.getElementById('successSection').style.display = 'none';
             document.getElementById('inputSection').style.display = 'block';
             document.getElementById('inputTitle').innerText = 'Resend Key to PC';
             document.getElementById('inputSubtitle').innerText = 'Paste your 64-digit key below to update the key stored on your PC.';
-            document.getElementById('btnPasteText').innerText = '&#x26A1; 1-Tap Paste & Resend';
+            document.getElementById('btnPasteText').innerText = 'Paste &amp; Resend';
             document.getElementById('btnSubmitText').innerText = 'Resend Key to PC';
             document.getElementById('btnPaste').disabled = false;
             document.getElementById('btnPaste').style.opacity = '1';
@@ -382,14 +445,15 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
                 const resp = await fetch('/api/submit-key', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ hex_key: hexKey })
+                    body: JSON.stringify({ hex_key: hexKey, auto_save: true })
                 });
                 const res = await resp.json();
                 if (resp.ok && res.status === 'success') {
                     showSuccessCard(
                         isResendMode ? 'Key Resent to PC!' : 'Key Received on PC!',
-                        'Your 64-digit WhatsApp key was securely saved in config.json. You can now close this browser tab.'
+                        'Your 64-digit WhatsApp key was securely saved on your PC.'
                     );
+                    startAutoCloseCountdown();
                 } else {
                     statusEl.className = 'status-msg error';
                     statusEl.textContent = res.message || 'Error saving key on PC.';
@@ -397,6 +461,8 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
             } catch (err) {
                 statusEl.className = 'status-msg error';
                 statusEl.textContent = 'Connection error: ' + err.message + '. Ensure the USB cable remains connected.';
+            } finally {
+                isSubmitting = false;
             }
         }
     </script>
@@ -957,6 +1023,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         # /api/key-status (status of 64-digit key and received key from mobile)
         if path == "/api/key-status":
             cfg = load_config()
+            dev_res = check_adb_device()
             self._send_json(
                 200,
                 {
@@ -964,6 +1031,8 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "latest_received_key": _latest_received_key,
                     "received_key": _latest_received_key,
                     "onboarding_completed": cfg.get("onboarding_completed", False),
+                    "device_connected": bool(dev_res.connected),
+                    "device_authorized": bool(dev_res.authorized),
                 },
             )
             return
@@ -1323,9 +1392,18 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             if not is_valid:
                 self._send_json(400, {"status": "error", "message": err})
                 return
-            # Staged in memory for review and user confirmation.
-            # Do NOT write to config.json or create encrypted_backup.key until user clicks Save.
+            # Staged in memory for review and user confirmation
             _latest_received_key = clean_key
+            # If auto_save requested (e.g. from mobile /paste-key or tutorial carousel), persist to config
+            if body.get("auto_save", False):
+                cfg = load_config()
+                cfg["hex_key"] = clean_key
+                save_config(cfg)
+                out_p = Path(self.output_dir).resolve()
+                try:
+                    create_key_file(clean_key, out_p / "encrypted_backup.key")
+                except Exception:
+                    pass
             self._send_json(200, {"status": "success", "message": "Key transferred to PC successfully!"})
             return
 

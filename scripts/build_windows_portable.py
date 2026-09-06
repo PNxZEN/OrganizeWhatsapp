@@ -172,10 +172,20 @@ def build(version: str, dry_run: bool = False) -> None:
     download(GET_PIP_URL, get_pip, "get-pip.py")
 
     python_exe = runtime_dir / "python.exe"
+    python_env = os.environ.copy()
+    python_env["PYTHONNOUSERSITE"] = "1"
+
     print("  [RUN] python get-pip.py ...")
     subprocess.run(
-        [str(python_exe), str(get_pip), "--no-warn-script-location", "-q"],
+        [
+            str(python_exe), str(get_pip),
+            "--no-warn-script-location",
+            "--no-setuptools",
+            "--no-wheel",
+            "-q",
+        ],
         cwd=str(runtime_dir),
+        env=python_env,
         check=True,
     )
 
@@ -185,9 +195,12 @@ def build(version: str, dry_run: bool = False) -> None:
         [
             str(python_exe), "-m", "pip", "install",
             "-r", str(req_file),
+            "--no-user",
+            "--isolated",
             "--no-warn-script-location",
             "-q",
         ],
+        env=python_env,
         check=True,
     )
 
@@ -212,7 +225,59 @@ def build(version: str, dry_run: bool = False) -> None:
             p.unlink(missing_ok=True)
     print("    -> Stripped pip installation tools")
 
-    # Point 2: Remove all *.dist-info metadata folders and IDE type stubs (.pyi)
+    # Point 2: Strip scipy (102 MB uncompressed) and pywt, replacing with pure-NumPy DCT stub
+    scipy_dir = site_packages / "scipy"
+    scipy_libs = site_packages / "scipy.libs"
+    pywt_dir = site_packages / "pywt"
+    if scipy_dir.exists():
+        shutil.rmtree(scipy_dir, ignore_errors=True)
+    if scipy_libs.exists():
+        shutil.rmtree(scipy_libs, ignore_errors=True)
+    if pywt_dir.exists():
+        shutil.rmtree(pywt_dir, ignore_errors=True)
+
+    scipy_dir.mkdir(parents=True, exist_ok=True)
+    (scipy_dir / "__init__.py").write_text(
+        '"""Lightweight pure-NumPy scipy stub for ImageHash."""\n__version__ = "1.16.2"\n',
+        encoding="utf-8",
+    )
+    fftpack_code = '''"""Lightweight pure-NumPy Discrete Cosine Transform (DCT Type-2)."""
+import numpy as np
+
+def dct(x, type=2, n=None, axis=-1, norm=None, overwrite_x=False):
+    x = np.asarray(x, dtype=float)
+    if axis < 0:
+        axis = x.ndim + axis
+    if axis != x.ndim - 1:
+        x = np.swapaxes(x, axis, -1)
+    N = x.shape[-1]
+    n_idx = np.arange(N)
+    k_idx = n_idx[:, None]
+    M = 2.0 * np.cos((np.pi * k_idx * (2 * n_idx + 1)) / (2.0 * N))
+    res = np.dot(x, M.T)
+    if norm == 'ortho':
+        res[..., 0] *= 1.0 / (2.0 * np.sqrt(N))
+        res[..., 1:] *= 1.0 / np.sqrt(2.0 * N)
+    if axis != x.ndim - 1:
+        res = np.swapaxes(res, axis, -1)
+    return res
+'''
+    (scipy_dir / "fftpack.py").write_text(fftpack_code, encoding="utf-8")
+    print("    -> Replaced heavy scipy (102 MB) with lightweight pure-NumPy DCT stub")
+
+    # Point 3: Remove package test suites and non-runtime CLI tools (numpy/tests, numpy/f2py, etc.)
+    for test_dir in list(site_packages.rglob("tests")):
+        if test_dir.is_dir():
+            shutil.rmtree(test_dir, ignore_errors=True)
+    testing_dir = site_packages / "numpy" / "testing"
+    if testing_dir.is_dir():
+        shutil.rmtree(testing_dir, ignore_errors=True)
+    f2py_dir = site_packages / "numpy" / "f2py"
+    if f2py_dir.is_dir():
+        shutil.rmtree(f2py_dir, ignore_errors=True)
+    print("    -> Removed package test suites and non-runtime tools (numpy/tests, numpy/f2py)")
+
+    # Point 4: Remove all *.dist-info metadata folders and IDE type stubs (.pyi)
     for dist_info in site_packages.glob("*.dist-info"):
         shutil.rmtree(dist_info, ignore_errors=True)
     for pyi in site_packages.rglob("*.pyi"):
@@ -223,10 +288,10 @@ def build(version: str, dry_run: bool = False) -> None:
         doc.unlink(missing_ok=True)
     print("    -> Removed package metadata (.dist-info) and type stubs (.pyi)")
 
-    # Point 3: Archive verified pure-Python packages into Lib/site-packages.zip
+    # Point 5: Archive verified pure-Python packages into Lib/site-packages.zip
     # Only 100% pure Python packages with explicit __init__.py files are archived.
     # Packages containing C-extensions (.pyd, .dll) remain on disk.
-    pure_candidates = ["javaobj", "imagehash"]
+    pure_candidates = ["javaobj", "imagehash", "scipy"]
     archived_packages = []
     zip_target = runtime_dir / "Lib" / "site-packages.zip"
 
@@ -334,6 +399,8 @@ def build(version: str, dry_run: bool = False) -> None:
             "import PIL.Image; "
             "import pillow_heif; "
             "import imagehash; "
+            "test_ph = str(imagehash.phash(PIL.Image.new('RGB', (32, 32)))); "
+            "assert len(test_ph) > 0; "
             "import javaobj; "
             "from wa_crypt_tools.lib.key.key15 import Key15; "
             "from core.adb import check_adb_device, find_adb_binary; "
@@ -342,14 +409,14 @@ def build(version: str, dry_run: bool = False) -> None:
         ),
     ]
     verify_res = subprocess.run(
-        verify_cmd, cwd=str(BUILD_DIR), capture_output=True, text=True
+        verify_cmd, cwd=str(BUILD_DIR), env=python_env, capture_output=True, text=True
     )
     if verify_res.returncode != 0 or "PORTABLE_RUNTIME_VERIFIED_OK" not in verify_res.stdout:
         print(f"  [ERROR] Runtime verification failed:\n{verify_res.stderr}")
         raise RuntimeError("Portable runtime verification failed!")
 
     help_cmd = [str(portable_python), "wa_media_organizer.py", "--help"]
-    help_res = subprocess.run(help_cmd, cwd=str(BUILD_DIR), capture_output=True, text=True)
+    help_res = subprocess.run(help_cmd, cwd=str(BUILD_DIR), env=python_env, capture_output=True, text=True)
     if help_res.returncode != 0:
         print(f"  [ERROR] wa_media_organizer.py execution check failed:\n{help_res.stderr}")
         raise RuntimeError("Application invocation check failed!")

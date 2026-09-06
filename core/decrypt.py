@@ -156,7 +156,22 @@ def decrypt_db_stream(key_file, crypt_path, out_path, cancellation_token=None, p
                     sys.stderr.write(f"[Decrypt] Warning: Auth tag mismatch (continuing): {e_tag}\n")
 
         # Atomic replacement of output database
-        if temp_out_p.is_file() and temp_out_p.stat().st_size > 0:
+        if temp_out_p.is_file() and temp_out_p.stat().st_size >= 16:
+            # Validate SQLite magic header before accepting decrypted stream
+            try:
+                with open(temp_out_p, "rb") as f_chk:
+                    magic = f_chk.read(16)
+                if magic != b"SQLite format 3\x00":
+                    sys.stderr.write(f"[Decrypt] Stream decryption produced invalid header: {magic!r}\n")
+                    try:
+                        temp_out_p.unlink()
+                    except Exception:
+                        pass
+                    return False
+            except Exception as e_chk:
+                sys.stderr.write(f"[Decrypt] Header check failed: {e_chk}\n")
+                return False
+
             if out_p.is_file():
                 try:
                     out_p.unlink()
@@ -179,7 +194,8 @@ def decrypt_db(key_file, crypt_path, out_path, cancellation_token=None, progress
     """
     Decrypts an encrypted msgstore database using streaming zero-RAM decryption
     with automatic fallback to wadecrypt for legacy formats (crypt12/14).
-    Raises RuntimeError if decryption fails.
+    Validates that the output file begins with the standard SQLite header.
+    Raises RuntimeError if decryption fails or yields an invalid database.
     """
     key_p = Path(key_file).resolve()
     crypt_p = Path(crypt_path).resolve()
@@ -202,8 +218,15 @@ def decrypt_db(key_file, crypt_path, out_path, cancellation_token=None, progress
                 cancellation_token=cancellation_token,
                 progress_callback=progress_callback,
             )
-            if stream_success and out_p.is_file() and out_p.stat().st_size > 0:
-                return str(out_p)
+            if stream_success and out_p.is_file() and out_p.stat().st_size >= 16:
+                # Fast check that output is valid SQLite
+                with open(out_p, "rb") as f_hdr:
+                    if f_hdr.read(16) == b"SQLite format 3\x00":
+                        return str(out_p)
+                try:
+                    out_p.unlink()
+                except Exception:
+                    pass
         except Exception as e_stream:
             sys.stderr.write(f"[Decrypt] Fast stream decryption skipped: {e_stream}\n")
 
@@ -237,6 +260,36 @@ def decrypt_db(key_file, crypt_path, out_path, cancellation_token=None, progress
         raise RuntimeError(
             f"Decryption completed but output file '{out_path}' was not created or is empty."
         )
+
+    # 3. Validate that decrypted output is actually a valid SQLite database
+    try:
+        with open(out_p, "rb") as f_val:
+            magic = f_val.read(16)
+    except Exception as e_read:
+        raise RuntimeError(f"Failed to read decrypted file '{out_path}': {e_read}")
+
+    if magic != b"SQLite format 3\x00":
+        try:
+            out_p.unlink()
+        except Exception:
+            pass
+
+        if crypt_p.name.endswith((".crypt14", ".crypt12")):
+            raise RuntimeError(
+                f"Decryption failed: '{crypt_p.name}' is a legacy unencrypted backup (Crypt14/Crypt12). "
+                "A 64-digit key only decrypts modern End-to-End Encrypted backups (Crypt15).\n\n"
+                "Please wait for WhatsApp on your phone to finish backing up (100%), then resume sync. "
+                "If backup has not started, open WhatsApp > Settings > Chats > Chat backup and tap 'Back up'."
+            )
+        elif crypt_p.name.endswith(".crypt15"):
+            raise RuntimeError(
+                f"Decryption failed for '{crypt_p.name}'. The 64-digit key provided does not match this backup, "
+                "or the backup file was corrupted during transfer. Please verify your 64-digit key in Settings."
+            )
+        else:
+            raise RuntimeError(
+                f"Decryption failed: output is not a valid SQLite database (header: {magic!r})."
+            )
 
     return str(out_p)
 
