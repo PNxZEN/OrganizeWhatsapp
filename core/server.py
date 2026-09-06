@@ -22,6 +22,7 @@ from core.adb import (
     check_adb_device,
     detect_device_oem,
     disable_developer_options,
+    discover_whatsapp_accounts,
     open_url_on_phone,
     setup_reverse_port,
     wait_for_adb_device,
@@ -983,6 +984,23 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             res = check_adb_device()
             connected, authorized, err_msg, serial, model = res[:5]
             usb_debugging = getattr(res, "usb_debugging", True)
+
+            accounts = []
+            if connected and authorized:
+                accounts = discover_whatsapp_accounts(device_serial=serial)
+
+            cfg = load_config()
+            selected_path = cfg.get("selected_account_path", "")
+            selected_acc = None
+            if accounts:
+                if selected_path:
+                    for acc in accounts:
+                        if acc["path"] == selected_path:
+                            selected_acc = acc
+                            break
+                if not selected_acc:
+                    selected_acc = accounts[0]
+
             self._send_json(
                 200,
                 {
@@ -992,6 +1010,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "serial": serial,
                     "model": model,
                     "error": err_msg,
+                    "accounts": accounts,
+                    "selected_account": selected_acc,
+                    "has_multiple_accounts": len(accounts) > 1,
                 },
             )
             return
@@ -1508,12 +1529,58 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             body = self._read_json_body() or {}
             skip_db_pull = body.get("skip_db_pull", None)
+            account_path = body.get("account_path")
+            if account_path:
+                phone = body.get("phone_number", "")
+                acc_id = Path(account_path).name if "/accounts/" in account_path else "main"
+                app_type = (
+                    "whatsapp_business"
+                    if ("w4b" in account_path or "WhatsApp Business" in account_path)
+                    else "whatsapp"
+                )
+                label = f"{'WhatsApp Business' if app_type == 'whatsapp_business' else 'WhatsApp'} ({phone or acc_id})"
+                save_config({
+                    "selected_account_path": account_path,
+                    "selected_account_id": acc_id,
+                    "selected_account_phone": phone,
+                    "selected_app_type": app_type,
+                    "selected_account_label": label,
+                })
 
             _start_background_sync(str(self.output_dir), skip_db_pull=skip_db_pull)
             self._send_json(
                 200,
                 {"status": "started", "message": "Synchronization initiated in background."},
             )
+            return
+
+        # /api/phone/select-account (save selected WhatsApp or Business account)
+        if path == "/api/phone/select-account":
+            body = self._read_json_body() or {}
+            account_path = (body.get("account_path") or "").strip()
+            if not account_path:
+                self._send_json(400, {"status": "error", "message": "account_path is required"})
+                return
+            phone = body.get("phone_number", "")
+            acc_id = Path(account_path).name if "/accounts/" in account_path else "main"
+            app_type = (
+                "whatsapp_business"
+                if ("w4b" in account_path or "WhatsApp Business" in account_path)
+                else "whatsapp"
+            )
+            label = f"{'WhatsApp Business' if app_type == 'whatsapp_business' else 'WhatsApp'} ({phone or acc_id})"
+            save_config({
+                "selected_account_path": account_path,
+                "selected_account_id": acc_id,
+                "selected_account_phone": phone,
+                "selected_app_type": app_type,
+                "selected_account_label": label,
+            })
+            self._send_json(200, {
+                "status": "success",
+                "selected_account_path": account_path,
+                "selected_account_label": label,
+            })
             return
 
         # /api/sync/skip-db or /api/skip-db (cancel Phase 1 DB pull in flight and use existing local DB)

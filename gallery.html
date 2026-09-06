@@ -3069,6 +3069,26 @@
         </div>
     </div>
 
+    <!-- ACCOUNT SELECTOR MODAL -->
+    <div class="modal-overlay" id="modalAccountSelector" onclick="if (event.target === this) closeModal('modalAccountSelector')">
+        <div class="modal-card" style="max-width:540px;">
+            <div class="modal-header">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <svg class="icon" viewBox="0 0 24 24" style="width:20px;height:20px;fill:var(--accent);"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+                    <h3>Select WhatsApp Account to Sync</h3>
+                </div>
+                <button class="modal-close" onclick="closeModal('modalAccountSelector')">&times;</button>
+            </div>
+            <div class="modal-body" id="modalAccountSelectorBody">
+                <p>Loading accounts...</p>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn action-btn-secondary" onclick="closeModal('modalAccountSelector')">Cancel</button>
+                <button class="action-btn action-btn-primary" id="btnConfirmAccountSelection" onclick="confirmAccountSelection()">Save &amp; Select Account</button>
+            </div>
+        </div>
+    </div>
+
     <!-- KEY MODAL -->
     <div class="modal-overlay" id="modalKey">
         <div class="modal-card">
@@ -4097,6 +4117,36 @@
 
             // Case B: Connected & Authorized (Ready)
             if (currentDeviceStatus.connected && currentDeviceStatus.authorized) {
+                const selAcc = currentDeviceStatus.selected_account;
+                const hasMulti = Boolean(currentDeviceStatus.has_multiple_accounts);
+                let accountCardHtml = '';
+                if (selAcc) {
+                    const isBiz = selAcc.app_type === 'whatsapp_business';
+                    const badgeColor = isBiz ? '#3b82f6' : 'var(--accent)';
+                    const badgeBg = isBiz ? 'rgba(59,130,246,0.15)' : 'rgba(16,185,129,0.15)';
+                    const badgeText = isBiz ? 'WhatsApp Business' : 'WhatsApp';
+                    const phoneOrId = selAcc.phone_number ? selAcc.phone_number : (selAcc.account_id !== 'main' ? `Account ${selAcc.account_id}` : 'Primary Account');
+                    accountCardHtml = `
+                        <div style="margin-bottom:14px;padding:14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+                                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;background:${badgeBg};color:${badgeColor};border:1px solid ${badgeColor}40;">
+                                        ${badgeText}
+                                    </span>
+                                    <strong style="font-size:14px;color:var(--text-primary);">${phoneOrId}</strong>
+                                </div>
+                                ${hasMulti ? `<button class="action-btn" style="font-size:11px;padding:4px 10px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);" onclick="openAccountSelectorModal()">Switch Account</button>` : ''}
+                            </div>
+                            <div style="font-size:12px;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:12px;margin-top:6px;">
+                                <span><strong>Backup:</strong> ${selAcc.latest_db_file || 'msgstore.db'} (${selAcc.latest_backup_str || 'N/A'} • ${selAcc.size_str || '0 MB'})</span>
+                            </div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;word-break:break-all;font-family:monospace;">
+                                ${selAcc.path}
+                            </div>
+                        </div>
+                    `;
+                }
+
                 body.innerHTML = `
                     <div style="display:flex;align-items:center;gap:12px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);padding:14px;border-radius:8px;margin-bottom:12px;">
                         <svg class="icon" viewBox="0 0 24 24" style="width:24px;height:24px;fill:var(--accent);"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
@@ -4107,9 +4157,7 @@
                             </div>
                         </div>
                     </div>
-                    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
-                        Your phone is recognized and ready for one-click synchronization.
-                    </p>
+                    ${accountCardHtml}
                     <div style="padding:14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
                             <div style="flex:1;min-width:200px;">
@@ -4204,6 +4252,105 @@
                     btnAction.innerText = 'Detect Phone';
                     btnAction.style.display = 'inline-block';
                 }
+            }
+        }
+
+        function openAccountSelectorModal() {
+            renderAccountSelectorModalBody();
+            openModal('modalAccountSelector');
+        }
+
+        function renderAccountSelectorModalBody() {
+            const body = document.getElementById('modalAccountSelectorBody');
+            if (!body) return;
+            const accounts = (currentDeviceStatus && currentDeviceStatus.accounts) ? currentDeviceStatus.accounts : [];
+            if (!accounts.length) {
+                body.innerHTML = `
+                    <p style="color:var(--text-secondary);font-size:13px;">
+                        No active WhatsApp accounts detected on the connected device.
+                    </p>
+                `;
+                return;
+            }
+
+            const currentSelectedPath = (currentDeviceStatus.selected_account && currentDeviceStatus.selected_account.path) || accounts[0].path;
+
+            let html = `
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
+                    Multiple WhatsApp installations or accounts were found on your device. Choose which account to synchronize:
+                </p>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+            `;
+
+            accounts.forEach((acc) => {
+                const isSelected = (acc.path === currentSelectedPath);
+                const isBiz = acc.app_type === 'whatsapp_business';
+                const badgeColor = isBiz ? '#3b82f6' : 'var(--accent)';
+                const badgeBg = isBiz ? 'rgba(59,130,246,0.15)' : 'rgba(16,185,129,0.15)';
+                const badgeText = isBiz ? 'WhatsApp Business' : 'WhatsApp';
+                const phoneOrId = acc.phone_number ? acc.phone_number : (acc.account_id !== 'main' ? `Account ${acc.account_id}` : 'Primary Account');
+                const isRec = Boolean(acc.is_active_recommendation);
+
+                html += `
+                    <label style="display:block;padding:12px 14px;background:rgba(255,255,255,0.03);border:1px solid ${isSelected ? 'var(--accent)' : 'rgba(255,255,255,0.1)'};border-radius:8px;cursor:pointer;transition:border-color 0.2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='rgba(255,255,255,0.1)'">
+                        <div style="display:flex;align-items:flex-start;gap:12px;">
+                            <input type="radio" name="accSelectionRadio" value="${acc.path}" data-phone="${acc.phone_number || ''}" ${isSelected ? 'checked' : ''} style="margin-top:3px;accent-color:var(--accent);">
+                            <div style="flex:1;">
+                                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                                    <div style="display:flex;align-items:center;gap:8px;">
+                                        <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;background:${badgeBg};color:${badgeColor};border:1px solid ${badgeColor}40;">
+                                            ${badgeText}
+                                        </span>
+                                        <strong style="font-size:14px;color:var(--text-primary);">${phoneOrId}</strong>
+                                    </div>
+                                    ${isRec ? `<span style="font-size:11px;color:var(--accent);background:rgba(16,185,129,0.12);padding:2px 8px;border-radius:10px;font-weight:600;">Recommended (Freshest)</span>` : ''}
+                                </div>
+                                <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;display:flex;flex-wrap:wrap;gap:12px;">
+                                    <span><strong>Backup:</strong> ${acc.latest_db_file || 'msgstore.db'} (${acc.latest_backup_str || 'N/A'})</span>
+                                    <span><strong>Size:</strong> ${acc.size_str || '0 MB'}</span>
+                                </div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;word-break:break-all;font-family:monospace;">
+                                    ${acc.path}
+                                </div>
+                            </div>
+                        </div>
+                    </label>
+                `;
+            });
+
+            html += `</div>`;
+            body.innerHTML = html;
+        }
+
+        async function confirmAccountSelection() {
+            const checked = document.querySelector('input[name="accSelectionRadio"]:checked');
+            if (!checked) {
+                closeModal('modalAccountSelector');
+                return;
+            }
+            const path = checked.value;
+            const phone = checked.getAttribute('data-phone') || '';
+            const btn = document.getElementById('btnConfirmAccountSelection');
+            if (btn) btn.disabled = true;
+
+            try {
+                const resp = await fetch('/api/phone/select-account', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ account_path: path, phone_number: phone })
+                });
+                const res = await resp.json();
+                if (resp.ok) {
+                    showToast('WhatsApp account updated.', 'success');
+                    await checkDeviceStatus();
+                    closeModal('modalAccountSelector');
+                } else {
+                    showToast(res.message || 'Failed to update account.', 'error');
+                }
+            } catch (e) {
+                showToast(`Error: ${e.message}`, 'error');
+            } finally {
+                if (btn) btn.disabled = false;
             }
         }
 

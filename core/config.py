@@ -96,6 +96,11 @@ def load_config(config_path=DEFAULT_CONFIG_FILE):
         "db_dir": DEFAULT_DB_DIR,
         "allow_lan": False,
         "onboarding_completed": False,
+        "selected_account_path": "",
+        "selected_account_id": "",
+        "selected_account_phone": "",
+        "selected_app_type": "",
+        "selected_account_label": "",
     }
     if not cfg_file.exists():
         return defaults

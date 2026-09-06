@@ -222,6 +222,8 @@ Alternatively: Phone **Settings → Developer Options → toggle the master swit
 | **Smart Duplicate Detection** | SHA-256 SQLite cache identifies forwarded and collision-avoided duplicates |
 | **60 FPS Virtualization** | DOM recycling renders 50,000+ media files without slowdown |
 | **Video Poster Frames** | Pre-renders thumbnails on demand — browser tabs never crash from hardware decoder limits |
+| **Multi-Account & Dual Apps** | Auto-detects native WhatsApp sub-accounts (`accounts/*`), Samsung Dual Messenger, and Dual Apps |
+| **WhatsApp Business Support** | Seamless support for WhatsApp Business (`com.whatsapp.w4b`) with UI account switcher |
 | **One-Click ADB Disable** | Turns off USB debugging from the desktop UI before you unplug |
 | **100% Offline & Private** | Zero telemetry, zero cloud, strict localhost binding |
 | **Cross-Tab Sync** | Closing any tab shuts down the server and notifies all other tabs simultaneously |

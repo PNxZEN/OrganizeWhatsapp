@@ -11,9 +11,10 @@ import subprocess
 import sys
 import tarfile
 import time
+from datetime import datetime
 from pathlib import Path
 
-from core.config import to_long_path
+from core.config import load_config, to_long_path
 from core.organizer import normalize_filename
 
 
@@ -413,31 +414,313 @@ def cleanup_nested_databases_folder(dest_db="./Databases"):
 
 
 
-def discover_android_base_path(adb_path=None):
+def get_registered_whatsapp_accounts(adb_path=None, device_serial=None) -> list:
     """
-    Auto-discovers the active WhatsApp storage path on the Android device.
-    Supports Android 11+ scoped storage and legacy /sdcard storage paths.
+    Queries Android AccountManager via 'dumpsys account' to extract registered phone numbers
+    and user profile IDs for com.whatsapp and com.whatsapp.w4b.
+    Execution time: <50 ms.
     """
     cmd = find_adb_binary(adb_path)
-    candidate_paths = [
-        "/storage/emulated/0/Android/media/com.whatsapp/WhatsApp",
-        "/storage/emulated/0/WhatsApp",
-        "/sdcard/WhatsApp",
-    ]
+    adb_base = [cmd, "-s", device_serial] if device_serial else [cmd]
+    try:
+        res = subprocess.run(
+            adb_base + ["shell", "dumpsys", "account"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if res.returncode != 0 or not res.stdout:
+            return []
 
-    for cand in candidate_paths:
-        test_cmd = [cmd, "shell", f"[ -d '{cand}' ] && echo 'FOUND'"]
-        try:
-            res = subprocess.run(
-                test_cmd, capture_output=True, text=True, timeout=5, check=False
+        accounts = []
+        current_user_id = "0"
+        for line in res.stdout.splitlines():
+            line = line.strip()
+            user_match = re.search(r"UserInfo\{(\d+):", line)
+            if user_match:
+                current_user_id = user_match.group(1)
+                continue
+
+            acc_match = re.search(
+                r"Account\s*\{\s*name\s*[=:]\s*[\"']?([^,\s\"'}]+)[\"']?.*?type\s*[=:]\s*[\"']?(com\.whatsapp(?:\.w4b)?)[\"']?\s*\}",
+                line,
             )
-            if res.returncode == 0 and "FOUND" in res.stdout:
-                return cand
-        except Exception:
+            if acc_match:
+                raw_name = acc_match.group(1).strip("\"'")
+                pkg = acc_match.group(2)
+                phone_display = raw_name
+                if re.match(r"^\d{10,15}$", raw_name):
+                    phone_display = f"+{raw_name}"
+                accounts.append(
+                    {
+                        "phone_number": phone_display,
+                        "raw_name": raw_name,
+                        "package": pkg,
+                        "user_id": current_user_id,
+                        "app_type": "whatsapp_business" if "w4b" in pkg else "whatsapp",
+                    }
+                )
+        return accounts
+    except Exception:
+        return []
+
+
+def discover_whatsapp_accounts(adb_path=None, hex_key=None, device_serial=None) -> list:
+    """
+    Probes connected Android device storage across all user spaces (user 0, user 95, user 999),
+    native WhatsApp multi-account folders (accounts/*), WhatsApp Business (com.whatsapp.w4b),
+    OEM Dual Messenger / Parallel mounts, and legacy storage.
+
+    Returns a ranked list of candidate account dicts sorted by freshness and target encryption match.
+    """
+    cmd = find_adb_binary(adb_path)
+    adb_base = [cmd, "-s", device_serial] if device_serial else [cmd]
+
+    probe_script = (
+        "probe_dir() { "
+        "p=\"$1\"; "
+        "[ -d \"$p\" ] || return; "
+        "has_media=0; [ -d \"$p/Media\" ] && has_media=1; "
+        "has_db=0; db_file=\"\"; db_mtime=0; db_size=0; "
+        "if [ -d \"$p/Databases\" ]; then "
+        "has_db=1; "
+        "best_f=\"\"; "
+        "for f in \"$p/Databases\"/msgstore*.crypt15 \"$p/Databases\"/msgstore*.crypt14 \"$p/Databases\"/msgstore*; do "
+        "[ -f \"$f\" ] || continue; "
+        "best_f=\"$f\"; break; "
+        "done; "
+        "if [ -n \"$best_f\" ]; then "
+        "db_file=\"${best_f##*/}\"; "
+        "st=$(stat -c \"%Y:%s\" \"$best_f\" 2>/dev/null); "
+        "if [ -n \"$st\" ]; then "
+        "db_mtime=\"${st%%:*}\"; db_size=\"${st##*:}\"; "
+        "else "
+        "db_size=$(wc -c < \"$best_f\" 2>/dev/null); "
+        "db_mtime=$(date -r \"$best_f\" +%s 2>/dev/null); "
+        "fi; "
+        "fi; "
+        "fi; "
+        "echo \"ACC|$p|$has_media|$has_db|$db_file|$db_mtime|$db_size\"; "
+        "}; "
+        "for r in "
+        "/storage/emulated/*/Android/media/com.whatsapp/WhatsApp "
+        "/storage/emulated/*/Android/media/com.whatsapp.w4b/WhatsApp\\ Business "
+        "/storage/emulated/*/WhatsApp "
+        "/storage/emulated/*/WhatsApp\\ Business "
+        "/storage/emulated/0/DualApp/WhatsApp "
+        "/storage/emulated/0/DUAL_APP/WhatsApp "
+        "/storage/emulated/0/Parallel/WhatsApp "
+        "/storage/emulated/0/Clone/WhatsApp "
+        "/sdcard/WhatsApp "
+        "/storage/*-*/Android/media/com.whatsapp/WhatsApp "
+        "/storage/*-*/WhatsApp "
+        "; do "
+        "[ -d \"$r\" ] || continue; "
+        "probe_dir \"$r\"; "
+        "if [ -d \"$r/accounts\" ]; then "
+        "for acc in \"$r/accounts\"/*; do "
+        "[ -d \"$acc\" ] && probe_dir \"$acc\"; "
+        "done; "
+        "fi; "
+        "done"
+    )
+
+    try:
+        res = subprocess.run(
+            adb_base + ["shell", "sh"],
+            input=probe_script,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except Exception as e:
+        sys.stderr.write(f"[ADB] Warning: Probe command failed: {e}\n")
+        res = None
+
+    lines = [
+        line.strip()
+        for line in (res.stdout.splitlines() if res and res.stdout else [])
+        if line.startswith("ACC|")
+    ]
+    if not lines:
+        return []
+
+    # Query registered accounts from Android AccountManager
+    registered = get_registered_whatsapp_accounts(cmd, device_serial=device_serial)
+
+    has_hex = bool(hex_key)
+    if not has_hex:
+        cfg = load_config()
+        has_hex = bool(cfg.get("hex_key"))
+
+    candidates_by_path = {}
+    for line in lines:
+        parts = line.split("|")
+        if len(parts) < 7:
+            continue
+        p = parts[1].strip()
+        if not p or p in candidates_by_path:
             continue
 
-    # Default to Android 11+ path if discovery fails
-    return candidate_paths[0]
+        has_media = (parts[2].strip() == "1")
+        has_db = (parts[3].strip() == "1")
+        db_file = parts[4].strip()
+        try:
+            db_mtime = int(parts[5].strip())
+        except ValueError:
+            db_mtime = 0
+        try:
+            db_size = int(parts[6].strip())
+        except ValueError:
+            db_size = 0
+
+        # Crypt version
+        crypt_ver = 0
+        m = re.search(r"\.crypt(\d+)", db_file)
+        if m:
+            crypt_ver = int(m.group(1))
+
+        # App type & package
+        is_business = ("com.whatsapp.w4b" in p or "WhatsApp Business" in p)
+        pkg = "com.whatsapp.w4b" if is_business else "com.whatsapp"
+        app_type = "whatsapp_business" if is_business else "whatsapp"
+        app_label = "WhatsApp Business" if is_business else "WhatsApp"
+
+        # User profile ID & Account ID
+        u_match = re.search(r"/storage/emulated/(\d+)/", p)
+        user_id = u_match.group(1) if u_match else "0"
+
+        if "/accounts/" in p:
+            account_id = Path(p).name
+            parent_path = p.rsplit("/accounts/", 1)[0]
+        elif user_id != "0":
+            account_id = f"dual_{user_id}"
+            parent_path = p
+        else:
+            account_id = "main"
+            parent_path = p
+
+        # Correlate phone number from registered accounts
+        phone_number = ""
+        matched_reg = [r for r in registered if r["user_id"] == user_id and r["app_type"] == app_type]
+        if matched_reg:
+            phone_number = matched_reg[0]["phone_number"]
+
+        # Human-readable formatted date and size
+        if db_mtime > 0:
+            try:
+                last_backup_str = datetime.fromtimestamp(db_mtime).strftime("%d %b %Y, %I:%M %p")
+            except Exception:
+                last_backup_str = str(db_mtime)
+        else:
+            last_backup_str = "No backup found"
+
+        size_str = f"{db_size / (1024 * 1024):.1f} MB" if db_size > 0 else "0 MB"
+
+        if phone_number:
+            label = f"{app_label} ({phone_number})"
+        elif account_id != "main":
+            label = f"{app_label} (Account {account_id})"
+        else:
+            label = f"{app_label} (Main Account)"
+
+        # Calculate ranking score
+        score = 0.0
+        if has_hex:
+            if crypt_ver == 15:
+                score += 10_000_000_000.0
+            elif crypt_ver > 0:
+                score += 1_000_000_000.0
+        else:
+            if crypt_ver > 0:
+                score += 5_000_000_000.0
+
+        if has_db and db_size > 0:
+            score += 1_000_000_000.0
+
+        score += float(db_mtime)
+
+        if has_media:
+            score += 500_000.0
+
+        if "/accounts/" in p:
+            score += 100_000.0
+
+        cand_record = {
+            "path": p,
+            "account_id": account_id,
+            "parent_path": parent_path,
+            "package": pkg,
+            "app_type": app_type,
+            "app_label": app_label,
+            "label": label,
+            "phone_number": phone_number,
+            "has_db": has_db,
+            "has_media": has_media,
+            "latest_db_file": db_file,
+            "latest_db_mtime": db_mtime,
+            "latest_db_size": db_size,
+            "latest_backup_str": last_backup_str,
+            "size_str": size_str,
+            "crypt_version": crypt_ver,
+            "score": score,
+            "is_active_recommendation": False,
+        }
+        candidates_by_path[p] = cand_record
+
+    account_list = list(candidates_by_path.values())
+    account_list.sort(key=lambda c: c["score"], reverse=True)
+    if account_list:
+        account_list[0]["is_active_recommendation"] = True
+
+    return account_list
+
+
+def discover_android_base_path(
+    adb_path=None,
+    hex_key=None,
+    device_serial=None,
+    preferred_account_path=None,
+) -> str:
+    """
+    Auto-discovers the active WhatsApp or WhatsApp Business storage path on the Android device.
+    Supports native multi-account paths (accounts/*), Samsung Dual Messenger (user 95),
+    Xiaomi Dual Apps (user 999), Work Profiles, and WhatsApp Business.
+
+    If preferred_account_path (or config selected_account_path) is provided and exists on the device,
+    strictly sticks to it to prevent cross-account overwriting.
+    """
+    cmd = find_adb_binary(adb_path)
+    adb_base = [cmd, "-s", device_serial] if device_serial else [cmd]
+
+    # 1. Check if an account path was explicitly requested or saved in config.json
+    target_path = preferred_account_path
+    if not target_path:
+        cfg = load_config()
+        target_path = cfg.get("selected_account_path")
+
+    if target_path:
+        test_cmd = adb_base + ["shell", f"[ -d '{target_path}' ] && echo 'FOUND'"]
+        try:
+            res = subprocess.run(test_cmd, capture_output=True, text=True, timeout=5, check=False)
+            if res.returncode == 0 and "FOUND" in res.stdout:
+                return target_path
+        except Exception:
+            pass
+
+    # 2. Probe device dynamically for all accounts and pick top-ranked
+    accounts = discover_whatsapp_accounts(cmd, hex_key=hex_key, device_serial=device_serial)
+    if accounts:
+        return accounts[0]["path"]
+
+    # 3. Fallback to default Android 11+ path
+    return "/storage/emulated/0/Android/media/com.whatsapp/WhatsApp"
 
 
 def build_already_pulled_index(output_dir):
@@ -534,7 +817,7 @@ def adb_pull_tar_full(
 ):
     """Full streaming tar pull fallback when remote stat indexing is unavailable."""
     adb_base = [adb_path, "-s", device_serial] if device_serial else [adb_path]
-    tar_cmd = adb_base + ["exec-out", f"tar -C {base}/ -cf - {folders_str} 2>/dev/null"]
+    tar_cmd = adb_base + ["exec-out", f"tar -C '{base}/' -cf - {folders_str} 2>/dev/null"]
     try:
         proc = subprocess.Popen(tar_cmd, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL)
         with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
@@ -1122,6 +1405,8 @@ def adb_pull(
     destination_resolver=None,
     on_commit_callback=None,
     in_flight_callback=None,
+    hex_key=None,
+    preferred_account_path=None,
 ):
     """
     Pulls WhatsApp databases and media from Android.
@@ -1131,9 +1416,6 @@ def adb_pull(
     cleanup_nested_databases_folder(dest_db)
 
     cmd = find_adb_binary(adb_path)
-    if not base:
-        base = discover_android_base_path(cmd)
-
     connected, authorized, err_msg, device_serial, model = check_adb_device(cmd)
     if connected and not authorized and wait_auth_timeout > 0:
         ready, auth_msg, dev_serial, _ = wait_for_adb_device(cmd, timeout=wait_auth_timeout)
@@ -1144,6 +1426,14 @@ def adb_pull(
                 device_serial = dev_serial
         else:
             err_msg = auth_msg
+
+    if not base:
+        base = discover_android_base_path(
+            cmd,
+            hex_key=hex_key,
+            device_serial=device_serial if (connected and authorized) else None,
+            preferred_account_path=preferred_account_path,
+        )
 
     if not connected or not authorized:
         sys.stderr.write(f"[ADB] Warning: Device not ready ({err_msg}). Skipping pull.\n")

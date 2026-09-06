@@ -457,7 +457,7 @@ def dct(x, type=2, n=None, axis=-1, norm=None, overwrite_x=False):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build Windows Portable ZIP")
-    parser.add_argument("--version", default="1.0.1", help="Release version string (e.g. 1.0.1)")
+    parser.add_argument("--version", default="1.0.4", help="Release version string (e.g. 1.0.4)")
     parser.add_argument("--dry-run", action="store_true", help="Print plan without downloading or building")
     args = parser.parse_args()
     build(args.version, dry_run=args.dry_run)

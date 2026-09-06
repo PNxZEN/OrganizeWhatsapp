@@ -17,9 +17,11 @@ from core.adb import (
     adb_pull,
     check_adb_device,
     cleanup_nested_databases_folder,
+    discover_android_base_path,
     find_adb_binary,
     wait_for_adb_device,
 )
+from core.config import load_config, save_config
 from core.contacts import load_contacts_mapping, load_db_mappings
 from core.database import build_media_index
 from core.decrypt import create_key_file, decrypt_db
@@ -145,6 +147,7 @@ def run_pipeline(
     cancellation_token=None,
     progress_callback=None,
     status_callback=None,
+    adb_path=None,
 ):
     """
     Executes the full linear organization pipeline from Step 1 through Step 8.
@@ -158,7 +161,26 @@ def run_pipeline(
         print("=" * 60)
         print("STEP 1: Pull encrypted DB + media tree from phone via ADB")
         print("=" * 60)
+        cfg = load_config()
+        saved_account_path = cfg.get("selected_account_path", "")
+        cmd = find_adb_binary(adb_path)
+        base_path = discover_android_base_path(
+            cmd,
+            hex_key=hex_key,
+            preferred_account_path=saved_account_path,
+        )
+        if not saved_account_path and base_path:
+            acc_id = Path(base_path).name if "/accounts/" in base_path else "main"
+            app_type = "whatsapp_business" if ("w4b" in base_path or "WhatsApp Business" in base_path) else "whatsapp"
+            save_config({
+                "selected_account_path": base_path,
+                "selected_account_id": acc_id,
+                "selected_app_type": app_type,
+            })
+        print(f"[ADB] Active WhatsApp storage: {base_path}")
+
         pull_ok = adb_pull(
+            base=base_path,
             dest_db=db_dir,
             dest_media=media_dir,
             folders_filter=["Media"] if skip_db_pull else None,
@@ -226,6 +248,7 @@ def run_pipeline(
                     print(f"\r[DB] Waiting for backup to complete on phone... ({elapsed}s elapsed)", end="", flush=True)
                     time.sleep(3)
                     adb_pull(
+                        base=base_path,
                         dest_db=db_dir,
                         dest_media=media_dir,
                         folders_filter=["Databases"],
@@ -242,6 +265,7 @@ def run_pipeline(
                             s1 = os.path.getsize(cand_latest)
                             time.sleep(2)
                             adb_pull(
+                                base=base_path,
                                 dest_db=db_dir,
                                 dest_media=media_dir,
                                 folders_filter=["Databases"],
@@ -466,11 +490,30 @@ def run_streaming_pipeline(
     out_path.mkdir(parents=True, exist_ok=True)
     cleanup_nested_databases_folder(db_dir)
 
+    cfg = load_config()
+    saved_account_path = cfg.get("selected_account_path", "")
+    cmd = find_adb_binary(adb_path)
+    base_path = discover_android_base_path(
+        cmd,
+        hex_key=hex_key,
+        preferred_account_path=saved_account_path,
+    )
+    if not saved_account_path and base_path:
+        acc_id = Path(base_path).name if "/accounts/" in base_path else "main"
+        app_type = "whatsapp_business" if ("w4b" in base_path or "WhatsApp Business" in base_path) else "whatsapp"
+        save_config({
+            "selected_account_path": base_path,
+            "selected_account_id": acc_id,
+            "selected_app_type": app_type,
+        })
+    print(f"[ADB] Active WhatsApp storage: {base_path}")
+
     # Phase 1: Fast Pull Databases only
     if not skip_pull and not skip_db_pull:
         if status_callback:
             status_callback("database", "Downloading chat database from phone...")
         pull_db_ok = adb_pull(
+            base=base_path,
             dest_db=db_dir,
             dest_media=media_dir,
             folders_filter=["Databases"],
@@ -547,7 +590,18 @@ def run_streaming_pipeline(
 
                     time.sleep(poll_interval)
 
+                    # If backup hasn't appeared yet, re-check phone accounts in case WhatsApp wrote
+                    # the new backup into an account folder that was created or refreshed.
+                    if elapsed >= 12 and (elapsed % 9 == 0):
+                        try:
+                            fresh_base = discover_android_base_path(cmd, hex_key=hex_key)
+                            if fresh_base and fresh_base != base_path:
+                                base_path = fresh_base
+                        except Exception:
+                            pass
+
                     adb_pull(
+                        base=base_path,
                         dest_db=db_dir,
                         dest_media=media_dir,
                         folders_filter=["Databases"],
@@ -565,6 +619,7 @@ def run_streaming_pipeline(
                             s1 = os.path.getsize(cand_latest)
                             time.sleep(2)
                             adb_pull(
+                                base=base_path,
                                 dest_db=db_dir,
                                 dest_media=media_dir,
                                 folders_filter=["Databases"],
@@ -668,6 +723,7 @@ def run_streaming_pipeline(
             status_callback("indexing", "Scanning media files on phone...")
 
         stream_ok = adb_pull(
+            base=base_path,
             dest_db=db_dir,
             dest_media=media_dir,
             folders_filter=["Media", "Backups"],
