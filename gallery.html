@@ -3881,6 +3881,9 @@
             if (id === 'modalSync') {
                 if (typeof stopDeviceReconnectWatcher === 'function') stopDeviceReconnectWatcher();
             }
+            if (id === 'modalAccountSelector') {
+                window._pendingSyncAfterAccountSelect = false;
+            }
         }
 
         let consecutiveServerFailures = 0;
@@ -4277,7 +4280,9 @@
                 return;
             }
 
-            const currentSelectedPath = (currentDeviceStatus.selected_account && currentDeviceStatus.selected_account.path) || accounts[0].path;
+            const currentSelectedPath = (currentDeviceStatus && currentDeviceStatus.selected_account_path) ||
+                (currentDeviceStatus && currentDeviceStatus.selected_account && currentDeviceStatus.selected_account.path) ||
+                accounts[0].path;
 
             let html = `
                 <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
@@ -4347,6 +4352,14 @@
                 const res = await resp.json();
                 if (resp.ok) {
                     showToast('WhatsApp account updated.', 'success');
+                    if (currentDeviceStatus) {
+                        currentDeviceStatus.selected_account_path = path;
+                        currentDeviceStatus.has_selected_account = true;
+                        if (currentDeviceStatus.accounts) {
+                            const found = currentDeviceStatus.accounts.find(a => a.path === path);
+                            if (found) currentDeviceStatus.selected_account = found;
+                        }
+                    }
                     await checkDeviceStatus();
                     closeModal('modalAccountSelector');
                     if (window._pendingSyncAfterAccountSelect) {
@@ -5179,14 +5192,24 @@
             if (autoStartSync) {
                 setTimeout(async () => {
                     await checkDeviceStatus();
-                    let hasSelectedAccount = false;
-                    try {
-                        const r = await fetch('/api/config');
-                        if (r.ok) {
-                            const c = await r.json();
-                            if (c && c.selected_account_path) hasSelectedAccount = true;
-                        }
-                    } catch (e) {}
+                    let hasSelectedAccount = Boolean(
+                        currentDeviceStatus && (currentDeviceStatus.has_selected_account || currentDeviceStatus.selected_account_path)
+                    );
+                    if (!hasSelectedAccount) {
+                        try {
+                            const r = await fetch('/api/config');
+                            if (r.ok) {
+                                const c = await r.json();
+                                if (c && c.selected_account_path) {
+                                    hasSelectedAccount = true;
+                                    if (currentDeviceStatus) {
+                                        currentDeviceStatus.selected_account_path = c.selected_account_path;
+                                        currentDeviceStatus.has_selected_account = true;
+                                    }
+                                }
+                            }
+                        } catch (e) {}
+                    }
 
                     if (currentDeviceStatus && currentDeviceStatus.has_multiple_accounts && !hasSelectedAccount) {
                         window._pendingSyncAfterAccountSelect = true;
@@ -5485,12 +5508,9 @@
         function hasCompletedPriorSync(st) {
             const chats = getChatsArray();
             const totalFiles = chats.reduce((acc, c) => acc + (c.file_count || 0), 0);
-            return (
-                totalFiles > 0 ||
-                !!windowHasLocalDb ||
-                (st && (st.has_local_db || st.has_completed_sync)) ||
-                localStorage.getItem('wa_sync_completed_once') === 'true'
-            );
+            if (totalFiles > 0) return true;
+            if (st && st.has_completed_sync) return true;
+            return false;
         }
 
         function updateSyncButtonUI(st) {
@@ -5664,14 +5684,25 @@
 
             // Pre-flight Check 4: Multiple accounts selection
             if (currentDeviceStatus && currentDeviceStatus.has_multiple_accounts) {
-                let hasSelectedAccount = false;
-                try {
-                    const cfgResp = await fetch('/api/config');
-                    if (cfgResp.ok) {
-                        const cfg = await cfgResp.json();
-                        if (cfg && cfg.selected_account_path) hasSelectedAccount = true;
-                    }
-                } catch (e) {}
+                let hasSelectedAccount = Boolean(
+                    currentDeviceStatus.has_selected_account ||
+                    currentDeviceStatus.selected_account_path
+                );
+                if (!hasSelectedAccount) {
+                    try {
+                        const cfgResp = await fetch('/api/config');
+                        if (cfgResp.ok) {
+                            const cfg = await cfgResp.json();
+                            if (cfg && cfg.selected_account_path) {
+                                hasSelectedAccount = true;
+                                if (currentDeviceStatus) {
+                                    currentDeviceStatus.selected_account_path = cfg.selected_account_path;
+                                    currentDeviceStatus.has_selected_account = true;
+                                }
+                            }
+                        }
+                    } catch (e) {}
+                }
 
                 if (!hasSelectedAccount) {
                     showToast('Multiple WhatsApp accounts detected. Please select an account to sync.', 'info');

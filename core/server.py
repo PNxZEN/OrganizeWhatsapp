@@ -907,7 +907,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             first_arg = args[0]
             if any(
                 endpoint in first_arg
-                for endpoint in ("/api/ping", "/api/health", "/api/sync-status", "/api/device-status")
+                for endpoint in ("/api/ping", "/api/health", "/api/sync-status", "/api/device-status", "/api/phone/status")
             ):
                 return
         if sys.stdout is not None:
@@ -1022,14 +1022,12 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             resp_data["has_completed_sync"] = bool(
                 sync_status.get("has_completed_sync", False)
                 or cfg.get("last_sync_time")
-                or cfg.get("selected_account_path")
-                or has_db
             )
             self._send_json(200, resp_data)
             return
 
-        # /api/device-status
-        if path == "/api/device-status":
+        # /api/device-status or /api/phone/status
+        if path in ("/api/device-status", "/api/phone/status"):
             res = check_adb_device()
             connected, authorized, err_msg, serial, model = res[:5]
             usb_debugging = getattr(res, "usb_debugging", True)
@@ -1061,6 +1059,8 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "error": err_msg,
                     "accounts": accounts,
                     "selected_account": selected_acc,
+                    "selected_account_path": selected_path,
+                    "has_selected_account": bool(selected_path and any(acc["path"] == selected_path for acc in accounts)),
                     "has_multiple_accounts": len(accounts) > 1,
                 },
             )
@@ -1080,6 +1080,11 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "output_dir": cfg.get("output_dir", "./output"),
                     "has_local_db": check_has_local_db(str(self.output_dir), cfg.get("db_dir")),
                     "onboarding_completed": cfg.get("onboarding_completed", False),
+                    "selected_account_path": cfg.get("selected_account_path", ""),
+                    "selected_account_id": cfg.get("selected_account_id", ""),
+                    "selected_account_phone": cfg.get("selected_account_phone", ""),
+                    "selected_app_type": cfg.get("selected_app_type", ""),
+                    "selected_account_label": cfg.get("selected_account_label", ""),
                 },
             )
             return
