@@ -235,6 +235,11 @@ class SyncSessionManager:
     def mark_file_completed(self, session_id: str, rel_path: str, synced_bytes: int, target_path: Optional[str] = None):
         now = time.time()
         with self._lock, self._get_connection() as conn:
+            prev = conn.execute(
+                "SELECT status FROM sync_manifest WHERE session_id = ? AND rel_path = ?",
+                (session_id, rel_path),
+            ).fetchone()
+            already_completed = bool(prev and prev[0] == "completed")
             if target_path:
                 conn.execute(
                     """
@@ -253,17 +258,22 @@ class SyncSessionManager:
                     """,
                     (synced_bytes, now, session_id, rel_path),
                 )
-            # Update aggregate counter in session
-            conn.execute(
-                """
-                UPDATE sync_sessions
-                SET synced_files = (SELECT COUNT(*) FROM sync_manifest WHERE session_id = ? AND status = 'completed'),
-                    synced_bytes = (SELECT COALESCE(SUM(synced_bytes), 0) FROM sync_manifest WHERE session_id = ? AND status = 'completed'),
-                    updated_at = ?
-                WHERE session_id = ?
-                """,
-                (session_id, session_id, now, session_id),
-            )
+            if not already_completed:
+                conn.execute(
+                    """
+                    UPDATE sync_sessions
+                    SET synced_files = synced_files + 1,
+                        synced_bytes = synced_bytes + ?,
+                        updated_at = ?
+                    WHERE session_id = ?
+                    """,
+                    (int(synced_bytes or 0), now, session_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE sync_sessions SET updated_at = ? WHERE session_id = ?",
+                    (now, session_id),
+                )
             conn.commit()
 
     def mark_files_completed_batch(self, session_id: str, items: List[Tuple[str, int]]):

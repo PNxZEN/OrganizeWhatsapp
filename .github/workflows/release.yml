@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release tag (e.g. v1.0.4)'
+        description: 'Release tag (e.g. v1.1.0)'
         required: false
-        default: 'v1.0.4'
+        default: 'v1.1.0'
 
 permissions:
   contents: write
@@ -190,7 +190,7 @@ jobs:
           body: |
             ## WhatsApp Offline Media Gallery ${{ steps.version.outputs.TAG }}
 
-            > Browse, search, and export your WhatsApp photos, videos, and documents — fully offline, private, and organized.
+            > Browse, search, and export your WhatsApp photos, videos, and documents - fully offline, private, and organized.
 
             ---
 

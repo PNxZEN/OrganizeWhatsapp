@@ -27,6 +27,8 @@ from core.decrypt import (
 )
 
 from core.contacts import (
+    extract_self_account_info,
+    load_chat_metadata,
     load_contacts_mapping,
     load_db_mappings,
     resolve_jid_name,
@@ -77,13 +79,29 @@ from core.server import (
     sync_status,
 )
 
+from core.clean_planner import (
+    CleanProfile,
+    discard_plan,
+    execute_clean_plan,
+    generate_clean_plan,
+    get_active_plan,
+    verify_local_backup,
+)
+
 from core.adb import (
     adb_pull,
     adb_pull_tar,
+    batch_delete_phone_files,
+    broadcast_media_scan,
     check_adb_device,
     cleanup_nested_databases_folder,
     disable_developer_options,
     discover_android_base_path,
     find_adb_binary,
+    get_device_storage_info,
+    get_remote_file_sizes,
+    restore_chat_to_phone,
     wait_for_adb_device,
 )
+
+

@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 
-def sanitize_phone_to_jid(phone_number, default_country_code="91"):
+def sanitize_phone_to_jid(phone_number, default_country_code=None):
     """
     Converts a phone number string to a WhatsApp JID.
     Handles international prefixes (+, 00) and provides flexible resolution.
@@ -20,6 +20,9 @@ def sanitize_phone_to_jid(phone_number, default_country_code="91"):
     """
     if not phone_number:
         return []
+
+    if default_country_code is None:
+        default_country_code = get_account_country_code()
 
     raw = str(phone_number).strip()
     digits = re.sub(r"\D", "", raw)
@@ -49,6 +52,28 @@ def sanitize_phone_to_jid(phone_number, default_country_code="91"):
             candidates.append(f"{digits}@s.whatsapp.net")
 
     return candidates
+
+
+def infer_country_code_from_phone(phone_number):
+    """
+    Heuristic country-code extraction from an E.164 / WhatsApp registration number.
+    Uses everything before the final 10 digits (IN 91+10, US/CA 1+10, UK 44+10).
+    """
+    digits = re.sub(r"\D", "", str(phone_number or ""))
+    if len(digits) >= 11:
+        return digits[:-10]
+    return ""
+
+
+def get_account_country_code():
+    """Country code for the currently selected WhatsApp account, or empty if unknown."""
+    try:
+        from core.config import load_config
+
+        phone = load_config().get("selected_account_phone") or ""
+        return infer_country_code_from_phone(phone)
+    except Exception:
+        return ""
 
 
 def load_contacts_mapping(
@@ -188,6 +213,7 @@ def load_db_mappings(msgstore_path):
     if not p.is_file():
         return chat_names, lid_to_phone
 
+    conn = None
     try:
         conn = sqlite3.connect(str(p))
         cur = conn.cursor()
@@ -226,15 +252,173 @@ def load_db_mappings(msgstore_path):
                         lid_to_phone[lid] = phone
         except Exception:
             pass
-
-        conn.close()
     except Exception as e:
         sys.stderr.write(f"[Contacts] Warning: Failed to load db mappings from {msgstore_path}: {e}\n")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     return chat_names, lid_to_phone
 
 
-def resolve_jid_name(jid, contacts, lid_to_phone, chat_names):
+def extract_self_account_info(msgstore_path):
+    """
+    Extracts the user's own WhatsApp registration phone number, self JID,
+    and profile push name from msgstore.db.
+    Checks:
+    1. 'user_push_name' in props table.
+    2. 'call_log' table where from_me = 1 and creator device JID ends with @s.whatsapp.net.
+    3. Self-created group JIDs in 'jid' table (<phone>-<timestamp>@g.us).
+    Returns:
+    {
+        "phone_number": "+...",  # e.g. "+919348426067" or ""
+        "push_name": "...",      # e.g. "Prabhu Nandan" or ""
+        "self_jid": "...",       # e.g. "919348426067@s.whatsapp.net" or ""
+    }
+    """
+    info = {
+        "phone_number": "",
+        "push_name": "",
+        "self_jid": "",
+    }
+    p = Path(msgstore_path)
+    if not p.is_file():
+        return info
+
+    conn = None
+    try:
+        conn = sqlite3.connect(str(p))
+        cur = conn.cursor()
+
+        # 1. Profile push name from props table
+        try:
+            cur.execute("SELECT value FROM props WHERE key = 'user_push_name'")
+            row = cur.fetchone()
+            if row and row[0]:
+                info["push_name"] = str(row[0]).strip()
+        except Exception:
+            pass
+
+        # 2. Outgoing call log (from_me = 1) containing creator phone JID
+        try:
+            cur.execute(
+                """
+                SELECT j.raw_string
+                FROM call_log cl
+                JOIN jid j ON cl.call_creator_device_jid_row_id = j._id
+                WHERE cl.from_me = 1 AND j.raw_string LIKE '%@s.whatsapp.net'
+                ORDER BY cl._id DESC
+                LIMIT 10
+                """
+            )
+            for row in cur.fetchall():
+                raw = row[0] or ""
+                m = re.match(r"^(\d{10,15})\b", raw)
+                if m:
+                    digits = m.group(1)
+                    info["phone_number"] = f"+{digits}"
+                    info["self_jid"] = f"{digits}@s.whatsapp.net"
+                    break
+        except Exception:
+            pass
+
+        # 3. Check group creation JIDs in jid table (pattern: <phone>-<epoch>@g.us)
+        if not info["phone_number"]:
+            try:
+                cur.execute(
+                    """
+                    SELECT raw_string
+                    FROM jid
+                    WHERE raw_string LIKE '%-%@g.us'
+                    LIMIT 50
+                    """
+                )
+                for row in cur.fetchall():
+                    raw = row[0] or ""
+                    m = re.match(r"^(\d{10,15})-\d+@g\.us$", raw)
+                    if m:
+                        digits = m.group(1)
+                        if 10 <= len(digits) <= 15:
+                            info["phone_number"] = f"+{digits}"
+                            info["self_jid"] = f"{digits}@s.whatsapp.net"
+                            break
+            except Exception:
+                pass
+    except Exception as e:
+        sys.stderr.write(f"[Contacts] Warning: Failed to extract self account info from {msgstore_path}: {e}\n")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    return info
+
+
+def load_chat_metadata(msgstore_path):
+    """
+    Loads rich chat metadata (subject, archived status, last active timestamp, is_group)
+    from msgstore.db.
+    Returns dict mapping JID -> {
+        "subject": str,
+        "archived": bool,
+        "sort_timestamp": int, # ms Unix epoch
+        "is_group": bool,
+    }
+    """
+    chat_meta = {}
+    p = Path(msgstore_path)
+    if not p.is_file():
+        return chat_meta
+
+    conn = None
+    try:
+        conn = sqlite3.connect(str(p))
+        cur = conn.cursor()
+
+        cur.execute("PRAGMA table_info(chat)")
+        cols = {row[1] for row in cur.fetchall()}
+
+        arch_expr = "COALESCE(c.archived, 0)" if "archived" in cols else "0"
+        sort_expr = "COALESCE(c.sort_timestamp, 0)" if "sort_timestamp" in cols else "0"
+
+        cur.execute(
+            f"""
+            SELECT 
+                j.raw_string, 
+                COALESCE(c.subject, j.raw_string),
+                {arch_expr},
+                {sort_expr}
+            FROM chat c
+            JOIN jid j ON c.jid_row_id = j._id
+            """
+        )
+        for row in cur.fetchall():
+            jid, subject, archived, sort_ts = row[0], row[1], row[2], row[3]
+            if jid:
+                chat_meta[jid] = {
+                    "subject": subject if (subject and subject != jid) else "",
+                    "archived": bool(archived == 1),
+                    "sort_timestamp": int(sort_ts or 0),
+                    "is_group": bool(jid.endswith("@g.us")),
+                }
+    except Exception as e:
+        sys.stderr.write(f"[Contacts] Warning: Failed to load chat metadata from {msgstore_path}: {e}\n")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    return chat_meta
+
+
+def resolve_jid_name(jid, contacts, lid_to_phone, chat_names, country_code=None):
     """
     Translates a JID (phone, LID, or broadcast) into a human-readable contact name.
     """
@@ -250,19 +434,21 @@ def resolve_jid_name(jid, contacts, lid_to_phone, chat_names):
     if jid in contacts:
         return contacts[jid]
 
-    # 3. Handle 10-digit / country-code variations in contacts
+    # 3. Handle national / country-code variations in contacts
     if "@s.whatsapp.net" in resolved_jid:
         digits = resolved_jid.split("@")[0]
-        # If 12 digits starting with 91, try 10 digits
-        if len(digits) == 12 and digits.startswith("91"):
-            fallback_jid = f"{digits[2:]}@s.whatsapp.net"
-            if fallback_jid in contacts:
-                return contacts[fallback_jid]
-        # If 10 digits, try 91 prefix
-        elif len(digits) == 10:
-            fallback_jid = f"91{digits}@s.whatsapp.net"
-            if fallback_jid in contacts:
-                return contacts[fallback_jid]
+        cc = country_code if country_code is not None else get_account_country_code()
+        if not cc and len(digits) == 10:
+            cc = "91"
+        if cc:
+            if digits.startswith(cc) and len(digits) > len(cc):
+                fallback_jid = f"{digits[len(cc):]}@s.whatsapp.net"
+                if fallback_jid in contacts:
+                    return contacts[fallback_jid]
+            elif not digits.startswith(cc):
+                fallback_jid = f"{cc}{digits}@s.whatsapp.net"
+                if fallback_jid in contacts:
+                    return contacts[fallback_jid]
 
     # 4. Check in chat_names (group subjects / broadcast names)
     if jid in chat_names:

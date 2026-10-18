@@ -19,18 +19,47 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from core.adb import (
+    batch_delete_phone_files,
+    broadcast_media_scan,
     check_adb_device,
     detect_device_oem,
     disable_developer_options,
     discover_whatsapp_accounts,
+    get_device_storage_info,
     open_url_on_phone,
+    restore_chat_to_phone,
     setup_reverse_port,
     wait_for_adb_device,
 )
+from core.clean_planner import (
+    CleanProfile,
+    discard_plan,
+    execute_clean_plan,
+    generate_clean_plan,
+    get_active_plan,
+)
 from core.config import find_ffmpeg_binary, is_ffmpeg_available, load_config, mask_key, save_config
 from core.decrypt import create_key_file, validate_hex_key
+from core.gallery import empty_recycle_bin, list_recycled_items, recycle_media_items, restore_media_items
 
 _latest_received_key: Optional[str] = None
+_active_backup_cancel = threading.Event()
+_active_restore_cancel = threading.Event()
+_active_clean_cancel = threading.Event()
+
+
+def is_subpath(child: Path, parent: Path) -> bool:
+    """Safely verifies child path is strictly inside parent directory (prevents path traversal)."""
+    try:
+        c_res = Path(child).resolve()
+        p_res = Path(parent).resolve()
+        try:
+            return c_res.is_relative_to(p_res)
+        except AttributeError:
+            return os.path.commonpath([str(c_res), str(p_res)]) == str(p_res)
+    except Exception:
+        return False
+
 
 PASTE_KEY_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -769,8 +798,15 @@ def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None
                     sync_status["status"] = "paused"
                     sync_status["phase"] = "paused"
                     sync_status["can_resume"] = True
-                    sync_status["interrupted_by_device"] = True
-                    sync_status["phase_label"] = "Sync interrupted (Phone disconnected). Waiting for phone reconnection to resume automatically..."
+                    sync_status["error"] = sync_status.get("error") or "Sync stopped before completion"
+                    dev = check_adb_device()
+                    if not dev.connected or not dev.authorized:
+                        sync_status["interrupted_by_device"] = True
+                        sync_status["phase_label"] = "Sync interrupted (Phone disconnected). Waiting for phone reconnection to resume automatically..."
+                    else:
+                        sync_status["interrupted_by_device"] = False
+                        sync_status["phase"] = "error"
+                        sync_status["phase_label"] = "Sync failed. Progress is saved - fix the issue and resume."
         except Exception as e:
             if sync_status.get("user_action") == "cancel":
                 _active_runtime_sessions.discard(session_id)
@@ -907,7 +943,15 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             first_arg = args[0]
             if any(
                 endpoint in first_arg
-                for endpoint in ("/api/ping", "/api/health", "/api/sync-status", "/api/device-status", "/api/phone/status")
+                for endpoint in (
+                    "/api/ping",
+                    "/api/health",
+                    "/api/sync-status",
+                    "/api/device-status",
+                    "/api/phone/status",
+                    "/api/heartbeat",
+                    "/api/tab-closed",
+                )
             ):
                 return
         if sys.stdout is not None:
@@ -1095,6 +1139,17 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(200, oem_info)
             return
 
+        # /api/phone/storage (queries live free and total storage on phone)
+        if path == "/api/phone/storage":
+            storage = get_device_storage_info()
+            resp = dict(storage)
+            resp["status"] = "success" if storage.get("success") else "error"
+            resp["connected"] = storage.get("connected", storage.get("success", False))
+            resp["authorized"] = storage.get("authorized", storage.get("success", False))
+            resp["storage"] = storage
+            self._send_json(200, resp)
+            return
+
         # /api/key-status (status of 64-digit key and received key from mobile)
         if path == "/api/key-status":
             cfg = load_config()
@@ -1183,7 +1238,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             target_path = (backups_dir / safe_name).resolve()
 
             # Prevent directory traversal attacks
-            if not str(target_path).startswith(str(backups_dir)) or not target_path.is_file():
+            if not is_subpath(target_path, backups_dir) or not target_path.is_file():
                 self._send_json(404, {"error": "Backup file not found"})
                 return
 
@@ -1191,8 +1246,11 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 file_size = target_path.stat().st_size
                 self.send_response(200)
                 self.send_header("Content-Type", "application/zip")
+                ascii_fallback = re.sub(r"[^\x20-\x7E]", "_", safe_name).replace('"', '')
+                encoded_name = urllib.parse.quote(safe_name, encoding="utf-8")
                 self.send_header(
-                    "Content-Disposition", f'attachment; filename="{safe_name}"'
+                    "Content-Disposition",
+                    f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded_name}',
                 )
                 self.send_header("Content-Length", str(file_size))
                 self.end_headers()
@@ -1200,7 +1258,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 with open(target_path, "rb") as f:
                     shutil.copyfileobj(f, self.wfile, length=64 * 1024)
             except Exception as e:
-                sys.stderr.write(f"[Server] Error streaming backup {safe_name}: {e}\n")
+                sys.stderr.write(f"[Server] Error streaming backup {ascii_fallback}: {e}\n")
             return
 
         # /api/thumbnail?path=<rel_path> (on-demand image and video thumbnail generation)
@@ -1238,6 +1296,63 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(500, {"error": f"Failed to serve thumbnail: {e}"})
             return
 
+        # /api/media?path=<rel_path> (serves high-res original media with RFC 7233 Range support)
+        if path == "/api/media":
+            query = urllib.parse.parse_qs(parsed_url.query)
+            rel_path = query.get("path", [None])[0]
+            if not rel_path:
+                self._send_json(400, {"error": "Missing path parameter"})
+                return
+
+            clean_rel = rel_path.lstrip("/\\").replace("\\", "/")
+            target_path = (self.output_dir / clean_rel).resolve()
+            base_dir = self.output_dir.resolve()
+            if not (is_subpath(target_path, base_dir) and target_path.is_file()):
+                # Also check workspace root if server is run from workspace root
+                ws_root = Path(__file__).resolve().parent.parent
+                alt_path = (ws_root / clean_rel).resolve()
+                if is_subpath(alt_path, ws_root) and alt_path.is_file():
+                    target_path = alt_path
+                else:
+                    self._send_json(404, {"error": "Media file not found"})
+                    return
+
+            content_type = self.guess_type(str(target_path))
+            range_header = self.headers.get("Range")
+            if range_header:
+                self.handle_range_request(str(target_path), range_header)
+                return
+
+            try:
+                file_size = target_path.stat().st_size
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(file_size))
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+                self.end_headers()
+                with open(target_path, "rb") as f:
+                    shutil.copyfileobj(f, self.wfile, length=64 * 1024)
+            except Exception as e:
+                pass
+            return
+
+        # /api/duplicates/recycle-bin
+        if path == "/api/duplicates/recycle-bin":
+            items = list_recycled_items(str(self.output_dir))
+            total_bytes = sum(int(it.get("size_bytes", 0)) for it in items)
+            self._send_json(
+                200,
+                {
+                    "status": "success",
+                    "success": True,
+                    "count": len(items),
+                    "total_bytes": total_bytes,
+                    "items": items,
+                },
+            )
+            return
+
         # /api/open-folder
         if path == "/api/open-folder":
             query = urllib.parse.parse_qs(parsed_url.query)
@@ -1251,7 +1366,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             clean_rel = rel_path.lstrip("/\\")
             target_path = (self.output_dir / clean_rel).resolve()
             base_dir = self.output_dir.resolve()
-            if not str(target_path).startswith(str(base_dir)):
+            if not is_subpath(target_path, base_dir):
                 self.send_response(403)
                 self.end_headers()
                 self.wfile.write(b"Access denied")
@@ -1396,14 +1511,48 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         local_path = self.translate_path(self.path)
         if os.path.isfile(local_path) and range_header:
             self.handle_range_request(local_path, range_header)
-            return
+        try:
+            super().do_GET()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            pass
 
-        super().do_GET()
+    def copyfile(self, source, outputfile):
+        """Copies file to client socket while gracefully absorbing client socket aborts."""
+        try:
+            super().copyfile(source, outputfile)
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            pass
 
     def do_POST(self):
         global _latest_received_key
         parsed_url = urllib.parse.urlparse(self.path)
         path = parsed_url.path
+
+        # /api/duplicates/recycle (safely moves duplicates to local recycle bin)
+        if path == "/api/duplicates/recycle":
+            body = self._read_json_body() or {}
+            rel_paths = body.get("rel_paths", [])
+            if not isinstance(rel_paths, list) or not rel_paths:
+                self._send_json(400, {"status": "error", "message": "rel_paths list is required"})
+                return
+            res = recycle_media_items(str(self.output_dir), rel_paths)
+            self._send_json(200, res)
+            return
+
+        # /api/duplicates/restore (restores duplicates from local recycle bin)
+        if path == "/api/duplicates/restore":
+            body = self._read_json_body() or {}
+            rel_paths = body.get("rel_paths", [])
+            restore_all = body.get("all", False)
+            res = restore_media_items(str(self.output_dir), rel_paths, restore_all=restore_all)
+            self._send_json(200, res)
+            return
+
+        # /api/duplicates/empty-recycle-bin (permanently purges quarantined items)
+        if path in ("/api/duplicates/empty-recycle-bin", "/api/duplicates/purge"):
+            res = empty_recycle_bin(str(self.output_dir))
+            self._send_json(200, res)
+            return
 
         # /api/config (save key and configuration)
         if path == "/api/config":
@@ -1646,6 +1795,106 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             })
             return
 
+        # /api/clean/plan (generates verified phone storage clean plan)
+        if path == "/api/clean/plan":
+            body = self._read_json_body() or {}
+            profile = body.get("profile", CleanProfile.SMART_RECLAIM)
+            if profile not in (CleanProfile.SMART_RECLAIM, CleanProfile.VIDEO_OFFLOAD, CleanProfile.CUSTOM):
+                self._send_json(400, {"status": "error", "message": f"Invalid profile '{profile}'"})
+                return
+            custom_cfg = body.get("custom_config", {})
+            try:
+                plan = generate_clean_plan(str(self.output_dir), profile=profile, custom_config=custom_cfg)
+                self._send_json(200, {"status": "success", "plan": plan})
+            except Exception as e:
+                self._send_json(500, {"status": "error", "message": f"Failed to generate clean plan: {e}"})
+            return
+
+        # /api/clean/execute (executes verified clean plan on phone via ADB)
+        if path == "/api/clean/execute":
+            body = self._read_json_body() or {}
+            plan_id = body.get("plan_id")
+            if not plan_id:
+                self._send_json(400, {"status": "error", "message": "plan_id is required"})
+                return
+
+            plan = get_active_plan(plan_id)
+            if not plan:
+                self._send_json(404, {"status": "error", "message": f"Plan '{plan_id}' not found or already executed"})
+                return
+
+            dev = check_adb_device()
+            if not dev.connected or not dev.authorized:
+                msg = "Phone not connected: No USB device detected" if not dev.connected else "Phone is connected but unauthorized. Please allow USB debugging on your device."
+                self._send_json(400, {
+                    "success": False,
+                    "status": "error",
+                    "error": msg,
+                    "message": msg,
+                })
+                return
+
+            try:
+                _active_clean_cancel.clear()
+                res = execute_clean_plan(
+                    plan_id,
+                    str(self.output_dir),
+                    cancel_event=_active_clean_cancel,
+                    exclude_jids=body.get("exclude_jids"),
+                )
+                resp = dict(res)
+                resp["status"] = "success" if res.get("success") else "error"
+                resp["result"] = res
+                self._send_json(200, resp)
+            except Exception as e:
+                self._send_json(500, {"success": False, "status": "error", "error": f"Execution failed: {e}", "message": f"Execution failed: {e}"})
+            return
+
+        # /api/clean/cancel (cancel active phone storage cleanup purge)
+        if path == "/api/clean/cancel":
+            _active_clean_cancel.set()
+            self._send_json(200, {"status": "success", "message": "Cleanup cancellation requested."})
+            return
+
+        # /api/restore/cancel (cancel active restore push to phone)
+        if path == "/api/restore/cancel":
+            _active_restore_cancel.set()
+            self._send_json(200, {"status": "success", "message": "Restore cancellation requested."})
+            return
+
+        # /api/restore/chat (restores chat media back to phone with storage safety check)
+        if path == "/api/restore/chat":
+            body = self._read_json_body() or {}
+            chat_jid = body.get("chat_jid")
+            if not chat_jid:
+                self._send_json(400, {"status": "error", "message": "chat_jid is required"})
+                return
+
+            dev = check_adb_device()
+            if not dev.connected or not dev.authorized:
+                msg = "Phone not connected: No USB device detected" if not dev.connected else "Phone is connected but unauthorized. Please allow USB debugging on your device."
+                self._send_json(400, {
+                    "success": False,
+                    "status": "error",
+                    "error": msg,
+                    "message": msg,
+                })
+                return
+
+            try:
+                _active_restore_cancel.clear()
+                res = restore_chat_to_phone(chat_jid, str(self.output_dir), cancel_event=_active_restore_cancel)
+                resp = dict(res)
+                resp["status"] = "success" if res.get("success") else "error"
+                resp["result"] = res
+                if res.get("success"):
+                    self._send_json(200, resp)
+                else:
+                    self._send_json(400, resp)
+            except Exception as e:
+                self._send_json(500, {"success": False, "status": "error", "error": f"Restore failed: {e}", "message": f"Restore failed: {e}"})
+            return
+
         # /api/sync/skip-db or /api/skip-db (cancel Phase 1 DB pull in flight and use existing local DB)
         if path in ("/api/sync/skip-db", "/api/skip-db"):
             if sync_status.get("active") and sync_status.get("phase") == "database":
@@ -1764,8 +2013,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(400, {"status": "error", "message": "Missing chat_name parameter"})
                 return
 
+            _active_backup_cancel.clear()
             chat_name = body["chat_name"]
-            success, zip_path, count = zip_chat(chat_name, str(self.output_dir), verify=True)
+            success, zip_path, count = zip_chat(chat_name, str(self.output_dir), verify=True, cancel_event=_active_backup_cancel)
             if success:
                 fname = os.path.basename(zip_path)
                 self._send_json(
@@ -1778,7 +2028,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     },
                 )
             else:
-                self._send_json(500, {"status": "error", "message": str(zip_path)})
+                is_cancelled = "cancelled" in str(zip_path).lower()
+                status_code = 200 if is_cancelled else 500
+                self._send_json(status_code, {"status": "cancelled" if is_cancelled else "error", "message": str(zip_path)})
             return
 
         # /api/backup-files (in-browser ZIP creation for a list of selected files)
@@ -1788,8 +2040,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(400, {"status": "error", "message": "Missing files list"})
                 return
 
+            _active_backup_cancel.clear()
             files = body["files"]
-            success, zip_path, count = zip_file_list(files, str(self.output_dir), verify=True)
+            success, zip_path, count = zip_file_list(files, str(self.output_dir), verify=True, cancel_event=_active_backup_cancel)
             if success:
                 fname = os.path.basename(zip_path)
                 self._send_json(
@@ -1802,7 +2055,15 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     },
                 )
             else:
-                self._send_json(500, {"status": "error", "message": str(zip_path)})
+                is_cancelled = "cancelled" in str(zip_path).lower()
+                status_code = 200 if is_cancelled else 500
+                self._send_json(status_code, {"status": "cancelled" if is_cancelled else "error", "message": str(zip_path)})
+            return
+
+        # /api/backup/cancel (cancels ongoing backup ZIP generation)
+        if path in ("/api/backup/cancel", "/api/backup-cancel"):
+            _active_backup_cancel.set()
+            self._send_json(200, {"status": "cancelled", "message": "Backup cancellation requested"})
             return
 
         # /api/heartbeat (periodic client ping to track active browser tabs)
@@ -1814,6 +2075,10 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 with _tab_lock:
                     _has_had_browser_tab = True
                     _active_tabs[tab_id] = time.time()
+                    now = time.time()
+                    stale = [t for t, ts in _active_tabs.items() if (now - ts) > 30.0]
+                    for t in stale:
+                        del _active_tabs[t]
                     if _tab_shutdown_timer and _tab_shutdown_timer.is_alive():
                         _tab_shutdown_timer.cancel()
                         _tab_shutdown_timer = None
@@ -1828,8 +2093,8 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 if tab_id and tab_id in _active_tabs:
                     del _active_tabs[tab_id]
                 now = time.time()
-                # Prune stale tabs (> 8.0s without heartbeat)
-                stale = [t for t, ts in _active_tabs.items() if (now - ts) > 8.0]
+                # Prune stale tabs (> 30.0s without heartbeat)
+                stale = [t for t, ts in _active_tabs.items() if (now - ts) > 30.0]
                 for t in stale:
                     del _active_tabs[t]
 
@@ -1841,7 +2106,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     def _grace_shutdown(srv):
                         with _tab_lock:
                             now_t = time.time()
-                            fresh = [t for t, ts in _active_tabs.items() if (now_t - ts) < 5.0]
+                            fresh = [t for t, ts in _active_tabs.items() if (now_t - ts) < 25.0]
                             if fresh:
                                 return
                         print("\n[Server] All browser tabs closed. Performing clean shutdown...")

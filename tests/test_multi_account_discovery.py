@@ -316,6 +316,49 @@ User UserInfo{0:Owner:13}:
             server.server_close()
 
 
+    def test_11_iphonesubinfo_parcel_parsing(self):
+        """Verify parse_parcel_phone_number extracts phone number from raw Parcel dumps."""
+        from core.adb import parse_parcel_phone_number
+
+        raw_parcel = (
+            "Result: Parcel(\n"
+            "0x00000000: 00000000 0000000d 0039002b 00390031 '........+.9.1.9.'\n"
+            "0x00000010: 00340033 00340038 00360032 00360030 '3.4.8.4.2.6.0.6.'\n"
+            "0x00000020: 00000037                            '7...            ')\n"
+        )
+        parsed = parse_parcel_phone_number(raw_parcel)
+        self.assertEqual(parsed, "+919348426067")
+
+        # Empty / non-parcel output
+        self.assertEqual(parse_parcel_phone_number(""), "")
+        self.assertEqual(parse_parcel_phone_number("Random text"), "")
+
+    def test_12_extract_self_account_info_from_msgstore(self):
+        """Verify extract_self_account_info extracts push name and phone number from msgstore.db."""
+        import sqlite3
+        from core.contacts import extract_self_account_info
+
+        db_path = Path(self.test_dir) / "msgstore.db"
+        conn = sqlite3.connect(str(db_path))
+        c = conn.cursor()
+        c.execute("CREATE TABLE props (key TEXT PRIMARY KEY, value TEXT)")
+        c.execute("INSERT INTO props VALUES ('user_push_name', 'Test User')")
+
+        c.execute("CREATE TABLE jid (_id INTEGER PRIMARY KEY, raw_string TEXT)")
+        c.execute("INSERT INTO jid VALUES (1, '919876543210.0:0@s.whatsapp.net')")
+        c.execute("INSERT INTO jid VALUES (2, '919876543210-1600000000@g.us')")
+
+        c.execute("CREATE TABLE call_log (_id INTEGER PRIMARY KEY, call_creator_device_jid_row_id INTEGER, from_me INTEGER)")
+        c.execute("INSERT INTO call_log VALUES (1, 1, 1)")
+        conn.commit()
+        conn.close()
+
+        info = extract_self_account_info(str(db_path))
+        self.assertEqual(info["push_name"], "Test User")
+        self.assertEqual(info["phone_number"], "+919876543210")
+        self.assertEqual(info["self_jid"], "919876543210@s.whatsapp.net")
+
+
 if __name__ == "__main__":
     unittest.main()
 

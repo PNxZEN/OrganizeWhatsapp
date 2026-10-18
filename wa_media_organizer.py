@@ -159,7 +159,7 @@ def background_organizer_loop(args, media_rows, contacts, lid_to_phone, chat_nam
 
             cache_file = os.path.join(args.output, ".hashes_cache.sqlite3")
             md5_map, phash_map, file_hashes = analyze_duplicates(
-                file_index, skip_imagehash=True, cache_path=cache_file
+                file_index, skip_imagehash=args.skip_imagehash, cache_path=cache_file
             )
 
             _, new_organized = organize_media(
@@ -172,6 +172,7 @@ def background_organizer_loop(args, media_rows, contacts, lid_to_phone, chat_nam
                 contacts=contacts,
                 mode=args.mode,
                 actual_sizes=actual_sizes,
+                quality_duplicate_detector=detect_quality_duplicates,
             )
 
             if not new_organized:

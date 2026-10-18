@@ -389,6 +389,10 @@ def organize_media(
                 norm_actual = actual_path.replace("\\", "/")
                 if any(k in norm_actual for k in ("WhatsApp Documents", "Databases", "Backups")):
                     is_doc = True
+            is_primary = (dup_primary == norm_filename) if dup_primary else False
+            final_is_dup = False if is_primary else is_dup
+            final_reason = None if is_primary else dup_reason
+            final_primary = None if is_primary else dup_primary
 
             organized_list.append(
                 {
@@ -405,13 +409,15 @@ def organize_media(
                     "sender_jid": row.get("sender_jid"),
                     "md5": md5,
                     "phash": phash,
-                    "is_duplicate": is_dup,
-                    "duplicate_reason": dup_reason,
-                    "duplicate_primary": dup_primary if dup_primary != norm_filename else None,
+                    "is_duplicate": final_is_dup,
+                    "duplicate_reason": final_reason,
+                    "duplicate_primary": final_primary,
                     "media_duration": row.get("media_duration"),
                     "starred": row.get("starred") or 0,
                     "from_me": row.get("from_me") or 0,
                     "forward_score": row.get("forward_score") or 0,
+                    "chat_archived": int(row.get("chat_archived") or 0),
+                    "chat_last_active_ts": int(row.get("chat_last_active_ts") or 0),
                 }
             )
 
@@ -478,7 +484,7 @@ def salvage_unmatched_media(media_dir, output_dir, organized_filenames_lower):
     return salvaged_count
 
 
-def zip_chat(chat_name, output_dir, verify=True):
+def zip_chat(chat_name, output_dir, verify=True, cancel_event=None):
     """
     Zips all media files in the organized directory for the specified chat_name.
     Stores the zip in output_dir/backups/<chat_name>_<timestamp>.zip.
@@ -521,30 +527,50 @@ def zip_chat(chat_name, output_dir, verify=True):
     if not media_files:
         return False, "No media files found in chat folder", 0
 
-    with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as z:
-        for full_p, rel_p in media_files:
-            z.write(full_p, arcname=rel_p)
-
-    if verify:
-        with zipfile.ZipFile(str(zip_path), "r") as z:
+    try:
+        cancelled = False
+        with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as z:
             for full_p, rel_p in media_files:
-                h_orig = hashlib.md5()
-                with open(full_p, "rb") as f:
-                    for chunk in iter(lambda: f.read(65536), b""):
-                        h_orig.update(chunk)
+                if cancel_event and cancel_event.is_set():
+                    cancelled = True
+                    break
+                z.write(full_p, arcname=rel_p)
 
-                with z.open(rel_p) as f:
-                    h_zip = hashlib.md5()
-                    for chunk in iter(lambda: f.read(65536), b""):
-                        h_zip.update(chunk)
+        if cancelled:
+            zip_path.unlink(missing_ok=True)
+            return False, "Backup cancelled by user", 0
 
-                if h_orig.hexdigest() != h_zip.hexdigest():
-                    return False, f"MD5 mismatch on {rel_p}", 0
+        if verify:
+            with zipfile.ZipFile(str(zip_path), "r") as z:
+                for full_p, rel_p in media_files:
+                    if cancel_event and cancel_event.is_set():
+                        cancelled = True
+                        break
+                    h_orig = hashlib.md5()
+                    with open(full_p, "rb") as f:
+                        for chunk in iter(lambda: f.read(65536), b""):
+                            h_orig.update(chunk)
+
+                    with z.open(rel_p) as f:
+                        h_zip = hashlib.md5()
+                        for chunk in iter(lambda: f.read(65536), b""):
+                            h_zip.update(chunk)
+
+                    if h_orig.hexdigest() != h_zip.hexdigest():
+                        zip_path.unlink(missing_ok=True)
+                        return False, f"MD5 mismatch on {rel_p}", 0
+
+            if cancelled:
+                zip_path.unlink(missing_ok=True)
+                return False, "Backup cancelled by user", 0
+    except Exception as e:
+        zip_path.unlink(missing_ok=True)
+        return False, str(e), 0
 
     return True, str(zip_path), len(media_files)
 
 
-def zip_file_list(rel_paths, output_dir, verify=True):
+def zip_file_list(rel_paths, output_dir, verify=True, cancel_event=None):
     """
     Zips a specific list of relative paths under output_dir into selected_backup.zip.
     Returns (success: bool, zip_path: str, file_count: int).
@@ -558,32 +584,53 @@ def zip_file_list(rel_paths, output_dir, verify=True):
     zip_path = backup_dir / f"selected_{timestamp}.zip"
 
     packed = []
-    with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as z:
-        for r_path in rel_paths:
-            full_path = Path(output_dir) / r_path
-            if full_path.is_file():
-                arcname = str(r_path).replace("\\", "/")
-                z.write(str(full_path), arcname=arcname)
-                packed.append((str(full_path), arcname))
+    try:
+        cancelled = False
+        with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as z:
+            for r_path in rel_paths:
+                if cancel_event and cancel_event.is_set():
+                    cancelled = True
+                    break
+                full_path = Path(output_dir) / r_path
+                if full_path.is_file():
+                    arcname = str(r_path).replace("\\", "/")
+                    z.write(str(full_path), arcname=arcname)
+                    packed.append((str(full_path), arcname))
 
-    if not packed:
-        return False, "None of the specified files were found on disk", 0
+        if cancelled:
+            zip_path.unlink(missing_ok=True)
+            return False, "Backup cancelled by user", 0
 
-    if verify:
-        with zipfile.ZipFile(str(zip_path), "r") as z:
-            for full_path, arcname in packed:
-                h_orig = hashlib.md5()
-                with open(full_path, "rb") as f:
-                    for chunk in iter(lambda: f.read(65536), b""):
-                        h_orig.update(chunk)
+        if not packed:
+            zip_path.unlink(missing_ok=True)
+            return False, "None of the specified files were found on disk", 0
 
-                with z.open(arcname) as f:
-                    h_zip = hashlib.md5()
-                    for chunk in iter(lambda: f.read(65536), b""):
-                        h_zip.update(chunk)
+        if verify:
+            with zipfile.ZipFile(str(zip_path), "r") as z:
+                for full_path, arcname in packed:
+                    if cancel_event and cancel_event.is_set():
+                        cancelled = True
+                        break
+                    h_orig = hashlib.md5()
+                    with open(full_path, "rb") as f:
+                        for chunk in iter(lambda: f.read(65536), b""):
+                            h_orig.update(chunk)
 
-                if h_orig.hexdigest() != h_zip.hexdigest():
-                    return False, f"MD5 mismatch on {arcname}", 0
+                    with z.open(arcname) as f:
+                        h_zip = hashlib.md5()
+                        for chunk in iter(lambda: f.read(65536), b""):
+                            h_zip.update(chunk)
+
+                    if h_orig.hexdigest() != h_zip.hexdigest():
+                        zip_path.unlink(missing_ok=True)
+                        return False, f"MD5 mismatch on {arcname}", 0
+
+            if cancelled:
+                zip_path.unlink(missing_ok=True)
+                return False, "Backup cancelled by user", 0
+    except Exception as e:
+        zip_path.unlink(missing_ok=True)
+        return False, str(e), 0
 
     return True, str(zip_path), len(packed)
 
@@ -640,6 +687,14 @@ class StreamingMediaRouter:
         # Track existing file paths and sizes in output_dir to prevent overwrites
         self.dest_file_sizes: Dict[str, int] = {}
         self._init_dest_index()
+
+        # Persistent SQLite hash cache and realtime duplicate tracker
+        try:
+            from core.duplicates import HashCache
+            self.hash_cache = HashCache(self.output_dir / ".hashes_cache.sqlite3")
+        except Exception:
+            self.hash_cache = None
+        self.chat_committed_items: Dict[str, List[dict]] = defaultdict(list)
 
         self.gallery_buffer: List[dict] = []
         self.all_organized: List[dict] = []
@@ -816,6 +871,8 @@ class StreamingMediaRouter:
                 starred = matched_row.get("starred", 0)
                 from_me = matched_row.get("from_me", 0)
                 forward_score = matched_row.get("forward_score", 0)
+                chat_archived = int(matched_row.get("chat_archived") or 0)
+                chat_last_active_ts = int(matched_row.get("chat_last_active_ts") or 0)
                 self.summary[chat_name]["count"] += 1
                 self.summary[chat_name]["total_bytes"] += file_size
             elif "Backup Excluded Stickers" in norm_phone or norm_phone.startswith("Media/WhatsApp Sticker Packs") or norm_phone.startswith("WhatsApp Sticker Packs"):
@@ -827,20 +884,39 @@ class StreamingMediaRouter:
                 starred = 0
                 from_me = 0
                 forward_score = 0
+                chat_archived = 0
+                chat_last_active_ts = 0
                 self.summary["Sticker Packs"]["count"] += 1
                 self.summary["Sticker Packs"]["total_bytes"] += file_size
             else:
                 chat_name = "_unmatched"
                 chat_jid = "_unmatched"
-                received_at = ""
+                m_date = re.search(r"\b(20\d{2})(\d{2})(\d{2})\b", dest_path.name)
+                if m_date:
+                    y, mo, d = m_date.groups()
+                    received_at = f"{y}-{mo}-{d} 00:00:00"
+                else:
+                    received_at = ""
                 sender_jid = ""
                 is_doc = False
                 starred = 0
                 from_me = 0
                 forward_score = 0
+                chat_archived = 0
+                chat_last_active_ts = 0
                 self.summary["_unmatched"]["unmatched"] += 1
                 self.summary["_unmatched"]["count"] += 1
                 self.summary["_unmatched"]["total_bytes"] += file_size
+
+            md5_str = ""
+            phash_str = ""
+            if self.hash_cache and dest_path.is_file():
+                try:
+                    m, p = self.hash_cache.get_or_compute(dest_path)
+                    md5_str = m or ""
+                    phash_str = p or ""
+                except Exception:
+                    pass
 
             is_dup = bool(re.search(r"_dup\d+", dest_path.name))
             dup_reason = "collision" if is_dup else ""
@@ -859,8 +935,8 @@ class StreamingMediaRouter:
                 "is_doc": is_doc,
                 "received_at": received_at,
                 "sender_jid": sender_jid,
-                "md5": "",
-                "phash": "",
+                "md5": md5_str,
+                "phash": phash_str,
                 "is_duplicate": is_dup,
                 "duplicate_reason": dup_reason,
                 "duplicate_primary": dup_primary,
@@ -868,8 +944,82 @@ class StreamingMediaRouter:
                 "starred": starred,
                 "from_me": from_me,
                 "forward_score": forward_score,
+                "chat_archived": chat_archived,
+                "chat_last_active_ts": chat_last_active_ts,
             }
 
+            # Realtime duplicate check against already-committed items in this chat (images/stickers only)
+            # Video duplicates are discarded for future dedicated transcoding/video analysis
+            curr_filename = dest_path.name
+            is_vid = (mime_type or "").startswith("video/") or any(curr_filename.lower().endswith(ext) for ext in ('.mp4', '.3gp', '.mov', '.mkv', '.avi', '.webm'))
+            is_aud = (mime_type or "").startswith("audio/") or any(curr_filename.lower().endswith(ext) for ext in ('.ogg', '.opus', '.mp3', '.m4a', '.aac', '.wav'))
+            if not is_vid and not is_aud:
+                existing_items = self.chat_committed_items[chat_name]
+                for existing in existing_items:
+                    is_match = False
+                    reason = "quality"
+                    # Exact MD5 match
+                    if md5_str and existing.get("md5") and md5_str == existing.get("md5"):
+                        is_match = True
+                        reason = "exact"
+                    # Filename collision with _dup
+                    elif re.sub(r"_dup\d+(?=\.[^.]+$)", "", curr_filename, flags=re.IGNORECASE).lower() == re.sub(r"_dup\d+(?=\.[^.]+$)", "", existing.get("filename", ""), flags=re.IGNORECASE).lower():
+                        is_match = True
+                        reason = "exact" if file_size == (existing.get("size_bytes") or 0) else "quality"
+                    # Perceptual image match (strict false-positive guard against burst photos)
+                    elif phash_str and existing.get("phash"):
+                        try:
+                            import imagehash
+                            h1 = imagehash.hex_to_hash(phash_str)
+                            h2 = imagehash.hex_to_hash(existing["phash"])
+                            dist = h1 - h2
+                            if dist <= 4:
+                                sz_a, sz_b = file_size, (existing.get("size_bytes") or 0)
+                                ratio = (max(sz_a, sz_b) / min(sz_a, sz_b)) if min(sz_a, sz_b) > 0 else 1.0
+                                m1 = re.match(r"^IMG-(\d{8})-WA(\d{4})", filename, re.IGNORECASE)
+                                m2 = re.match(r"^IMG-(\d{8})-WA(\d{4})", existing.get("filename", ""), re.IGNORECASE)
+                                is_wa_close = False
+                                if m1 and m2 and m1.group(1) == m2.group(1):
+                                    is_wa_close = abs(int(m1.group(2)) - int(m2.group(2))) <= 4
+                                same_time = bool(received_at and existing.get("received_at") and received_at[:16] == existing["received_at"][:16])
+
+                                # Must be adjacent counters or same timestamp, and must have ratio >= 1.30 (unless dist==0 and exact size)
+                                if (is_wa_close or same_time) and (ratio >= 1.30 or (dist == 0 and sz_a == sz_b)):
+                                    is_match = True
+                                    is_stk = filename.lower().startswith("stk-") or existing.get("filename", "").lower().startswith("stk-")
+                                    if is_stk:
+                                        reason = "exact" if sz_a == sz_b else "sticker"
+                                    else:
+                                        reason = "quality" if sz_a != sz_b else "perceptual"
+                        except Exception:
+                            pass
+                    # Same-second / same-minute WhatsApp quality match
+                    elif received_at and existing.get("received_at") and received_at == existing.get("received_at"):
+                        if mime_type.split("/")[0] == existing.get("mime_type", "").split("/")[0]:
+                            sz_a, sz_b = file_size, (existing.get("size_bytes") or 0)
+                            ratio = (max(sz_a, sz_b) / min(sz_a, sz_b)) if min(sz_a, sz_b) > 0 else 1.0
+                            if ratio >= 1.30:
+                                is_match = True
+                                reason = "quality"
+
+                    if is_match:
+                        # Choose best version
+                        if file_size > (existing.get("size_bytes") or 0):
+                            # Newly arrived item is HIGHER QUALITY / RESOLUTION!
+                            item["is_duplicate"] = False
+                            item["duplicate_primary"] = None
+                            item["duplicate_reason"] = None
+                            existing["is_duplicate"] = True
+                            existing["duplicate_primary"] = item["filename"]
+                            existing["duplicate_reason"] = reason
+                        else:
+                            # Existing item is higher or equal quality
+                            item["is_duplicate"] = True
+                            item["duplicate_primary"] = existing.get("duplicate_primary") or existing["filename"]
+                            item["duplicate_reason"] = reason
+                        break
+
+            self.chat_committed_items[chat_name].append(item)
             self.gallery_buffer.append(item)
             self.all_organized.append(item)
 
@@ -892,9 +1042,29 @@ class StreamingMediaRouter:
         self.last_flush_time = time.time()
 
     def flush_all(self, export_csv: bool = True):
-        """Flushes any remaining items in buffer and exports media_index.csv."""
+        """Flushes any remaining items in buffer, runs global duplicate resolution, and exports media_index.csv."""
         with self.lock:
+            # Final global duplicate resolution pass across all organized items
+            try:
+                from core.duplicates import detect_quality_duplicates
+                detect_quality_duplicates(self.all_organized, self.output_dir, cache=self.hash_cache)
+            except Exception as e:
+                sys.stderr.write(f"[Router] Warning: Final duplicate resolution: {e}\n")
+
             self._flush_buffer()
+            if self.all_organized:
+                try:
+                    from core.gallery import generate_gallery
+                    generate_gallery(
+                        self.all_organized,
+                        str(self.output_dir),
+                        contacts=self.contacts,
+                        lid_to_phone=self.lid_to_phone,
+                        chat_names=self.chat_names,
+                    )
+                except Exception as e:
+                    sys.stderr.write(f"[Router] Warning: Final gallery generation: {e}\n")
+
             if export_csv and self.all_organized:
                 self._export_csv()
             return dict(self.summary), list(self.all_organized)
@@ -923,13 +1093,32 @@ class StreamingMediaRouter:
             "starred",
             "from_me",
             "forward_score",
+            "chat_archived",
+            "chat_last_active_ts",
         ]
+        merged = {}
+        if csv_path.is_file():
+            try:
+                with open(csv_path, "r", newline="", encoding="utf-8") as f:
+                    for row in csv.DictReader(f):
+                        rel = (row.get("rel_path") or "").strip()
+                        if rel:
+                            merged[rel] = row
+            except Exception as e:
+                sys.stderr.write(f"[Live] Warning: Could not merge existing media_index.csv: {e}\n")
+
+        for item in self.all_organized:
+            rel = (item.get("rel_path") or "").strip()
+            if rel:
+                merged[rel] = item
+
+        rows = [{k: row.get(k, "") for k in fieldnames} for row in merged.values()]
         tmp_csv = csv_path.with_suffix(".tmp")
         try:
             with open(tmp_csv, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
                 writer.writeheader()
-                writer.writerows(self.all_organized)
+                writer.writerows(rows)
             os.replace(tmp_csv, csv_path)
         except Exception as e:
             sys.stderr.write(f"[Live] Warning: Failed to export media_index.csv: {e}\n")
@@ -1098,6 +1287,9 @@ def reorganize_unmatched_media(
 
                 updated_chats = []
                 for c in chats:
+                    c.setdefault("archived", False)
+                    c.setdefault("last_message_ts", 0)
+                    c.setdefault("is_group", bool((c.get("jid") or "").endswith("@g.us")))
                     kept_media = []
                     for m in c.get("media", []):
                         m_rel = m.get("rel_path")
@@ -1123,10 +1315,19 @@ def reorganize_unmatched_media(
                             "name": item.get("chat_name") or "Unknown Chat",
                             "total_size": 0,
                             "file_count": 0,
+                            "archived": bool(item.get("chat_archived")),
+                            "last_message_ts": int(item.get("chat_last_active_ts") or 0),
+                            "is_group": bool(jid.endswith("@g.us")),
                             "media": [],
                         }
                         chat_index[jid] = new_chat
                         updated_chats.append(new_chat)
+                    else:
+                        if item.get("chat_archived"):
+                            chat_index[jid]["archived"] = True
+                        item_ts = int(item.get("chat_last_active_ts") or 0)
+                        if item_ts > (chat_index[jid].get("last_message_ts") or 0):
+                            chat_index[jid]["last_message_ts"] = item_ts
 
                     chat_obj = chat_index[jid]
                     if not any(m.get("rel_path") == item.get("rel_path") for m in chat_obj["media"]):

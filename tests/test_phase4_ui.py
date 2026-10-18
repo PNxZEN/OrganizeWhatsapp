@@ -56,7 +56,7 @@ class TestPhase4UI(unittest.TestCase):
 
     def test_02_no_warning_emojis(self):
         """Verify strict formatting rule: zero warning emojis in gallery.html."""
-        self.assertNotIn("⚠️", self.html_content)
+        self.assertNotIn("\u26a0\ufe0f", self.html_content)
 
     def test_03_zero_terminal_alerts(self):
         """Verify BUG-08 fix: command-line terminal alerts are removed from backup actions."""
@@ -134,6 +134,39 @@ class TestPhase4UI(unittest.TestCase):
         self.assertIn("activeChat.file_count = found.file_count;", self.html_content)
         self.assertIn("activeChat.total_size = data.total_size;", self.html_content)
         self.assertIn("getChatsArray().find(c => c.jid === state.activeChatJid)", self.html_content)
+
+    def test_10_duplicate_review_and_recycle_bin_elements(self):
+        """Verify the Duplicate Review and Recycle Bin elements exist in gallery.html."""
+        required_elements = [
+            'id="btnReviewDuplicates"',
+            'id="dupCountReviewPill"',
+            'id="btnOpenRecycleBin"',
+            'id="recycleBinCountPill"',
+            'id="btnQuickReviewDups"',
+            'id="modalDuplicateReview"',
+            'id="dupCompareList"',
+            'id="btnExecuteRecycle"',
+            'id="recycleBinList"',
+            'id="btnRestoreAll"',
+        ]
+        for elem in required_elements:
+            self.assertIn(elem, self.html_content, f"Required duplicate review element {elem} missing from gallery.html")
+
+    def test_12_date_grouping_and_timestamp_functions(self):
+        """Verify date grouping, filename extraction, and formatDateTime functions exist in gallery.html."""
+        self.assertIn("function extractDateFromFilename(", self.html_content)
+        self.assertIn("function getMonthGroupForItem(", self.html_content)
+        self.assertIn("function formatDateTime(", self.html_content)
+        self.assertIn("item.monthGroup = monthGroup;", self.html_content)
+        self.assertIn("item.monthGroup = getMonthGroupForItem(item);", self.html_content)
+
+    def test_13_no_banned_characters_in_all_assets(self):
+        """Verify strict formatting: zero em/en dashes or warning emojis across html files."""
+        output_gallery = WORKSPACE_ROOT / "output" / "gallery.html"
+        if output_gallery.exists():
+            out_content = output_gallery.read_text(encoding="utf-8")
+            self.assertEqual(len(re.findall(r"[\u2014\u2013\u26a0]", out_content)), 0)
+        self.assertEqual(len(re.findall(r"[\u2014\u2013\u26a0]", self.html_content)), 0)
 
 
 if __name__ == "__main__":

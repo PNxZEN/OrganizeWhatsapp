@@ -55,6 +55,21 @@ def find_adb_binary(custom_path=None):
     return "adb"
 
 
+def _terminate_adb_proc(proc, timeout=15):
+    """Best-effort terminate of an ADB exec-out process so workers cannot hang on a stuck pipe."""
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        proc.terminate()
+        proc.wait(timeout=timeout)
+    except Exception:
+        try:
+            proc.kill()
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+
+
 class DeviceStatus(tuple):
     """
     Subclass of 5-element tuple (connected, authorized, error_message, device_serial, model)
@@ -415,9 +430,36 @@ def cleanup_nested_databases_folder(dest_db="./Databases"):
 
 
 
+def parse_parcel_phone_number(output_text: str) -> str:
+    """
+    Parses a valid phone number string from Android 'service call iphonesubinfo' Parcel output.
+    Handles UTF-16 character streams separated by null bytes in Android dumps.
+    """
+    if not output_text or "Parcel" not in output_text:
+        return ""
+
+    chars = []
+    for match in re.finditer(r"'([^']*)'", output_text):
+        chunk = match.group(1)
+        for ch in chunk:
+            if ch.isdigit() or ch == "+":
+                chars.append(ch)
+    cand = "".join(chars).strip()
+    m = re.search(r"(\+?\d{10,15})", cand)
+    if m:
+        num = m.group(1)
+        # Avoid ICCID / SIM serial numbers (16-20 digits starting with 89)
+        if len(num) > 15 or (len(num) >= 15 and num.startswith("89")):
+            return ""
+        if not num.startswith("+") and len(num) >= 10:
+            num = f"+{num}"
+        return num
+    return ""
+
+
 def get_device_sim_phone_numbers(adb_path=None, device_serial=None) -> list:
     """
-    Extracts active SIM phone numbers from Android telephony service or siminfo.
+    Extracts active SIM phone numbers from Android telephony service, siminfo, or iphonesubinfo.
     Returns a list of clean phone number strings (e.g. ['+919876543210']).
     """
     cmd = find_adb_binary(adb_path)
@@ -471,6 +513,30 @@ def get_device_sim_phone_numbers(adb_path=None, device_serial=None) -> list:
                                 sim_numbers.append(num)
         except Exception:
             pass
+
+    # 3. Probe service call iphonesubinfo (IPC to telephony manager for line1 number)
+    if not sim_numbers:
+        for code in (16, 15, 17, 18):
+            for sub_arg in ("", " i32 1", " i32 2", " i32 0"):
+                try:
+                    res = subprocess.run(
+                        adb_base + ["shell", f"service call iphonesubinfo {code}{sub_arg}"],
+                        capture_output=True,
+                        text=True,
+                        timeout=3,
+                        check=False,
+                        encoding="utf-8",
+                        errors="replace",
+                    )
+                    if res.returncode == 0 and res.stdout:
+                        num = parse_parcel_phone_number(res.stdout)
+                        if num and num not in sim_numbers:
+                            sim_numbers.append(num)
+                            break
+                except Exception:
+                    pass
+            if sim_numbers:
+                break
 
     return sim_numbers
 
@@ -710,7 +776,7 @@ def discover_whatsapp_accounts(
             account_id = "main"
             parent_path = p
 
-        # Correlate phone number from known_accounts, registered accounts, or SIMs
+        # Correlate phone number from known_accounts, registered accounts, SIMs, or local DB
         cfg = load_config()
         known_accounts = cfg.get("known_accounts", {})
         phone_number = known_accounts.get(p, "")
@@ -718,6 +784,31 @@ def discover_whatsapp_accounts(
             matched_reg = [r for r in registered if r["user_id"] == user_id and r["app_type"] == app_type]
             if matched_reg and matched_reg[0]["phone_number"]:
                 phone_number = matched_reg[0]["phone_number"]
+        if not phone_number:
+            sims = get_device_sim_phone_numbers(cmd, device_serial=device_serial)
+            if sims:
+                phone_number = sims[0]
+
+        push_name = ""
+        try:
+            from core.contacts import extract_self_account_info
+            self_info = extract_self_account_info("Databases/msgstore.db")
+            if not self_info.get("phone_number") and not self_info.get("push_name"):
+                out_db = Path(cfg.get("output_dir", "./output")) / "Databases" / "msgstore.db"
+                if out_db.is_file():
+                    self_info = extract_self_account_info(str(out_db))
+            if not phone_number and self_info.get("phone_number"):
+                phone_number = self_info["phone_number"]
+            if self_info.get("push_name"):
+                push_name = self_info["push_name"]
+        except Exception:
+            pass
+
+        if phone_number and not cfg.get("selected_account_phone"):
+            try:
+                save_config({"selected_account_phone": phone_number})
+            except Exception:
+                pass
 
         # Human-readable formatted date and size
         if db_mtime > 0:
@@ -731,7 +822,10 @@ def discover_whatsapp_accounts(
         size_str = f"{db_size / (1024 * 1024):.1f} MB" if db_size > 0 else "0 MB"
 
         if phone_number:
-            label = f"{app_label} ({phone_number})"
+            if push_name:
+                label = f"{app_label} ({phone_number} - {push_name})"
+            else:
+                label = f"{app_label} ({phone_number})"
         elif account_id != "main":
             label = f"{app_label} (Account {account_id})"
         elif app_type == "whatsapp_business":
@@ -770,6 +864,7 @@ def discover_whatsapp_accounts(
             "app_label": app_label,
             "label": label,
             "phone_number": phone_number,
+            "push_name": push_name,
             "has_db": has_db,
             "has_media": has_media,
             "latest_db_file": db_file,
@@ -940,6 +1035,7 @@ def adb_pull_tar_full(
     """Full streaming tar pull fallback when remote stat indexing is unavailable."""
     adb_base = [adb_path, "-s", device_serial] if device_serial else [adb_path]
     tar_cmd = adb_base + ["exec-out", f"tar -C '{base}/' -cf - {folders_str} 2>/dev/null"]
+    proc = None
     try:
         proc = subprocess.Popen(tar_cmd, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL)
         with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
@@ -980,11 +1076,17 @@ def adb_pull_tar_full(
                     except Exception:
                         proc.kill()
                     return False
-        proc.wait()
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            _terminate_adb_proc(proc)
+            return False
         return proc.returncode == 0
     except Exception as e:
         sys.stderr.write(f"[ADB] Full tar pull failed: {e}\n")
         return False
+    finally:
+        _terminate_adb_proc(proc)
 
 
 def safe_atomic_replace(src_path, dst_path, timeout=30.0):
@@ -1439,6 +1541,7 @@ def adb_pull_tar(
 
     tar_cmd = adb_base + ["exec-out", f"tar -C '{tar_root}/' -cf - -T '{phone_list_path}' 2>/dev/null"]
 
+    proc = None
     try:
         proc = subprocess.Popen(tar_cmd, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL)
         with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
@@ -1577,12 +1680,17 @@ def adb_pull_tar(
                         proc.kill()
                     return False
 
-        proc.wait()
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            _terminate_adb_proc(proc)
+            return False
         return proc.returncode == 0
     except Exception as e:
         sys.stderr.write(f"[ADB] Tar stream pull error: {e}\n")
         return False
     finally:
+        _terminate_adb_proc(proc)
         if os.path.exists(pull_list_name):
             try:
                 os.remove(pull_list_name)
@@ -1860,4 +1968,563 @@ def open_url_on_phone(url="http://localhost:8000/paste-key", adb_path=None):
         return False, res.stderr.strip() or "Failed to open URL on phone."
     except Exception as e:
         return False, str(e)
+
+
+def get_device_storage_info(adb_path=None, serial=None):
+    """
+    Queries free and total storage on the connected Android device.
+    Returns: dict with total_bytes, used_bytes, free_bytes, free_gb, total_gb, connected, authorized, error.
+    """
+    cmd = find_adb_binary(adb_path)
+    base_cmd = [cmd]
+    if serial:
+        base_cmd.extend(["-s", serial])
+
+    for target in ("/storage/emulated/0", "/sdcard", "/data"):
+        try:
+            res = subprocess.run(
+                base_cmd + ["shell", "df", "-k", target],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if res.returncode == 0 and res.stdout:
+                lines = [line.strip() for line in res.stdout.strip().splitlines() if line.strip()]
+                if len(lines) >= 2:
+                    parts = lines[-1].split()
+                    if len(parts) >= 4:
+                        total_kb = int(re.sub(r"\D", "", parts[1]))
+                        used_kb = int(re.sub(r"\D", "", parts[2]))
+                        free_kb = int(re.sub(r"\D", "", parts[3]))
+                        pct = round((used_kb / total_kb) * 100, 1) if total_kb > 0 else 0.0
+                        return {
+                            "success": True,
+                            "connected": True,
+                            "authorized": True,
+                            "total_bytes": total_kb * 1024,
+                            "used_bytes": used_kb * 1024,
+                            "free_bytes": free_kb * 1024,
+                            "free_gb": round((free_kb * 1024) / (1024**3), 2),
+                            "total_gb": round((total_kb * 1024) / (1024**3), 2),
+                            "percent_used": pct,
+                            "error": None,
+                        }
+        except Exception:
+            continue
+
+    dev = check_adb_device(adb_path=adb_path)
+    if not dev.connected:
+        err = getattr(dev, "error", None) or getattr(dev, "reason", None) or "No Android device detected over USB"
+    elif not dev.authorized:
+        err = "Phone is connected but unauthorized. Please allow USB debugging on your device."
+    else:
+        err = "Failed to determine device storage via df"
+
+    return {
+        "success": False,
+        "connected": bool(dev.connected),
+        "authorized": bool(dev.authorized),
+        "total_bytes": 0,
+        "used_bytes": 0,
+        "free_bytes": 0,
+        "free_gb": 0.0,
+        "total_gb": 0.0,
+        "percent_used": 0.0,
+        "error": err,
+    }
+
+
+def get_remote_file_sizes(file_paths, adb_path=None, serial=None):
+    """
+    Queries exact file sizes (in bytes) on the Android phone for a list of remote file paths.
+    Uses batch shell execution for performance.
+    Returns: dict mapping remote_path -> size_in_bytes (omitted if file does not exist).
+    """
+    if not file_paths:
+        return {}
+
+    cmd = find_adb_binary(adb_path)
+    base_cmd = [cmd]
+    if serial:
+        base_cmd.extend(["-s", serial])
+
+    results = {}
+    batch_size = 40
+    for i in range(0, len(file_paths), batch_size):
+        chunk = file_paths[i : i + batch_size]
+        sh_cmds = []
+        for p in chunk:
+            clean = p.replace("'", "'\\''")
+            sh_cmds.append(f"if [ -f '{clean}' ]; then printf 'SZ %s %s\\n' \"$(stat -c %s '{clean}' 2>/dev/null || echo -1)\" '{clean}'; fi")
+        full_script = "; ".join(sh_cmds)
+        try:
+            res = subprocess.run(
+                base_cmd + ["shell", full_script],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            if res.returncode == 0 and res.stdout:
+                for line in res.stdout.splitlines():
+                    line = line.strip()
+                    if line.startswith("SZ "):
+                        parts = line.split(" ", 2)
+                        if len(parts) == 3:
+                            try:
+                                sz = int(parts[1])
+                                target = parts[2].strip()
+                                if sz >= 0:
+                                    results[target] = sz
+                            except ValueError:
+                                pass
+        except Exception:
+            pass
+
+    return results
+
+
+def broadcast_media_scan(phone_paths, adb_path=None, serial=None):
+    """
+    Broadcasts Android MEDIA_SCANNER_SCAN_FILE intents for restored media items
+    so native Android Gallery and Google Photos immediately index them.
+    """
+    if not phone_paths:
+        return 0
+
+    cmd = find_adb_binary(adb_path)
+    base_cmd = [cmd]
+    if serial:
+        base_cmd.extend(["-s", serial])
+
+    scanned = 0
+    batch_size = 20
+    for i in range(0, len(phone_paths), batch_size):
+        chunk = phone_paths[i : i + batch_size]
+        cmds = []
+        for p in chunk:
+            clean_p = p.replace("'", "'\\''")
+            cmds.append(f"am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d 'file://{clean_p}' >/dev/null 2>&1")
+        full_sh = " ; ".join(cmds)
+        try:
+            subprocess.run(
+                base_cmd + ["shell", full_sh],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            scanned += len(chunk)
+        except Exception:
+            pass
+
+    return scanned
+
+
+def batch_delete_phone_files(
+    phone_paths,
+    base_path=None,
+    adb_path=None,
+    serial=None,
+    batch_size=100,
+    progress_callback=None,
+    cancel_event=None,
+):
+    """
+    Deletes files from Android storage in high-performance batches.
+    Includes strict path sanitization ensuring only WhatsApp media directories are touched.
+    """
+    if cancel_event and cancel_event.is_set():
+        return {"success": False, "deleted_count": 0, "failed_count": 0, "errors": ["Deletion cancelled by user"]}
+    if not phone_paths:
+        return {"success": True, "deleted_count": 0, "failed_count": 0, "errors": []}
+
+    cmd = find_adb_binary(adb_path)
+    dev = check_adb_device(adb_path=adb_path)
+    if not dev.connected:
+        return {"success": False, "deleted_count": 0, "failed_count": 0, "errors": [f"Phone not connected: {dev.error or 'No USB device detected'}"]}
+    if not dev.authorized:
+        return {"success": False, "deleted_count": 0, "failed_count": 0, "errors": ["Phone is connected but unauthorized. Please allow USB debugging on your device."]}
+
+    base_cmd = [cmd]
+    if serial:
+        base_cmd.extend(["-s", serial])
+
+    if not base_path:
+        base_path = discover_android_base_path(adb_path=adb_path, device_serial=serial)
+
+    sanitized_paths = []
+    for p in phone_paths:
+        if not p:
+            continue
+        norm = p.replace("\\", "/").strip()
+        if not norm.startswith("/"):
+            if base_path:
+                full = f"{base_path.rstrip('/')}/{norm}"
+            else:
+                full = f"/storage/emulated/0/{norm}"
+        else:
+            full = norm
+
+        # Safety Guard: Only delete inside legitimate WhatsApp media directories
+        whatsapp_signatures = (
+            "com.whatsapp",
+            "com.whatsapp.w4b",
+            "WhatsApp/Media",
+            "WhatsApp Business/Media",
+            "WhatsApp/accounts",
+            "DualApp/WhatsApp",
+            "DUAL_APP/WhatsApp",
+            "Parallel/WhatsApp",
+            "Clone/WhatsApp",
+        )
+        if any(full.startswith(bad) for bad in ("/system", "/data/system", "/sbin", "/vendor", "/etc")):
+            continue
+        if any(sig in full for sig in whatsapp_signatures):
+            sanitized_paths.append(full)
+
+    if not sanitized_paths:
+        return {"success": True, "deleted_count": 0, "failed_count": 0, "errors": ["No eligible paths to delete"]}
+
+    total = len(sanitized_paths)
+    deleted = 0
+    failed = 0
+    errors = []
+
+    for i in range(0, total, batch_size):
+        if cancel_event and cancel_event.is_set():
+            errors.append("Deletion cancelled by user")
+            break
+
+        chunk = sanitized_paths[i : i + batch_size]
+        escaped_chunk = []
+        for p in chunk:
+            esc = p.replace("'", "'\\''")
+            escaped_chunk.append(f"'{esc}'")
+        rm_cmd = "rm -f " + " ".join(escaped_chunk)
+
+        try:
+            res = subprocess.run(
+                base_cmd + ["shell", rm_cmd],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            if res.returncode == 0:
+                deleted += len(chunk)
+            else:
+                err_text = (res.stderr or "").strip()
+                failed += len(chunk)
+                errors.append(err_text or f"rm returned exit code {res.returncode}")
+                lower_err = err_text.lower()
+                if any(s in lower_err for s in ("device not found", "device offline", "device unauthorized", "error: closed")):
+                    errors.append("Phone was disconnected during cleanup")
+                    break
+        except Exception as e:
+            failed += len(chunk)
+            errors.append(str(e))
+
+        if progress_callback:
+            try:
+                progress_callback(deleted, total)
+            except Exception:
+                pass
+
+    return {
+        "success": failed == 0,
+        "deleted_count": deleted,
+        "failed_count": failed,
+        "errors": errors,
+    }
+
+
+def restore_chat_to_phone(
+    chat_jid,
+    output_dir,
+    base_path=None,
+    adb_path=None,
+    serial=None,
+    progress_callback=None,
+    cancel_event=None,
+):
+    """
+    Restores media files for a specific chat back to the phone.
+    Handles device connection checks, WhatsApp existence check ("no whatsapp at all"),
+    pre-flight storage safety buffer check (+20% safety buffer + 500MB),
+    folder accessibility/mkdir verification, USB disconnection handling, and user cancellation.
+    """
+    out_p = Path(output_dir).resolve()
+    from core.gallery import load_gallery_data
+
+    gal_data = load_gallery_data(out_p)
+    matched_chat = None
+    for c in gal_data.get("chats", []):
+        if c.get("jid") == chat_jid:
+            matched_chat = c
+            break
+
+    if not matched_chat:
+        return {"success": False, "cancelled": False, "disconnected": False, "error": f"Chat with JID '{chat_jid}' not found in local backup"}
+
+    media_items = matched_chat.get("media", [])
+    if not media_items:
+        return {"success": False, "cancelled": False, "disconnected": False, "error": "No media items found in this chat to restore"}
+
+    files_to_push = []
+    total_bytes = 0
+    for m in media_items:
+        rel = m.get("rel_path")
+        if not rel:
+            continue
+        local_f = (out_p / rel).resolve()
+        if local_f.is_file():
+            sz = local_f.stat().st_size
+            files_to_push.append((local_f, m))
+            total_bytes += sz
+
+    if not files_to_push:
+        return {"success": False, "cancelled": False, "disconnected": False, "error": "None of the chat media files exist on local PC storage"}
+
+    # 1. Pre-flight phone connection and authorization check
+    dev = check_adb_device(adb_path=adb_path)
+    if not dev.connected:
+        return {
+            "success": False,
+            "cancelled": False,
+            "disconnected": True,
+            "error": f"Phone not connected via USB: {getattr(dev, 'error', None) or getattr(dev, 'reason', None) or 'No device detected'}",
+        }
+    if not dev.authorized:
+        return {
+            "success": False,
+            "cancelled": False,
+            "disconnected": False,
+            "error": "Phone is connected but unauthorized. Please allow USB debugging on your device.",
+        }
+
+    cmd = find_adb_binary(adb_path)
+    base_cmd = [cmd]
+    if serial:
+        base_cmd.extend(["-s", serial])
+
+    # 2. Check if WhatsApp is installed or WhatsApp storage folder exists ("no whatsapp at all")
+    pkg_installed = False
+    try:
+        pm_res = subprocess.run(
+            base_cmd + ["shell", "pm path com.whatsapp || pm path com.whatsapp.w4b"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if pm_res.returncode == 0 and "package:" in (pm_res.stdout or ""):
+            pkg_installed = True
+    except Exception:
+        pass
+
+    if not base_path:
+        base_path = discover_android_base_path(adb_path=adb_path, device_serial=serial)
+
+    base_exists = False
+    if base_path:
+        try:
+            chk_res = subprocess.run(
+                base_cmd + ["shell", f"[ -d '{base_path}' ] && echo 'EXISTS'"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if chk_res.returncode == 0:
+                base_exists = True
+        except Exception:
+            pass
+
+    if not pkg_installed and not base_exists:
+        return {
+            "success": False,
+            "cancelled": False,
+            "disconnected": False,
+            "error": "WhatsApp is not installed on this device (com.whatsapp package and storage folders not found).",
+        }
+
+    if not base_path:
+        base_path = "/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media"
+    elif not base_path.rstrip("/").endswith(("/Media", "/media")):
+        base_path = f"{base_path.rstrip('/')}/Media"
+
+    is_w4b = "com.whatsapp.w4b" in base_path or "WhatsApp Business" in base_path
+    prefix = "WhatsApp Business" if is_w4b else "WhatsApp"
+
+    # 3. Pre-flight phone storage safety buffer check
+    storage_info = get_device_storage_info(adb_path=adb_path, serial=serial)
+    free_bytes = storage_info.get("free_bytes", 0)
+    required_bytes = int(total_bytes * 1.20) + (500 * 1024 * 1024)
+
+    if free_bytes > 0 and free_bytes < required_bytes:
+        req_mb = round(required_bytes / (1024 * 1024), 1)
+        free_mb = round(free_bytes / (1024 * 1024), 1)
+        return {
+            "success": False,
+            "cancelled": False,
+            "disconnected": False,
+            "error": f"Insufficient phone storage. Required: {req_mb} MB (includes 20% safety buffer), Free: {free_mb} MB",
+        }
+
+    # 4. Pre-flight target directory access check
+    try:
+        base_path_esc = base_path.replace("'", "'\\''")
+        mkdir_base = subprocess.run(
+            base_cmd + ["shell", f"mkdir -p '{base_path_esc}'"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if mkdir_base.returncode != 0:
+            err_msg = mkdir_base.stderr.strip() if mkdir_base.stderr else "Storage inaccessible or read-only"
+            return {
+                "success": False,
+                "cancelled": False,
+                "disconnected": False,
+                "error": f"Failed to access or create WhatsApp media directory on device ({base_path}): {err_msg}",
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "cancelled": False,
+            "disconnected": False,
+            "error": f"Failed to access or create WhatsApp media directory on device ({base_path}): {e}",
+        }
+
+    planned_items = []
+    for local_file, meta in files_to_push:
+        fn = local_file.name
+        mime = (meta.get("mime_type") or "").lower()
+        if mime.startswith("video/") or fn.lower().endswith((".mp4", ".3gp")):
+            sub_folder = f"{prefix} Video"
+        elif mime.startswith("image/") or fn.lower().endswith((".jpg", ".jpeg", ".png")):
+            sub_folder = f"{prefix} Images"
+        elif mime.startswith("audio/") or fn.lower().endswith((".opus", ".mp3", ".ogg")):
+            sub_folder = f"{prefix} Audio"
+        elif meta.get("is_doc"):
+            sub_folder = f"{prefix} Documents"
+        else:
+            sub_folder = f"{prefix} Documents"
+
+        is_sent = bool(meta.get("from_me"))
+        if not is_sent and meta.get("phone_path") and "/sent/" in meta.get("phone_path").lower():
+            is_sent = True
+
+        target_dir = f"{base_path.rstrip('/')}/{sub_folder}/Sent" if is_sent else f"{base_path.rstrip('/')}/{sub_folder}"
+        target_path = f"{target_dir}/{fn}"
+        planned_items.append((local_file, meta, sub_folder, target_dir, target_path))
+
+    # Pre-query existing file sizes on phone to skip pushing duplicate files with identical size
+    target_paths = [item[4] for item in planned_items]
+    remote_sizes = get_remote_file_sizes(target_paths, adb_path=adb_path, serial=serial)
+
+    restored_count = 0
+    skipped_count = 0
+    restored_bytes = 0
+    skipped_bytes = 0
+    restored_paths = []
+    errors = []
+    is_cancelled = False
+    disconnected = False
+
+    for idx, (local_file, meta, sub_folder, target_dir, target_path) in enumerate(planned_items):
+        if cancel_event and cancel_event.is_set():
+            is_cancelled = True
+            errors.append("Restore cancelled by user")
+            break
+
+        fn = local_file.name
+        local_size = local_file.stat().st_size
+        remote_size = remote_sizes.get(target_path)
+
+        # Check if file already exists on phone with the exact same size
+        if remote_size is not None and remote_size == local_size:
+            skipped_count += 1
+            skipped_bytes += local_size
+            restored_paths.append(target_path)
+            if progress_callback:
+                try:
+                    progress_callback(restored_count + skipped_count, len(planned_items))
+                except Exception:
+                    pass
+            continue
+
+        try:
+            target_dir_esc = target_dir.replace("'", "'\\''")
+            mkdir_res = subprocess.run(
+                base_cmd + ["shell", f"mkdir -p '{target_dir_esc}'"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if mkdir_res.returncode != 0:
+                errors.append(f"Failed to create target folder {sub_folder}: {mkdir_res.stderr.strip()}")
+                continue
+
+            push_res = subprocess.run(
+                base_cmd + ["push", str(local_file), target_path],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            err_out = (push_res.stderr or "") + " " + (push_res.stdout or "")
+            if push_res.returncode == 0:
+                restored_count += 1
+                restored_bytes += local_size
+                restored_paths.append(target_path)
+            else:
+                lower_err = err_out.lower()
+                if any(s in lower_err for s in ("device not found", "device offline", "device unauthorized", "error: closed", "protocol fault")):
+                    disconnected = True
+                    errors.append(f"Phone disconnected during transfer: {err_out.strip()}")
+                    break
+                elif "no space left on device" in lower_err:
+                    errors.append(f"Phone storage full: {err_out.strip()}")
+                    break
+                else:
+                    errors.append(f"Failed to push {fn}: {push_res.stderr.strip()}")
+        except subprocess.TimeoutExpired:
+            errors.append(f"Timeout pushing {fn} to phone (device may be disconnected)")
+            chk = check_adb_device(adb_path=adb_path)
+            if not chk.connected:
+                disconnected = True
+                break
+        except Exception as e:
+            errors.append(f"Error restoring {fn}: {e}")
+
+        if progress_callback:
+            try:
+                progress_callback(restored_count + skipped_count, len(planned_items))
+            except Exception:
+                pass
+
+    if restored_paths:
+        try:
+            broadcast_media_scan(restored_paths, adb_path=adb_path, serial=serial)
+        except Exception as e:
+            errors.append(f"Media scanner warning: {e}")
+
+    total_effective = restored_count + skipped_count
+    return {
+        "success": total_effective > 0 and not disconnected and not is_cancelled,
+        "cancelled": is_cancelled,
+        "disconnected": disconnected,
+        "restored_count": restored_count,
+        "skipped_count": skipped_count,
+        "total_attempted": len(files_to_push),
+        "restored_bytes": restored_bytes,
+        "skipped_bytes": skipped_bytes,
+        "errors": errors,
+    }
+
 

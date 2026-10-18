@@ -761,7 +761,19 @@ def run_streaming_pipeline(
                 except Exception as _e:
                     sys.stderr.write(f"[ADB] Note: Could not extract registration_jid from db: {_e}\n")
         else:
-            sys.stderr.write("[Streaming] Warning: No encrypted msgstore.db found.\n")
+            has_local_db = os.path.isfile(msgstore) and os.path.getsize(msgstore) > 0
+            if has_local_db:
+                sys.stderr.write(
+                    "[Streaming] Warning: No encrypted msgstore.db found; using existing decrypted database.\n"
+                )
+            elif skip_db_pull:
+                sys.stderr.write("[Streaming] Warning: No encrypted msgstore.db found.\n")
+            else:
+                raise RuntimeError(
+                    "Could not find an encrypted WhatsApp database (msgstore.db.crypt15) on the phone or PC.\n\n"
+                    "Wait until WhatsApp backup on the phone has finished, keep USB debugging authorized, "
+                    "then resume sync. Without this database, media cannot be matched to chats."
+                )
 
         wa_crypt = None
         for path in [db_dir, "./Backups"]:
