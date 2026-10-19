@@ -100,11 +100,14 @@ def generate_gallery(
     lids_map = lid_to_phone or {}
     chats_names_map = chat_names or {}
 
-    try:
-        from core.duplicates import detect_quality_duplicates
-        detect_quality_duplicates(organized_list, out_path)
-    except Exception as e:
-        logger.debug(f"detect_quality_duplicates in generate_gallery: {e}")
+    # Only run quality duplicate detection if not already analyzed in Step 5
+    already_analyzed = any("is_duplicate" in item for item in organized_list[:100]) if organized_list else True
+    if not already_analyzed:
+        try:
+            from core.duplicates import detect_quality_duplicates
+            detect_quality_duplicates(organized_list, out_path)
+        except Exception as e:
+            logger.debug(f"detect_quality_duplicates in generate_gallery: {e}")
 
     for item in organized_list:
         jid = item.get("chat_jid") or "unknown_jid"

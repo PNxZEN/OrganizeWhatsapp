@@ -1133,6 +1133,7 @@ def is_skippable_system_path(rel_p: str) -> bool:
     return (
         norm == ".nomedia"
         or norm.endswith("/.nomedia")
+        or "/.Links/" in norm
         or norm.startswith("Media/.Links/")
         or norm.startswith(".Links/")
     )
@@ -1230,6 +1231,16 @@ def adb_pull_tar(
                 check_res = subprocess.run(check_cmd, capture_output=True, text=True, check=False)
                 if check_res.returncode == 0 and check_res.stdout.strip():
                     folders_to_pull.append(fld)
+            if not is_db_only and (folders_filter is None or "Media" in folders_filter):
+                check_acc = adb_base + ["shell", f"ls -d '{base}/accounts'/*/Media 2>/dev/null"]
+                acc_res = subprocess.run(check_acc, capture_output=True, text=True, check=False)
+                if acc_res.returncode == 0 and acc_res.stdout.strip():
+                    for line in acc_res.stdout.splitlines():
+                        acc_dir = line.strip()
+                        if acc_dir:
+                            rel_acc = os.path.relpath(acc_dir, base).replace("\\", "/")
+                            if rel_acc and rel_acc not in folders_to_pull:
+                                folders_to_pull.append(rel_acc)
 
     if not folders_to_pull:
         return False
@@ -1405,8 +1416,16 @@ def adb_pull_tar(
         except Exception:
             pass
         if not is_db_only:
-            # Reconcile already organized files in ./output so even fresh/cancelled sessions skip existing files
-            already_pulled = build_already_pulled_index("./output")
+            # Reconcile already organized files in output so even fresh/cancelled sessions skip existing files
+            out_candidates = ["./output"]
+            if dest_media:
+                out_candidates.append(str(dest_media))
+                out_candidates.append(str(Path(dest_media).parent))
+            already_pulled = set()
+            for cand_out in set(out_candidates):
+                if os.path.isdir(cand_out):
+                    already_pulled.update(build_already_pulled_index(cand_out))
+
             pending_rows = session_manager.get_pending_files(session_id)
             existing_batch = []
             for r in pending_rows:
@@ -1423,8 +1442,9 @@ def adb_pull_tar(
                     except Exception:
                         pass
                 fn = os.path.basename(rel_p)
-                norm = normalize_filename(fn)
-                if (norm, sz) in already_pulled:
+                norm = normalize_filename(fn, strip_dup_suffix=False)
+                norm_strip = normalize_filename(fn, strip_dup_suffix=True)
+                if (norm, sz) in already_pulled or (norm_strip, sz) in already_pulled:
                     existing_batch.append((rel_p, sz))
             if existing_batch:
                 session_manager.mark_files_completed_batch(session_id, existing_batch)
@@ -1440,7 +1460,15 @@ def adb_pull_tar(
                 total_files=sess_info.get("total_files", len(phone_files)),
             )
     else:
-        already_pulled = build_already_pulled_index("./output")
+        out_candidates = ["./output"]
+        if dest_media:
+            out_candidates.append(str(dest_media))
+            out_candidates.append(str(Path(dest_media).parent))
+        already_pulled = set()
+        for cand_out in set(out_candidates):
+            if os.path.isdir(cand_out):
+                already_pulled.update(build_already_pulled_index(cand_out))
+
         for rel_path, size in phone_files:
             if rel_path.startswith("Databases/"):
                 files_to_pull.append(rel_path)
@@ -1460,8 +1488,9 @@ def adb_pull_tar(
                     continue
             else:
                 filename_only = os.path.basename(rel_path)
-                norm_name = normalize_filename(filename_only)
-                if (norm_name, size) in already_pulled:
+                norm_name = normalize_filename(filename_only, strip_dup_suffix=False)
+                norm_strip = normalize_filename(filename_only, strip_dup_suffix=True)
+                if (norm_name, size) in already_pulled or (norm_strip, size) in already_pulled:
                     continue
             files_to_pull.append(rel_path)
         if status_callback:

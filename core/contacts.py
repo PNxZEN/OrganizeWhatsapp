@@ -76,6 +76,56 @@ def get_account_country_code():
         return ""
 
 
+def load_wa_contacts(wa_db_path):
+    """
+    Extracts saved contacts and display names directly from decrypted wa.db.
+    Returns a dict mapping JID -> display_name and phone JIDs.
+    """
+    contacts = {}
+    if not wa_db_path or not os.path.isfile(wa_db_path):
+        return contacts
+    conn = None
+    try:
+        conn = sqlite3.connect(str(wa_db_path))
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = {row[0] for row in cur.fetchall()}
+        if "wa_contacts" in tables:
+            cur.execute("PRAGMA table_info(wa_contacts)")
+            cols = {row[1] for row in cur.fetchall()}
+            jid_col = "jid" if "jid" in cols else None
+            name_col = "display_name" if "display_name" in cols else ("wa_name" if "wa_name" in cols else None)
+            number_col = "number" if "number" in cols else ("phone_number" if "phone_number" in cols else None)
+
+            if jid_col and name_col:
+                cur.execute(f"SELECT {jid_col}, {name_col}, {number_col or 'NULL'} FROM wa_contacts")
+                for row in cur.fetchall():
+                    raw_jid = row[0]
+                    name = row[1]
+                    num = row[2]
+                    if raw_jid and name and str(name).strip() and str(name).strip() != str(raw_jid).strip():
+                        clean_name = str(name).strip()
+                        contacts[str(raw_jid).strip()] = clean_name
+                        digits = re.sub(r"\D", "", str(raw_jid).split("@")[0])
+                        if len(digits) >= 10:
+                            contacts[f"suffix10_{digits[-10:]}"] = clean_name
+                        if num:
+                            num_digits = re.sub(r"\D", "", str(num))
+                            if num_digits:
+                                contacts[f"{num_digits}@s.whatsapp.net"] = clean_name
+                                if len(num_digits) >= 10:
+                                    contacts[f"suffix10_{num_digits[-10:]}"] = clean_name
+    except Exception as e:
+        sys.stderr.write(f"[Contacts] Warning: Failed to read wa.db: {e}\n")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return contacts
+
+
 def load_contacts_mapping(
     cache_path="contacts_map.json",
     adb_path=None,
@@ -83,9 +133,10 @@ def load_contacts_mapping(
     force_pull=False,
     device_checker=None,
     status_callback=None,
+    wa_db_path=None,
 ):
     """
-    Loads contact mappings from local JSON cache or queries the phone via ADB.
+    Loads contact mappings from local JSON cache, wa.db, or queries the phone via ADB.
     Returns a dictionary mapping JID -> Display Name.
     """
     orig_status_cb = status_callback
@@ -171,17 +222,24 @@ def load_contacts_mapping(
                     check=False,
                 )
                 if res.returncode == 0:
-                    pattern = re.compile(r"display_name=(.*?),\s+number=(.*)")
                     phone_count = 0
                     for line in res.stdout.splitlines():
-                        match = pattern.search(line)
-                        if match:
-                            name = match.group(1).strip()
-                            num = match.group(2).strip()
+                        name = None
+                        num = None
+                        for part in re.split(r",\s*(?=[a-zA-Z_]+=)", line):
+                            part = part.strip()
+                            if part.startswith("display_name="):
+                                name = part[len("display_name="):].strip()
+                            elif part.startswith("number="):
+                                num = part[len("number="):].strip()
+                        if name and num:
                             jids = sanitize_phone_to_jid(num)
                             for jid in jids:
                                 contacts[jid] = name
-                            if jids:
+                            digits = re.sub(r"\D", "", num)
+                            if len(digits) >= 10:
+                                contacts[f"suffix10_{digits[-10:]}"] = name
+                            if jids or len(digits) >= 10:
                                 phone_count += 1
 
                     if phone_count > 0:
@@ -198,6 +256,21 @@ def load_contacts_mapping(
                             sys.stderr.write(f"[Contacts] Warning: Failed to write cache: {e}\n")
             except Exception as e:
                 sys.stderr.write(f"[Contacts] Warning: Failed to query contacts via ADB: {e}\n")
+
+    # 3. Augment with wa.db if available
+    if not wa_db_path:
+        for cand in ("wa.db", str(cache_file.parent / "wa.db"), str(cache_file.parent / "databases" / "wa.db")):
+            if os.path.isfile(cand):
+                wa_db_path = cand
+                break
+    if wa_db_path and os.path.isfile(wa_db_path):
+        wa_map = load_wa_contacts(wa_db_path)
+        for k, v in wa_map.items():
+            if k not in contacts:
+                contacts[k] = v
+            digits = re.sub(r"\D", "", k.split("@")[0])
+            if len(digits) >= 10:
+                contacts[f"suffix10_{digits[-10:]}"] = v
 
     return contacts
 
@@ -434,7 +507,21 @@ def resolve_jid_name(jid, contacts, lid_to_phone, chat_names, country_code=None)
     if jid in contacts:
         return contacts[jid]
 
-    # 3. Handle national / country-code variations in contacts
+    # 3. Trailing 10-digit suffix matching (bridges international/local format differences)
+    if contacts and ("@s.whatsapp.net" in resolved_jid or "@s.whatsapp.net" in jid):
+        target = resolved_jid if "@s.whatsapp.net" in resolved_jid else jid
+        digits = re.sub(r"\D", "", target.split("@")[0])
+        if len(digits) >= 10:
+            s10 = f"suffix10_{digits[-10:]}"
+            if s10 in contacts:
+                return contacts[s10]
+            for c_jid, c_name in contacts.items():
+                if "@s.whatsapp.net" in c_jid:
+                    c_digits = re.sub(r"\D", "", c_jid.split("@")[0])
+                    if len(c_digits) >= 10 and c_digits[-10:] == digits[-10:]:
+                        return c_name
+
+    # 4. Handle national / country-code variations in contacts
     if "@s.whatsapp.net" in resolved_jid:
         digits = resolved_jid.split("@")[0]
         cc = country_code if country_code is not None else get_account_country_code()
@@ -450,13 +537,13 @@ def resolve_jid_name(jid, contacts, lid_to_phone, chat_names, country_code=None)
                 if fallback_jid in contacts:
                     return contacts[fallback_jid]
 
-    # 4. Check in chat_names (group subjects / broadcast names)
+    # 5. Check in chat_names (group subjects / broadcast names)
     if jid in chat_names:
         return chat_names[jid]
     if resolved_jid in chat_names:
         return chat_names[resolved_jid]
 
-    # 5. Special broadcast cases
+    # 6. Special broadcast cases
     if jid == "status@broadcast":
         return "Status Update"
 

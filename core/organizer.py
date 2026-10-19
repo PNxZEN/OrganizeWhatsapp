@@ -727,7 +727,7 @@ class StreamingMediaRouter:
             return None, None
 
         # 2. Filter out link preview thumbnail cache (.Links)
-        if norm_phone.startswith("Media/.Links/") or norm_phone.startswith(".Links/"):
+        if "/.Links/" in norm_phone or norm_phone.startswith("Media/.Links/") or norm_phone.startswith(".Links/"):
             return None, None
 
         # Databases go directly to Databases/
@@ -779,14 +779,26 @@ class StreamingMediaRouter:
         else:
             # Unmatched media
             # User requirement: Downloaded sticker packs go to Stickers/Sticker Packs
-            if "Backup Excluded Stickers" in norm_phone or norm_phone.startswith("Media/WhatsApp Sticker Packs") or norm_phone.startswith("WhatsApp Sticker Packs"):
+            if "Backup Excluded Stickers" in norm_phone or "WhatsApp Sticker Packs" in norm_phone:
                 dest_dir = self.output_dir / "Stickers" / "Sticker Packs"
             else:
-                parts = norm_phone.split("/")
-                if len(parts) > 2 and parts[0] == "Media":
-                    sub_parts = parts[1:-1]
-                    sanitized_subs = [sanitize_folder_name(p) for p in sub_parts if p]
-                    dest_dir = self.output_dir / "_unmatched" / Path(*sanitized_subs) if sanitized_subs else self.output_dir / "_unmatched"
+                if "/Media/" in norm_phone:
+                    after_media = norm_phone.split("/Media/", 1)[1]
+                    parts = after_media.split("/")
+                    if len(parts) > 1:
+                        sub_parts = parts[:-1]
+                        sanitized_subs = [sanitize_folder_name(p) for p in sub_parts if p]
+                        dest_dir = self.output_dir / "_unmatched" / Path(*sanitized_subs) if sanitized_subs else self.output_dir / "_unmatched"
+                    else:
+                        dest_dir = self.output_dir / "_unmatched"
+                elif norm_phone.startswith("Media/"):
+                    parts = norm_phone.split("/")
+                    if len(parts) > 2:
+                        sub_parts = parts[1:-1]
+                        sanitized_subs = [sanitize_folder_name(p) for p in sub_parts if p]
+                        dest_dir = self.output_dir / "_unmatched" / Path(*sanitized_subs) if sanitized_subs else self.output_dir / "_unmatched"
+                    else:
+                        dest_dir = self.output_dir / "_unmatched"
                 else:
                     dest_dir = self.output_dir / "_unmatched"
             clean_fn = sanitize_filename(filename)

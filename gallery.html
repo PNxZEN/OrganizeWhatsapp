@@ -5155,6 +5155,9 @@
                         <button type="button" class="dup-tab-btn active" id="tabSettingsKey" onclick="switchSettingsTab('key')">
                             Backup Key
                         </button>
+                        <button type="button" class="dup-tab-btn" id="tabSettingsImport" onclick="switchSettingsTab('import')">
+                            Import Media
+                        </button>
                         <button type="button" class="dup-tab-btn" id="tabSettingsRecycle" onclick="switchSettingsTab('recycle')" style="display:inline-flex;align-items:center;">
                             <span>Recycle Bin</span>
                             <span id="recycleBinCountPill" style="display:none;">0</span>
@@ -5204,7 +5207,89 @@
                 </div>
             </div>
 
-            <!-- Tab 2: Storage & Recycle Bin Body -->
+            <!-- Tab 2: Import Older Media Body -->
+            <div id="settingsViewImport" class="modal-body" style="display:none; padding: 20px; flex-direction: column; gap: 14px;">
+                <p style="color:var(--text-secondary);font-size:13px;line-height:1.5;margin:0 0 4px 0;">
+                    Migrate WhatsApp photos, videos, and documents from a previous installation or older output folder into your current gallery.
+                    Safely copies files, merges duplicate hash indices (<code style="color:var(--accent);">.hashes_cache.sqlite3</code>), and updates sync manifests (<code style="color:var(--accent);">.sync_state.sqlite3</code>) so existing media is never redownloaded from your phone.
+                </p>
+
+                <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 14px 16px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:var(--text-primary); margin-bottom:8px;">
+                        Older Output Folder Location:
+                    </label>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <input type="text" id="importFolderPathInput" class="key-input" style="flex:1; font-size:12px; padding:8px 12px;" placeholder="e.g. C:\Downloads\WhatsAppMediaOrganizer\output" spellcheck="false" autocomplete="off" oninput="onImportPathChanged()">
+                        <button type="button" class="action-btn action-btn-secondary" id="btnBrowseImportFolder" onclick="browseImportFolder()" style="display:inline-flex; align-items:center; gap:6px; white-space:nowrap; padding:8px 14px; font-size:12px;">
+                            <svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            <span id="btnBrowseImportFolderText">Browse...</span>
+                        </button>
+                        <button type="button" class="action-btn action-btn-secondary" id="btnAnalyzeImportFolder" onclick="triggerAnalyzeImportFolder()" style="white-space:nowrap; padding:8px 14px; font-size:12px;" disabled>
+                            Analyze
+                        </button>
+                    </div>
+                    <div id="importPathError" style="color:var(--danger); font-size:11px; margin-top:6px; display:none;"></div>
+                </div>
+
+                <!-- Analysis Summary Box (hidden until analyzed) -->
+                <div id="importAnalysisBox" style="display:none; background:rgba(16, 185, 129, 0.05); border:1px solid rgba(16, 185, 129, 0.25); border-radius:10px; padding:14px 16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <span style="font-size:13px; font-weight:600; color:var(--text-primary);">Folder Analysis Summary</span>
+                        <span id="importAnalysisStatusBadge" class="badge-tag" style="background:rgba(16,185,129,0.15); color:var(--accent);">Ready to Migrate</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap:10px; font-size:12px; margin-bottom:12px;">
+                        <div style="background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px;">
+                            <div style="color:var(--text-muted); font-size:11px;">Total Media Found</div>
+                            <div id="importStatTotalMedia" style="font-weight:700; color:var(--text-primary); font-size:14px; margin-top:2px;">0 files</div>
+                        </div>
+                        <div style="background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px;">
+                            <div style="color:var(--text-muted); font-size:11px;">Total Size</div>
+                            <div id="importStatTotalSize" style="font-weight:700; color:var(--text-primary); font-size:14px; margin-top:2px;">0 MB</div>
+                        </div>
+                        <div style="background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px;">
+                            <div style="color:var(--text-muted); font-size:11px;">New to Import</div>
+                            <div id="importStatNewMedia" style="font-weight:700; color:var(--accent); font-size:14px; margin-top:2px;">0 files</div>
+                        </div>
+                        <div style="background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px;">
+                            <div style="color:var(--text-muted); font-size:11px;">Already Present</div>
+                            <div id="importStatSkippedMedia" style="font-weight:700; color:var(--text-muted); font-size:14px; margin-top:2px;">0 files</div>
+                        </div>
+                    </div>
+                    <div id="importDbBadges" style="display:flex; gap:8px; flex-wrap:wrap; font-size:11px;"></div>
+                </div>
+
+                <!-- Migration In Progress Box -->
+                <div id="importProgressBox" style="display:none; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px;">
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                        <div class="sync-spinner" style="width:20px;height:20px;border-width:2.5px;"></div>
+                        <span id="importProgressMessage" style="font-size:13px; font-weight:500; color:var(--text-primary);">Migrating media...</span>
+                    </div>
+                    <div class="sync-progress-bar-bg" style="height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden;">
+                        <div id="importProgressBar" class="sync-progress-bar-fill" style="width:0%; height:100%; background:var(--accent); transition:width 0.2s ease;"></div>
+                    </div>
+                </div>
+
+                <!-- Migration Result Box -->
+                <div id="importResultBox" style="display:none; background:rgba(16, 185, 129, 0.1); border:1px solid rgba(16, 185, 129, 0.3); border-radius:10px; padding:16px;">
+                    <div style="font-size:14px; font-weight:700; color:var(--text-primary); margin-bottom:6px;">Migration Finished Successfully!</div>
+                    <p id="importResultDetails" style="font-size:12px; color:var(--text-secondary); line-height:1.5; margin:0 0 12px 0;"></p>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button type="button" class="action-btn action-btn-primary" onclick="closeModal('modalKey'); openSyncModal();" style="padding:7px 16px; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:6px;">
+                            <span>Sync Newer Media From Phone &rarr;</span>
+                        </button>
+                        <button type="button" class="action-btn action-btn-secondary" onclick="closeModal('modalKey'); if (isHttpServer) { reloadChatsList(true); } else { reloadGalleryData(); }" style="padding:7px 16px; font-size:12px;">
+                            View Gallery
+                        </button>
+                    </div>
+                </div>
+
+                <div class="modal-footer" style="padding: 12px 0 0 0; margin-top: auto; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px;">
+                    <button class="action-btn action-btn-secondary" onclick="closeModal('modalKey')">Close</button>
+                    <button class="action-btn action-btn-primary" id="btnStartImport" onclick="startFolderImport()" style="display:none;">Start Import</button>
+                </div>
+            </div>
+
+            <!-- Tab 3: Storage & Recycle Bin Body -->
             <div id="settingsViewRecycle" class="modal-body" style="display:none; padding: 24px; flex-direction: column; gap: 16px;">
                 <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 28px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px;">
                     <div style="width: 52px; height: 52px; border-radius: 26px; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.25); display: flex; align-items: center; justify-content: center;">
@@ -5257,9 +5342,34 @@
                     <!-- Live Device & Key Notice Banner (Non-blocking) -->
                     <div id="syncModalNoticeBox" style="display:none; margin-bottom:16px;"></div>
 
-                    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:18px;line-height:1.5;">
-                        Connect your Android phone via USB to transfer chat databases and stream media directly into your organized PC archive.
-                    </p>
+                    <!-- Backup Now Recommendation Card -->
+                    <div id="syncBackupNowCard" style="margin-bottom:18px;padding:12px 16px;background:rgba(37,211,102,0.06);border:1px solid rgba(37,211,102,0.22);border-radius:10px;display:flex;align-items:flex-start;gap:12px;">
+                        <div style="width:32px;height:32px;min-width:32px;border-radius:50%;background:rgba(37,211,102,0.15);color:var(--accent-whatsapp);display:flex;align-items:center;justify-content:center;margin-top:2px;">
+                            <svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:currentColor;"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+                        </div>
+                        <div style="flex:1;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+                                <div style="font-size:13px;font-weight:600;color:var(--text-primary);display:flex;align-items:center;gap:6px;">
+                                    <span>Recommended: Tap "Back up" in WhatsApp Before Syncing</span>
+                                </div>
+                                <div id="syncPhoneBackupAgeBadge" style="font-size:11px;display:flex;align-items:center;gap:6px;"></div>
+                            </div>
+                            <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;line-height:1.5;">
+                                WhatsApp only updates its local backup database when a backup runs. To pull all newly received chats and media up to this exact minute:
+                                <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--text-primary);">
+                                    <span style="background:rgba(255,255,255,0.06);padding:3px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);">1. Open WhatsApp on phone</span>
+                                    <span>&rarr;</span>
+                                    <span style="background:rgba(255,255,255,0.06);padding:3px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);">2. Settings &gt; Chats &gt; Chat backup</span>
+                                    <span>&rarr;</span>
+                                    <span style="background:rgba(37,211,102,0.15);color:var(--accent-whatsapp);padding:3px 8px;border-radius:6px;border:1px solid rgba(37,211,102,0.3);font-weight:600;">3. Tap "Back up"</span>
+                                    <button type="button" id="btnRefreshBackupCheck" onclick="recheckPhoneBackupAge(this)" class="action-btn action-btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:auto;display:none;" title="Check if phone finished creating fresh backup">
+                                        Check Freshness
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="sync-summary-grid">
                         <!-- Column 1: Pipeline Overview -->
                         <div>
@@ -5444,6 +5554,20 @@
 
             <!-- Body -->
             <div class="tut-modal-body">
+                <!-- Older Backup Import Quick Awareness Banner -->
+                <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <svg class="icon" viewBox="0 0 24 24" style="width: 18px; height: 18px; fill: #60a5fa; flex-shrink: 0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.4;">
+                            <strong style="color: var(--text-primary);">Upgrading or restoring from a previous version?</strong>
+                            You can import your older output folder first, then connect your phone to pull only newer media.
+                        </div>
+                    </div>
+                    <button type="button" class="action-btn action-btn-secondary" onclick="closeModal('modalTutorial'); openKeyModal('import');" style="white-space: nowrap; font-size: 11px; padding: 6px 14px; border-color: rgba(59, 130, 246, 0.4); color: #93c5fd; font-weight: 500;">
+                        Import Older Media First &rarr;
+                    </button>
+                </div>
+
                 <!-- SECTION 1: PHONE CONNECTION & USB DEBUGGING -->
                 <div id="tutSectionPhone" style="display:flex;flex-direction:column;gap:16px;">
                     <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;">
@@ -7201,20 +7325,38 @@
             }, duration);
         }
 
+        function getMediaUrl(relPath) {
+            if (!relPath) return '';
+            if (isHttpServer) {
+                return '/api/media?path=' + encodeURIComponent(relPath);
+            }
+            return encodeURI(relPath);
+        }
+
         let _modalZIndexCounter = 1050;
-        function openModal(id) {
+        function openModal(id, pushHistory = true) {
             const m = document.getElementById(id);
             if (m) {
                 m.style.zIndex = (++_modalZIndexCounter).toString();
                 m.classList.add('open');
+                if (pushHistory) {
+                    try {
+                        history.pushState({ app: 'wa_gallery', view: 'modal', modal: id, chat: activeChat ? activeChat.jid : null }, '');
+                    } catch (e) {}
+                }
             }
         }
 
-        function closeModal(id) {
+        function closeModal(id, triggerHistoryBack = true) {
             const m = document.getElementById(id);
             if (m) {
                 m.classList.remove('open');
                 m.style.zIndex = '';
+            }
+            if (triggerHistoryBack && history.state && history.state.view === 'modal' && history.state.modal === id) {
+                try {
+                    history.back();
+                } catch (e) {}
             }
             if (id === 'modalDevice') {
                 if (typeof stopDeviceWaiting === 'function') stopDeviceWaiting();
@@ -7264,6 +7406,9 @@
 
                     currentDeviceStatus = data;
                     updateDevicePill(data);
+                    if (typeof updateSyncModalBackupAge === 'function') {
+                        updateSyncModalBackupAge();
+                    }
 
                     // If modalDevice is currently open, dynamically update or re-render
                     const modalEl = document.getElementById('modalDevice');
@@ -8015,7 +8160,12 @@
                 badge: 'Step 12 of 12',
                 title: 'Send Key to PC while Backup Finishes',
                 desc: 'Your phone now displays the <em>"Backing up..."</em> screen with the spinning progress circle. While WhatsApp finishes packaging your messages, transfer the 64-digit key copied in Step 8 to your PC.',
-                alert: null
+                alert: {
+                    type: 'tip',
+                    icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+                    title: 'Pro-Tip for Future Incremental Syncs',
+                    text: 'Your 64-digit key never expires. Whenever you sync in the future, open WhatsApp on your phone (Settings &gt; Chats &gt; Chat backup) and tap "Back up" right before syncing so WhatsApp creates a fresh database containing all messages up to that minute.'
+                }
             }
         ];
 
@@ -8080,11 +8230,23 @@
             }
         }
 
+        const _preloadedTutImages = {};
+        function preloadTutorialImages() {
+            for (let i = 0; i < 12; i++) {
+                if (!_preloadedTutImages[i]) {
+                    const im = new Image();
+                    im.src = '/assets/tutorial/wa_step' + i + '.webp';
+                    _preloadedTutImages[i] = im;
+                }
+            }
+        }
+
         async function openTutorialModal(tab = null, slide = 0) {
             tutHasAutoSwitchedToKey = false;
             tutUserManuallySelectedTab = false;
             tutUserManuallySelectedOem = false;
             tutOemDetected = false;
+            preloadTutorialImages();
             initTutStoryBars();
             renderTutOemContent(activeTutOem);
 
@@ -8292,13 +8454,26 @@
             // Update Image
             const img = document.getElementById('tutSlideImg');
             if (img) {
-                img.style.opacity = '0';
+                const targetSrc = '/assets/tutorial/wa_step' + idx + '.webp';
+                img.style.opacity = '0.35';
                 img.style.transform = 'scale(0.98)';
-                setTimeout(() => {
-                    img.src = '/assets/tutorial/wa_step' + idx + '.webp';
+                const loader = new Image();
+                loader.onload = () => {
+                    img.src = targetSrc;
                     img.style.opacity = '1';
                     img.style.transform = 'scale(1)';
-                }, 120);
+                };
+                loader.onerror = () => {
+                    img.src = targetSrc;
+                    img.style.opacity = '1';
+                    img.style.transform = 'scale(1)';
+                };
+                loader.src = targetSrc;
+                if (loader.complete) {
+                    img.src = targetSrc;
+                    img.style.opacity = '1';
+                    img.style.transform = 'scale(1)';
+                }
             }
 
             // Update Step Text
@@ -8550,39 +8725,19 @@
             closeModal('modalTutorial');
             if (isHttpServer) {
                 try {
-                    await fetch('/api/onboarding/complete', { method: 'POST' });
+                    fetch('/api/onboarding/complete', { method: 'POST' }).catch(() => {});
                 } catch (e) {}
             }
-            showToast('Setup complete! Ready to sync WhatsApp.', 'success');
+            showToast('Setup complete! Connecting to phone...', 'success');
             if (autoStartSync) {
-                setTimeout(async () => {
-                    await checkDeviceStatus();
-                    let hasSelectedAccount = Boolean(
-                        currentDeviceStatus && (currentDeviceStatus.has_selected_account || currentDeviceStatus.selected_account_path)
-                    );
-                    if (!hasSelectedAccount) {
-                        try {
-                            const r = await fetch('/api/config');
-                            if (r.ok) {
-                                const c = await r.json();
-                                if (c && c.selected_account_path) {
-                                    hasSelectedAccount = true;
-                                    if (currentDeviceStatus) {
-                                        currentDeviceStatus.selected_account_path = c.selected_account_path;
-                                        currentDeviceStatus.has_selected_account = true;
-                                    }
-                                }
-                            }
-                        } catch (e) {}
-                    }
-
-                    if (currentDeviceStatus && currentDeviceStatus.has_multiple_accounts && !hasSelectedAccount) {
-                        window._pendingSyncAfterAccountSelect = true;
-                        openAccountSelectorModal();
-                    } else {
-                        openSyncModal();
-                    }
-                }, 300);
+                openSyncModal();
+                showSyncView('progress');
+                if (typeof updateSyncPreflightProgress === 'function') {
+                    updateSyncPreflightProgress('Checking phone connection...', 'Detecting Android device over ADB...', 15);
+                }
+                setTimeout(() => {
+                    startSyncFromSummary();
+                }, 100);
             }
         }
         let _tutAutoOpened = false;
@@ -8616,26 +8771,217 @@
         }
 
         let keyModalPollTimer = null;
+        let _lastAnalyzedImportPath = '';
 
         function switchSettingsTab(tab) {
             const tabKey = document.getElementById('tabSettingsKey');
+            const tabImport = document.getElementById('tabSettingsImport');
             const tabRecycle = document.getElementById('tabSettingsRecycle');
             const viewKey = document.getElementById('settingsViewKey');
+            const viewImport = document.getElementById('settingsViewImport');
             const viewRecycle = document.getElementById('settingsViewRecycle');
-            if (!tabKey || !tabRecycle || !viewKey || !viewRecycle) return;
+            if (!tabKey || !viewKey) return;
+
+            [tabKey, tabImport, tabRecycle].forEach(t => t && t.classList.remove('active'));
+            if (viewKey) viewKey.style.display = 'none';
+            if (viewImport) viewImport.style.display = 'none';
+            if (viewRecycle) viewRecycle.style.display = 'none';
 
             if (tab === 'recycle') {
-                tabKey.classList.remove('active');
-                tabRecycle.classList.add('active');
-                viewKey.style.display = 'none';
-                viewRecycle.style.display = 'flex';
+                if (tabRecycle) tabRecycle.classList.add('active');
+                if (viewRecycle) viewRecycle.style.display = 'flex';
+            } else if (tab === 'import') {
+                if (tabImport) tabImport.classList.add('active');
+                if (viewImport) viewImport.style.display = 'flex';
+                onImportPathChanged();
             } else {
-                tabKey.classList.add('active');
-                tabRecycle.classList.remove('active');
-                viewKey.style.display = 'block';
-                viewRecycle.style.display = 'none';
+                if (tabKey) tabKey.classList.add('active');
+                if (viewKey) viewKey.style.display = 'block';
             }
             updateRecycleBinPill();
+        }
+
+        function onImportPathChanged() {
+            const input = document.getElementById('importFolderPathInput');
+            const btnAnalyze = document.getElementById('btnAnalyzeImportFolder');
+            const val = (input ? input.value : '').trim();
+            if (btnAnalyze) {
+                btnAnalyze.disabled = !val;
+            }
+            if (val !== _lastAnalyzedImportPath) {
+                const box = document.getElementById('importAnalysisBox');
+                if (box) box.style.display = 'none';
+                const btnStart = document.getElementById('btnStartImport');
+                if (btnStart) btnStart.style.display = 'none';
+                const errEl = document.getElementById('importPathError');
+                if (errEl) errEl.style.display = 'none';
+            }
+        }
+
+        async function browseImportFolder() {
+            const btn = document.getElementById('btnBrowseImportFolder');
+            const btnText = document.getElementById('btnBrowseImportFolderText');
+            const input = document.getElementById('importFolderPathInput');
+            const errEl = document.getElementById('importPathError');
+            if (errEl) errEl.style.display = 'none';
+
+            if (btnText) btnText.innerText = 'Selecting...';
+            if (btn) btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/import/browse', { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'success' && data.folder) {
+                    if (input) {
+                        input.value = data.folder;
+                        onImportPathChanged();
+                        triggerAnalyzeImportFolder();
+                    }
+                }
+            } catch (e) {
+                console.error('[Import] Failed to open folder picker:', e);
+            } finally {
+                if (btnText) btnText.innerText = 'Browse...';
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function triggerAnalyzeImportFolder() {
+            const input = document.getElementById('importFolderPathInput');
+            const path = (input ? input.value : '').trim();
+            if (!path) return;
+
+            const btnAnalyze = document.getElementById('btnAnalyzeImportFolder');
+            const errEl = document.getElementById('importPathError');
+            const box = document.getElementById('importAnalysisBox');
+            const btnStart = document.getElementById('btnStartImport');
+            if (errEl) errEl.style.display = 'none';
+            if (btnAnalyze) {
+                btnAnalyze.disabled = true;
+                btnAnalyze.innerText = 'Scanning...';
+            }
+
+            try {
+                const res = await fetch('/api/import/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source_path: path })
+                });
+                const body = await res.json();
+                if (!res.ok || body.status !== 'success') {
+                    if (errEl) {
+                        errEl.innerText = body.message || 'Selected folder is invalid or contains no WhatsApp media.';
+                        errEl.style.display = 'block';
+                    }
+                    if (box) box.style.display = 'none';
+                    if (btnStart) btnStart.style.display = 'none';
+                    return;
+                }
+
+                const d = body.data;
+                _lastAnalyzedImportPath = path;
+
+                document.getElementById('importStatTotalMedia').innerText = `${d.media_count.toLocaleString()} files`;
+                document.getElementById('importStatTotalSize').innerText = formatBytes(d.total_bytes);
+                document.getElementById('importStatNewMedia').innerText = `${d.new_files_count.toLocaleString()} files`;
+                document.getElementById('importStatSkippedMedia').innerText = `${d.already_exists_count.toLocaleString()} files`;
+
+                const badgesEl = document.getElementById('importDbBadges');
+                if (badgesEl) {
+                    let badgesHTML = '';
+                    if (d.has_gallery_data) {
+                        badgesHTML += `<span class="badge-tag" style="background:rgba(16,185,129,0.15);color:var(--accent);">✓ Gallery Data</span>`;
+                    }
+                    if (d.has_hashes_db) {
+                        badgesHTML += `<span class="badge-tag" style="background:rgba(59,130,246,0.15);color:#93c5fd;">✓ Hash Index SQLite</span>`;
+                    }
+                    if (d.has_sync_db) {
+                        badgesHTML += `<span class="badge-tag" style="background:rgba(168,85,247,0.15);color:#d8b4fe;">✓ Sync Manifest</span>`;
+                    }
+                    badgesEl.innerHTML = badgesHTML;
+                }
+
+                if (box) box.style.display = 'block';
+                if (btnStart) {
+                    btnStart.style.display = 'inline-flex';
+                    btnStart.disabled = (d.media_count === 0 && !d.has_gallery_data);
+                    btnStart.innerText = d.new_files_count > 0 ? `Import ${d.new_files_count} New Files` : 'Merge Databases & Media';
+                }
+            } catch (e) {
+                if (errEl) {
+                    errEl.innerText = 'Failed to analyze folder: ' + e.message;
+                    errEl.style.display = 'block';
+                }
+            } finally {
+                if (btnAnalyze) {
+                    btnAnalyze.disabled = false;
+                    btnAnalyze.innerText = 'Analyze';
+                }
+            }
+        }
+
+        async function startFolderImport() {
+            const input = document.getElementById('importFolderPathInput');
+            const path = (input ? input.value : '').trim();
+            if (!path) return;
+
+            const btnStart = document.getElementById('btnStartImport');
+            const pBox = document.getElementById('importProgressBox');
+            const pBar = document.getElementById('importProgressBar');
+            const pMsg = document.getElementById('importProgressMessage');
+            const rBox = document.getElementById('importResultBox');
+            const rDetails = document.getElementById('importResultDetails');
+            const aBox = document.getElementById('importAnalysisBox');
+
+            if (btnStart) btnStart.disabled = true;
+            if (pBox) pBox.style.display = 'block';
+            if (pBar) pBar.style.width = '15%';
+            if (pMsg) pMsg.innerText = 'Copying and migrating media files...';
+            if (rBox) rBox.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/import/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source_path: path })
+                });
+                const body = await res.json();
+                if (!res.ok || body.status !== 'success') {
+                    alert('Import failed: ' + (body.message || 'Unknown error'));
+                    if (pBox) pBox.style.display = 'none';
+                    if (btnStart) btnStart.disabled = false;
+                    return;
+                }
+
+                const d = body.data;
+                if (pBar) pBar.style.width = '100%';
+                if (pMsg) pMsg.innerText = 'Migration complete!';
+
+                setTimeout(() => {
+                    if (pBox) pBox.style.display = 'none';
+                    if (aBox) aBox.style.display = 'none';
+                    if (btnStart) btnStart.style.display = 'none';
+                    if (rBox) rBox.style.display = 'block';
+                    if (rDetails) {
+                        rDetails.innerHTML = `
+                            <strong>${d.copied_count.toLocaleString()}</strong> new media files copied (${formatBytes(d.copied_bytes)}).<br>
+                            <strong>${d.skipped_count.toLocaleString()}</strong> existing files safely preserved without duplicate copying.<br>
+                            <strong>${d.merged_hashes.toLocaleString()}</strong> hash cache records merged into duplicate index.<br>
+                            <strong>${d.merged_manifest_items.toLocaleString()}</strong> sync manifest items registered to prevent re-pulling.
+                        `;
+                    }
+                    // Trigger live gallery reload
+                    if (isHttpServer) {
+                        reloadChatsList(true);
+                    } else {
+                        reloadGalleryData();
+                    }
+                }, 400);
+            } catch (e) {
+                alert('Import request failed: ' + e.message);
+                if (pBox) pBox.style.display = 'none';
+                if (btnStart) btnStart.disabled = false;
+            }
         }
 
         async function openKeyModal(initialTab = 'key') {
@@ -8941,19 +9287,20 @@
             const btnStart = document.getElementById('btnStartSyncNow');
             const priorSync = hasCompletedPriorSync(st);
 
+            const chats = getChatsArray();
+            const totalChats = chats.length;
+            const totalFiles = chats.reduce((acc, c) => acc + (c.file_count || 0), 0);
+
             if (title) {
-                title.innerText = priorSync ? 'Refresh WhatsApp Synchronization' : 'WhatsApp Synchronization';
+                title.innerText = (priorSync || totalFiles > 0) ? 'Sync Newer Media' : 'WhatsApp Synchronization';
             }
             if (btnStart) {
-                btnStart.innerText = priorSync ? 'Refresh Sync' : 'Start Sync';
+                btnStart.innerText = (priorSync || totalFiles > 0) ? 'Sync Newer Media' : 'Start Sync';
             }
 
             // Populate organized library statistics
             const statsText = document.getElementById('syncSummaryStatsText');
             if (statsText) {
-                const chats = getChatsArray();
-                const totalChats = chats.length;
-                const totalFiles = chats.reduce((acc, c) => acc + (c.file_count || 0), 0);
                 if (totalFiles > 0) {
                     statsText.innerHTML = `<strong>${totalFiles.toLocaleString()}</strong> media files organized across <strong>${totalChats}</strong> chats. Ready to check for newest updates.`;
                 } else if (priorSync) {
@@ -9003,10 +9350,97 @@
                         <button type="button" class="action-btn action-btn-secondary" onclick="closeModal('modalSync'); openKeyModal();" style="font-size:11px;padding:4px 10px;white-space:nowrap;border-color:rgba(59,130,246,0.4);color:#93c5fd;">Enter Key</button>
                     </div>
                 `;
+            } else if (cfg && cfg.hex_key_set) {
+                const chats = getChatsArray();
+                const totalFiles = chats.reduce((acc, c) => acc + (c.file_count || 0), 0);
+                const isIncremental = (totalFiles > 0);
+                box.style.display = 'block';
+                box.innerHTML = `
+                    <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);color:var(--text-primary);padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.5;">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+                            <div style="width:7px;height:7px;border-radius:50%;background:var(--accent);"></div>
+                            <strong style="color:var(--accent);">${isIncremental ? 'Ready for Incremental Sync' : 'Ready to Sync'}</strong>
+                            <span style="color:var(--text-muted);font-size:11px;">(Backup key saved: ...${cfg.masked_key ? cfg.masked_key.slice(-8) : ''})</span>
+                        </div>
+                        <div style="color:var(--text-secondary);font-size:11px;">
+                            ${isIncremental
+                                ? 'Your 64-digit key is saved permanently and never expires. All previously organized and imported media are skipped automatically -- only newly received media will be downloaded.'
+                                : 'Your backup decryption key is saved. Connect your phone and click Start Sync to begin.'}
+                        </div>
+                        <div style="color:var(--text-muted);font-size:11px;margin-top:4px;">
+                            Tip: In WhatsApp on your phone (Settings &gt; Chats &gt; Chat backup), tap <strong>'Back up'</strong> right before syncing to include messages up to this exact minute.
+                        </div>
+                    </div>
+                `;
             } else {
                 box.style.display = 'none';
                 box.innerHTML = '';
             }
+            updateSyncModalBackupAge();
+        }
+
+        async function recheckPhoneBackupAge(btn) {
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = 'Checking...';
+            }
+            try {
+                await checkDeviceStatus();
+                updateSyncModalBackupAge();
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = 'Check Freshness';
+                }
+            }
+        }
+
+        function updateSyncModalBackupAge() {
+            const badge = document.getElementById('syncPhoneBackupAgeBadge');
+            const btnRefresh = document.getElementById('btnRefreshBackupCheck');
+            if (!badge) return;
+
+            if (!currentDeviceStatus || !currentDeviceStatus.connected || !currentDeviceStatus.authorized) {
+                badge.innerHTML = '<span style="color:var(--text-muted);">(Phone not connected)</span>';
+                if (btnRefresh) btnRefresh.style.display = 'none';
+                return;
+            }
+
+            const acc = currentDeviceStatus.selected_account;
+            if (!acc || !acc.db_mtime) {
+                badge.innerHTML = '<span style="color:#fbbf24;">(No backup file found on phone)</span>';
+                if (btnRefresh) btnRefresh.style.display = 'inline-block';
+                return;
+            }
+
+            if (btnRefresh) btnRefresh.style.display = 'inline-block';
+
+            const nowSec = Math.floor(Date.now() / 1000);
+            const ageSec = Math.max(0, nowSec - acc.db_mtime);
+
+            if (ageSec < 180) {
+                badge.innerHTML = `<span style="background:rgba(16,185,129,0.15);color:var(--accent);padding:2px 8px;border-radius:6px;font-weight:600;">✓ Fresh backup (just now)</span>`;
+            } else if (ageSec < 3600) {
+                const mins = Math.floor(ageSec / 60);
+                badge.innerHTML = `<span style="background:rgba(59,130,246,0.15);color:#93c5fd;padding:2px 8px;border-radius:6px;">Last backup: ${mins}m ago</span>`;
+            } else if (ageSec < 86400) {
+                const hours = Math.floor(ageSec / 3600);
+                badge.innerHTML = `<span style="background:rgba(245,158,11,0.15);color:#fbbf24;padding:2px 8px;border-radius:6px;">Last backup: ${hours}h ago (${acc.last_backup_str})</span>`;
+            } else {
+                const days = Math.floor(ageSec / 86400);
+                badge.innerHTML = `<span style="background:rgba(239,68,68,0.15);color:#fca5a5;padding:2px 8px;border-radius:6px;font-weight:500;">Last backup: ${days} days ago -- Tap Back up now!</span>`;
+            }
+        }
+
+        function updateSyncPreflightProgress(label, sub, percent) {
+            const lbl = document.getElementById('syncPhaseLabel');
+            const sb = document.getElementById('syncPhaseSub');
+            const bar = document.getElementById('syncProgressBar');
+            const stat = document.getElementById('syncStatsStatus');
+            if (lbl) lbl.innerText = label;
+            if (sb) sb.innerText = sub;
+            if (bar) bar.style.width = percent + '%';
+            if (stat) stat.innerText = 'Phase: Verification';
         }
 
         async function startSyncFromSummary() {
@@ -9014,18 +9448,22 @@
             const originalHtml = btnStart ? btnStart.innerHTML : '';
             if (btnStart) {
                 btnStart.disabled = true;
-                btnStart.innerHTML = '<div class="sync-spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;margin-right:6px;"></div> Checking phone...';
             }
+
+            showSyncView('progress');
+            updateSyncPreflightProgress('Checking phone connection...', 'Detecting Android device over ADB...', 15);
 
             try {
                 // Pre-flight Check 1 & 2: Device connected & authorized
                 await checkDeviceStatus();
                 if (!currentDeviceStatus || !currentDeviceStatus.connected) {
+                    showSyncView('summary');
                     showToast('Please connect your Android phone via USB cable.', 'warning');
                     openDeviceModal();
                     return;
                 }
                 if (!currentDeviceStatus.authorized) {
+                    showSyncView('summary');
                     if (currentDeviceStatus.usb_debugging === false) {
                         showToast('Phone detected, but USB Debugging is OFF. Please enable it in Developer Options.', 'warning');
                     } else {
@@ -9036,12 +9474,14 @@
                 }
 
                 // Pre-flight Check 3: Decryption key configured
+                updateSyncPreflightProgress('Verifying backup key...', 'Checking 64-character WhatsApp decryption key...', 35);
                 try {
                     const cfgResp = await fetch('/api/config');
                     if (cfgResp.ok) {
                         const cfg = await cfgResp.json();
                         windowHasLocalDb = !!cfg.has_local_db;
                         if (!cfg.hex_key_set) {
+                            showSyncView('summary');
                             showToast('A 64-character WhatsApp backup key is required before syncing.', 'warning');
                             await openKeyModal();
                             const feedback = document.getElementById('keyValidationFeedback');
@@ -9060,6 +9500,7 @@
                 }
 
                 // Pre-flight Check 4: Multiple accounts selection
+                updateSyncPreflightProgress('Checking WhatsApp accounts...', 'Scanning multi-account directories on phone...', 50);
                 if (currentDeviceStatus && currentDeviceStatus.has_multiple_accounts) {
                     let hasSelectedAccount = Boolean(
                         currentDeviceStatus.has_selected_account ||
@@ -9082,6 +9523,7 @@
                     }
 
                     if (!hasSelectedAccount) {
+                        showSyncView('summary');
                         showToast('Multiple WhatsApp accounts detected. Please select an account to sync.', 'info');
                         window._pendingSyncAfterAccountSelect = true;
                         openAccountSelectorModal();
@@ -9089,11 +9531,14 @@
                     }
                 }
 
+                updateSyncPreflightProgress('Launching sync pipeline...', 'Connecting background streaming engine...', 65);
                 const chkSkip = document.getElementById('syncSummaryChkSkipDb');
                 const hasDb = !!windowHasLocalDb;
                 const skipDb = (hasDb && chkSkip && chkSkip.checked);
-                showSyncView('progress');
                 startSyncFlow(skipDb);
+            } catch (err) {
+                showSyncView('summary');
+                showToast('Pre-flight verification failed: ' + (err.message || err), 'error');
             } finally {
                 if (btnStart) {
                     btnStart.disabled = false;
@@ -10151,11 +10596,27 @@
 
         async function restoreAppState() {
             const stateStr = localStorage.getItem('wa_media_organizer_state');
-            if (!stateStr) return;
+            if (!stateStr) {
+                const chats = getChatsArray();
+                if (chats && chats.length > 0) {
+                    await selectChat(chats[0]);
+                } else {
+                    renderGallery();
+                }
+                return;
+            }
             try {
                 const state = JSON.parse(stateStr);
                 const targetChat = getChatsArray().find(c => c.jid === state.activeChatJid);
-                if (!targetChat) return;
+                if (!targetChat) {
+                    const chats = getChatsArray();
+                    if (chats && chats.length > 0) {
+                        await selectChat(chats[0]);
+                    } else {
+                        renderGallery();
+                    }
+                    return;
+                }
 
                 await selectChat(targetChat);
 
@@ -13671,8 +14132,22 @@
         }
 
         // Select a Chat
-        async function selectChat(chat) {
-            if (!chat) return;
+        async function selectChat(chat, pushHistory = true) {
+            if (!chat) {
+                activeChat = null;
+                renderSidebar();
+                const titleEl = document.getElementById('currentChatName');
+                const metaEl = document.getElementById('currentChatMeta');
+                if (titleEl) titleEl.innerText = 'All WhatsApp Media';
+                if (metaEl) metaEl.innerText = 'Select a chat from the sidebar or browse recent files';
+                filterAndRenderMedia();
+                return;
+            }
+            if (pushHistory) {
+                try {
+                    history.pushState({ app: 'wa_gallery', view: 'chat', chat: chat.jid }, '');
+                } catch (e) {}
+            }
             activeChat = chat;
             window._pendingNewMedia = null;
             const pill = document.getElementById('newMediaPill');
@@ -14541,23 +15016,17 @@
                         if (Math.abs(Number(durA) - Number(durB)) > 0.5) return false;
                     }
 
-                    // 3-frame hash comparison if available
-                    const hA = window._cachedVideo3FrameHashes?.[keyA];
-                    const hB = window._cachedVideo3FrameHashes?.[keyB];
+                    // If frame hashes are available, compare them:
                     if (hA && hB) {
                         return compareVideo3FrameHashes(hA, hB);
                     }
 
-                    // Fallback heuristics: duration already checked, require size ratio >= 1.35x
-                    const szA = itemA.size_bytes || 0;
-                    const szB = itemB.size_bytes || 0;
-                    if (szA > 0 && szB > 0) {
-                        const ratio = Math.max(szA, szB) / Math.min(szA, szB);
-                        if (ratio < 1.35) {
-                            return false;
-                        }
+                    // If neither exact MD5 nor collision stem, and frame hashes are unavailable,
+                    // do not blindly consider them a quality duplicate unless explicitly marked by backend
+                    if (itemA.duplicate_primary === itemB.filename || itemB.duplicate_primary === itemA.filename) {
+                        return true;
                     }
-                    return true;
+                    return false;
                 }
 
                 // Layered guards for images:
@@ -15405,6 +15874,36 @@
             renderedCount = 0;
 
             if (filteredMedia.length === 0) {
+                const currentChats = getChatsArray();
+                if (!currentChats || currentChats.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state" style="max-width:540px;margin:40px auto;padding:32px 24px;border:1px dashed var(--border-color);border-radius:16px;background:rgba(255,255,255,0.02);text-align:center;">
+                            <div style="width:56px;height:56px;border-radius:50%;background:rgba(37,211,102,0.12);color:var(--accent-whatsapp);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                                <svg viewBox="0 0 24 24" style="width:28px;height:28px;fill:currentColor;"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                            </div>
+                            <h3 style="font-size:18px;font-weight:600;margin-bottom:8px;color:var(--text-primary);">Welcome to WhatsApp Media Organizer</h3>
+                            <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:18px;">
+                                No synced media found yet. Choose how you would like to get started:
+                            </p>
+                            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;">
+                                <button type="button" class="action-btn action-btn-primary" onclick="openSyncModal();" style="padding:10px 18px;font-size:13px;font-weight:600;">
+                                    Start Phone Sync
+                                </button>
+                                <button type="button" class="action-btn action-btn-secondary" onclick="openKeyModal('import');" style="padding:10px 18px;font-size:13px;display:inline-flex;align-items:center;gap:6px;">
+                                    <svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                    <span>Import Older Backup</span>
+                                </button>
+                                <button type="button" class="action-btn action-btn-secondary" onclick="openTutorialModal();" style="padding:10px 18px;font-size:13px;">
+                                    View Setup Guide
+                                </button>
+                            </div>
+                            <div style="font-size:11px;color:var(--text-muted);line-height:1.4;">
+                                Upgrading? Importing an older output folder first catalogs existing media -- subsequent phone syncs will download only the newer media files.
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
                 container.innerHTML = `
                     <div class="empty-state">
                         <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
@@ -15661,14 +16160,21 @@
 
             videoHelpBtn.addEventListener('click', triggerTranscode);
 
-            const close = () => {
+            const close = (triggerHistoryBack = true) => {
                 document.body.classList.remove('lightbox-open');
                 lightbox.classList.remove('active');
-                document.getElementById('lbMediaContainer').innerHTML = ''; // Stop video/audio
+                const container = document.getElementById('lbMediaContainer');
+                if (container) container.innerHTML = ''; // Stop video/audio
+                if (triggerHistoryBack && history.state && history.state.view === 'lightbox') {
+                    try {
+                        history.back();
+                    } catch (e) {}
+                }
             };
+            window.closeLightbox = close;
 
-            closeBtn.addEventListener('click', close);
-            closeBtnSecondary.addEventListener('click', close);
+            closeBtn.addEventListener('click', () => close(true));
+            closeBtnSecondary.addEventListener('click', () => close(true));
 
             prevBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -15691,7 +16197,7 @@
                     return;
                 }
                 // Otherwise, any click on the overlay or empty space around the player closes the lightbox.
-                close();
+                close(true);
             });
 
             // Global keyboard shortcuts and lightbox navigation
@@ -15874,13 +16380,64 @@
             });
         }
 
-        function openLightbox(index) {
+        function openLightbox(index, pushHistory = true) {
             activeIndex = index;
             document.body.classList.add('lightbox-open');
             const lightbox = document.getElementById('lightbox');
             lightbox.classList.add('active');
+            if (pushHistory) {
+                try {
+                    history.pushState({ app: 'wa_gallery', view: 'lightbox', index: index, chat: activeChat ? activeChat.jid : null }, '');
+                } catch (e) {}
+            }
             renderLightboxContent();
         }
+
+        window.addEventListener('popstate', (e) => {
+            const state = e.state;
+            // 1. Check if lightbox is open
+            const lightbox = document.getElementById('lightbox');
+            if (lightbox && lightbox.classList.contains('active')) {
+                if (!state || state.view !== 'lightbox') {
+                    if (typeof window.closeLightbox === 'function') {
+                        window.closeLightbox(false);
+                    }
+                    return;
+                }
+            }
+
+            // 2. Check if dup compare lightbox is open
+            const dupLb = document.getElementById('lightboxDupCompare');
+            if (dupLb && dupLb.style.display !== 'none') {
+                if (typeof closeDuplicateCompareLightbox === 'function') {
+                    closeDuplicateCompareLightbox();
+                    return;
+                }
+            }
+
+            // 3. Check if any modal is open
+            const openModals = document.querySelectorAll('.modal.open');
+            if (openModals && openModals.length > 0) {
+                const topModal = openModals[openModals.length - 1];
+                if (!state || state.view !== 'modal' || state.modal !== topModal.id) {
+                    closeModal(topModal.id, false);
+                    return;
+                }
+            }
+
+            // 4. Chat navigation
+            if (state && state.view === 'chat' && state.chat) {
+                if (!activeChat || activeChat.jid !== state.chat) {
+                    const currentChats = getChatsArray();
+                    const target = (currentChats || []).find(c => c.jid === state.chat);
+                    if (target) selectChat(target, false);
+                }
+            } else if (!state || !state.view) {
+                if (activeChat) {
+                    selectChat(null, false);
+                }
+            }
+        });
 
         function navigateLightbox(dir) {
             activeIndex += dir;
@@ -15926,7 +16483,7 @@
 
             // Setup download button
             const dlBtn = document.getElementById('lbDownload');
-            dlBtn.href = item.rel_path;
+            dlBtn.href = isHttpServer ? ('/api/media?path=' + encodeURIComponent(item.rel_path)) : item.rel_path;
             dlBtn.setAttribute('download', item.filename);
 
             // Conditionally show/hide 'Show in File Explorer' based on HTTP protocol (localhost access)
@@ -15974,7 +16531,7 @@
             if (isImage) {
                 const img = document.createElement('img');
                 img.className = 'lightbox-main-media';
-                img.src = item.thumb_path || item.rel_path;
+                img.src = isHttpServer ? ('/api/media?path=' + encodeURIComponent(item.rel_path)) : (item.rel_path || item.thumb_path);
                 container.appendChild(img);
             } else if (isVideo) {
                 const hasPlayablePreview = !!item.preview_path;
@@ -16020,7 +16577,8 @@
                 } else {
                     const vid = document.createElement('video');
                     vid.className = 'lightbox-main-media';
-                    vid.src = item.preview_path || item.rel_path;
+                    const targetVidRel = item.preview_path || item.rel_path;
+                    vid.src = isHttpServer ? ('/api/media?path=' + encodeURIComponent(targetVidRel)) : targetVidRel;
                     vid.controls = true;
                     vid.autoplay = true;
                     
@@ -16041,9 +16599,9 @@
                     // fall back to the original file and re-enable the transcode button.
                     vid.addEventListener('error', () => {
                         if (item.preview_path) {
-                            console.warn(`[Gallery] Preview missing on disk: ${item.preview_path}  -  falling back to original.`);
+                            console.warn(`[Gallery] Preview missing on disk: ${item.preview_path} - falling back to original.`);
                             item.preview_path = null; // clear so triggerTranscode works again
-                            vid.src = item.rel_path;
+                            vid.src = isHttpServer ? ('/api/media?path=' + encodeURIComponent(item.rel_path)) : item.rel_path;
                             vid.load();
                             document.getElementById('lbVideoHelp').style.display = 'inline-block';
                         } else {
@@ -16075,7 +16633,7 @@
                 }
 
                 const aud = document.createElement('audio');
-                aud.src = item.rel_path;
+                aud.src = isHttpServer ? ('/api/media?path=' + encodeURIComponent(item.rel_path)) : item.rel_path;
                 aud.controls = true;
                 aud.style.width = '100%';
 

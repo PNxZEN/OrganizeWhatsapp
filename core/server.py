@@ -508,6 +508,7 @@ from core.gallery import (
 from core.organizer import zip_chat, zip_file_list
 from core.thumbnail import get_or_create_thumbnail
 from core.sync_session import SyncSessionManager
+from core.migrator import pick_folder_dialog, analyze_import_folder, execute_import_folder
 import uuid
 
 _session_manager = SyncSessionManager()
@@ -1511,6 +1512,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         local_path = self.translate_path(self.path)
         if os.path.isfile(local_path) and range_header:
             self.handle_range_request(local_path, range_header)
+            return
         try:
             super().do_GET()
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
@@ -1552,6 +1554,52 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         if path in ("/api/duplicates/empty-recycle-bin", "/api/duplicates/purge"):
             res = empty_recycle_bin(str(self.output_dir))
             self._send_json(200, res)
+            return
+
+        # /api/import/browse (triggers native OS Explorer / Finder folder picker dialog)
+        if path == "/api/import/browse":
+            try:
+                selected = pick_folder_dialog()
+                if selected:
+                    self._send_json(200, {"status": "success", "folder": selected})
+                else:
+                    self._send_json(200, {"status": "canceled", "folder": ""})
+            except Exception as e:
+                self._send_json(500, {"status": "error", "message": str(e)})
+            return
+
+        # /api/import/analyze (pre-flight checks and metrics for older output directory)
+        if path == "/api/import/analyze":
+            body = self._read_json_body() or {}
+            source_path = body.get("source_path", "").strip()
+            if not source_path:
+                self._send_json(400, {"status": "error", "message": "source_path is required"})
+                return
+            res = analyze_import_folder(source_path, str(self.output_dir))
+            if not res.get("valid"):
+                self._send_json(400, {"status": "error", "message": res.get("error", "Invalid folder")})
+                return
+            self._send_json(200, {"status": "success", "data": res})
+            return
+
+        # /api/import/execute (runs media and database migration)
+        if path == "/api/import/execute":
+            body = self._read_json_body() or {}
+            source_path = body.get("source_path", "").strip()
+            if not source_path:
+                self._send_json(400, {"status": "error", "message": "source_path is required"})
+                return
+
+            res = execute_import_folder(source_path, str(self.output_dir))
+            if res.get("status") == "error":
+                self._send_json(400, res)
+                return
+
+            # Bump sync version to notify live gallery reload
+            global sync_status
+            sync_status["version"] = sync_status.get("version", 0) + 1
+
+            self._send_json(200, {"status": "success", "data": res})
             return
 
         # /api/config (save key and configuration)
