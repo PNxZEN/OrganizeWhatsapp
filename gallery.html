@@ -7490,9 +7490,9 @@
             _heartbeatTimer = setInterval(sendPing, 10000);
         }
 
-        // Warn user before closing if sync is active
+        // Warn user before closing if sync is active or exit modal is pending
         window.addEventListener('beforeunload', (e) => {
-            if (_syncActive && !isServerShuttingDown) {
+            if ((_syncActive || (typeof _exitModalOpen !== 'undefined' && _exitModalOpen)) && !isServerShuttingDown) {
                 e.preventDefault();
                 e.returnValue = '';
                 return '';
@@ -7602,6 +7602,8 @@
             }
             if (triggerHistoryBack && history.state && history.state.view === 'modal' && history.state.modal === id) {
                 try {
+                    window._closingModalViaBack = id;
+                    setTimeout(() => { if (window._closingModalViaBack === id) window._closingModalViaBack = null; }, 500);
                     history.back();
                 } catch (e) {}
             }
@@ -10658,6 +10660,25 @@
             renderShutdownScreen(true);
         }
 
+        window._historyTrapArmed = false;
+        function armHistoryTrap() {
+            if (window._historyTrapArmed) return;
+            try {
+                if (!history.state || history.state.view === 'gallery_main' || !history.state.app) {
+                    history.replaceState({ app: 'wa_gallery', view: 'exit_trap' }, '');
+                    history.pushState({ app: 'wa_gallery', view: 'gallery_main' }, '');
+                }
+                window._historyTrapArmed = true;
+            } catch (e) {}
+        }
+
+        // Arm the history trap on any user gesture (pointerdown, keydown, touchstart, wheel, click)
+        // This ensures the entry is created WITH user activation so Chromium never skips it!
+        ['pointerdown', 'keydown', 'touchstart', 'wheel', 'click'].forEach(evt => {
+            window.addEventListener(evt, armHistoryTrap, { capture: true, passive: true });
+        });
+        setTimeout(armHistoryTrap, 1000);
+
         // Initialize App (Fast Hybrid Loader)
         window.addEventListener('DOMContentLoaded', async () => {
             checkDeviceStatus();
@@ -10687,11 +10708,10 @@
             setupCollapsibleFilterPanel();
             applyDuplicateDetectionSetting();
 
-            // Initialize History Exit Trap
+            // Initialize History Baseline (do not pushState on load to avoid Chromium History Manipulation Intervention)
             try {
                 if (!history.state || !history.state.app) {
-                    history.replaceState({ app: 'wa_gallery', view: 'exit_trap' }, '');
-                    history.pushState({ app: 'wa_gallery', view: 'gallery_main' }, '');
+                    history.replaceState({ app: 'wa_gallery', view: 'gallery_main' }, '');
                 }
             } catch (e) {}
 
@@ -10963,7 +10983,7 @@
             if (!stateStr) {
                 const chats = getChatsArray();
                 if (chats && chats.length > 0) {
-                    await selectChat(chats[0]);
+                    await selectChat(chats[0], false);
                 } else {
                     renderGallery();
                 }
@@ -10975,14 +10995,14 @@
                 if (!targetChat) {
                     const chats = getChatsArray();
                     if (chats && chats.length > 0) {
-                        await selectChat(chats[0]);
+                        await selectChat(chats[0], false);
                     } else {
                         renderGallery();
                     }
                     return;
                 }
 
-                await selectChat(targetChat);
+                await selectChat(targetChat, false);
 
                 if (state.searchQuery) document.getElementById('searchFilter').value = state.searchQuery;
                 if (state.selectedSender) document.getElementById('senderFilter').value = state.selectedSender;
@@ -13137,7 +13157,7 @@
             return new Promise((resolve) => {
                 const vid = document.createElement('video');
                 vid.crossOrigin = 'anonymous';
-                vid.preload = 'auto';
+                vid.preload = 'metadata'; // Use metadata only to prevent buffering entire video into RAM/SSD
                 vid.muted = true;
                 vid.playsInline = true;
 
@@ -13148,6 +13168,10 @@
                 const pts = [];
                 const hashes = [];
                 let curPtIdx = 0;
+                let canvas = document.createElement('canvas');
+                canvas.width = 8;
+                canvas.height = 8;
+                let ctx = canvas.getContext('2d', { willReadFrequently: true });
 
                 const cleanup = () => {
                     window._video3FrameHashPending.delete(key);
@@ -13155,13 +13179,19 @@
                     vid.onseeked = null;
                     vid.onerror = null;
                     vid.removeAttribute('src');
-                    vid.load();
+                    try { vid.load(); } catch (e) {}
+                    if (canvas) {
+                        canvas.width = 1;
+                        canvas.height = 1;
+                        canvas = null;
+                        ctx = null;
+                    }
                 };
 
                 const timeoutId = setTimeout(() => {
                     cleanup();
                     resolve(null);
-                }, 6000);
+                }, 4000);
 
                 vid.onerror = () => {
                     clearTimeout(timeoutId);
@@ -13180,11 +13210,6 @@
                     seekNext();
                 };
 
-                const canvas = document.createElement('canvas');
-                canvas.width = 8;
-                canvas.height = 8;
-                const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
                 function seekNext() {
                     if (curPtIdx >= pts.length) {
                         clearTimeout(timeoutId);
@@ -13202,24 +13227,26 @@
 
                 vid.onseeked = () => {
                     try {
-                        ctx.drawImage(vid, 0, 0, 8, 8);
-                        const imgData = ctx.getImageData(0, 0, 8, 8).data;
-                        let sum = 0;
-                        const lum = [];
-                        for (let i = 0; i < 64; i++) {
-                            const r = imgData[i * 4];
-                            const g = imgData[i * 4 + 1];
-                            const b = imgData[i * 4 + 2];
-                            const l = (r * 299 + g * 587 + b * 114) / 1000;
-                            lum.push(l);
-                            sum += l;
+                        if (ctx) {
+                            ctx.drawImage(vid, 0, 0, 8, 8);
+                            const imgData = ctx.getImageData(0, 0, 8, 8).data;
+                            let sum = 0;
+                            const lum = [];
+                            for (let i = 0; i < 64; i++) {
+                                const r = imgData[i * 4];
+                                const g = imgData[i * 4 + 1];
+                                const b = imgData[i * 4 + 2];
+                                const l = (r * 299 + g * 587 + b * 114) / 1000;
+                                lum.push(l);
+                                sum += l;
+                            }
+                            const avg = sum / 64;
+                            let bitstr = '';
+                            for (let i = 0; i < 64; i++) {
+                                bitstr += (lum[i] >= avg ? '1' : '0');
+                            }
+                            hashes.push(bitstr);
                         }
-                        const avg = sum / 64;
-                        let bitstr = '';
-                        for (let i = 0; i < 64; i++) {
-                            bitstr += (lum[i] >= avg ? '1' : '0');
-                        }
-                        hashes.push(bitstr);
                     } catch (e) {
                         // Canvas read errors fallback safely
                     }
@@ -13248,6 +13275,14 @@
 
         window._videoHashQueue = [];
         window._isVideoHashingRunning = false;
+
+        // User activity detection to prevent any UI lag or frame drops during background processing
+        let _lastUserInteractionTimestamp = 0;
+        ['scroll', 'wheel', 'touchmove', 'pointerdown', 'keydown'].forEach(evt => {
+            window.addEventListener(evt, () => {
+                _lastUserInteractionTimestamp = Date.now();
+            }, { passive: true, capture: true });
+        });
 
         function queueVideoCandidateHashing(chat, isHighPriority = false) {
             if (typeof isDuplicateDetectionEnabled === 'function' && !isDuplicateDetectionEnabled()) return;
@@ -13314,10 +13349,13 @@
                 return fnB.localeCompare(fnA);
             });
 
+            // Cap queue to top 40 candidates for active chat to conserve RAM and disk I/O
+            const boundedCandidates = candidates.slice(0, 40);
+
             if (isHighPriority) {
-                window._videoHashQueue = candidates.concat(window._videoHashQueue.filter(q => q.chatJid !== chat.jid));
+                window._videoHashQueue = boundedCandidates;
             } else {
-                candidates.forEach(c => {
+                boundedCandidates.forEach(c => {
                     const cKey = c.item.rel_path || c.item.filename;
                     if (!window._videoHashQueue.some(q => (q.item.rel_path || q.item.filename) === cKey)) {
                         window._videoHashQueue.push(c);
@@ -13328,16 +13366,14 @@
             processNextVideoHashJob();
         }
 
-        async function processNextVideoHashJob() {
-            if (window._isVideoHashingRunning) return;
-            if (window._videoHashQueue.length === 0) return;
-
-            window._isVideoHashingRunning = true;
-            const job = window._videoHashQueue.shift();
-
-            try {
-                await computeVideo3FrameHash(job.item);
-                if (activeChat && activeChat.jid === job.chatJid) {
+        let _dupUIRefreshTimer = null;
+        function scheduleDebouncedDuplicateUIRefresh() {
+            if (_dupUIRefreshTimer) return;
+            _dupUIRefreshTimer = setTimeout(() => {
+                _dupUIRefreshTimer = null;
+                if (!activeChat) return;
+                const runUpdate = () => {
+                    if (!activeChat) return;
                     const prevDupCount = window._currentChatDupSet ? window._currentChatDupSet.size : 0;
                     activeChat._dupCache = null;
                     const { chatDupSet, dupInfoMap, duplicateGroups } = computeChatDuplicates(activeChat);
@@ -13348,18 +13384,59 @@
 
                     const hideDuplicates = document.getElementById('hideDuplicatesFilter')?.checked;
                     if (hideDuplicates && chatDupSet.size !== prevDupCount) {
-                        // Re-filter and render gallery with scroll preservation so newly detected duplicates are immediately hidden
                         filterAndRenderMedia({ preserveScroll: true, keepItemsCount: true });
                     } else {
                         updateGridDuplicateBadges();
                     }
+                };
+                if (typeof requestAnimationFrame === 'function') {
+                    requestAnimationFrame(runUpdate);
+                } else {
+                    runUpdate();
+                }
+            }, 300);
+        }
+
+        async function processNextVideoHashJob() {
+            if (window._isVideoHashingRunning) return;
+            if (!window._videoHashQueue || window._videoHashQueue.length === 0) return;
+
+            // Zero UI Lag guarantee: If user is actively scrolling, touching, or typing, yield completely
+            if (Date.now() - _lastUserInteractionTimestamp < 500) {
+                setTimeout(processNextVideoHashJob, 400);
+                return;
+            }
+            // Save CPU & power when tab is hidden or minimized
+            if (typeof document !== 'undefined' && document.hidden) {
+                setTimeout(processNextVideoHashJob, 1000);
+                return;
+            }
+
+            window._isVideoHashingRunning = true;
+            const job = window._videoHashQueue.shift();
+
+            // Discard job immediately if user has switched away to another chat
+            if (!activeChat || activeChat.jid !== job.chatJid) {
+                window._isVideoHashingRunning = false;
+                setTimeout(processNextVideoHashJob, 50);
+                return;
+            }
+
+            try {
+                const hashes = await computeVideo3FrameHash(job.item);
+                if (hashes && activeChat && activeChat.jid === job.chatJid) {
+                    scheduleDebouncedDuplicateUIRefresh();
                 }
             } catch (e) {
                 // Non-fatal
             } finally {
                 window._isVideoHashingRunning = false;
-                const delay = (activeChat && activeChat.jid === job.chatJid) ? 40 : 250;
-                setTimeout(processNextVideoHashJob, delay);
+                const delay = (activeChat && activeChat.jid === job.chatJid) ? 250 : 800;
+                if (typeof window.requestIdleCallback === 'function') {
+                    window.requestIdleCallback(() => setTimeout(processNextVideoHashJob, delay), { timeout: 1500 });
+                } else {
+                    setTimeout(processNextVideoHashJob, delay);
+                }
             }
         }
 
@@ -16714,6 +16791,8 @@
                 if (container) container.innerHTML = ''; // Stop video/audio
                 if (triggerHistoryBack && history.state && history.state.view === 'lightbox') {
                     try {
+                        window._closingModalViaBack = 'lightbox';
+                        setTimeout(() => { if (window._closingModalViaBack === 'lightbox') window._closingModalViaBack = null; }, 500);
                         history.back();
                     } catch (e) {}
                 }
@@ -16943,6 +17022,13 @@
         window.addEventListener('popstate', (e) => {
             const state = e.state;
 
+            // 0. If a modal or lightbox was just programmatically closed via its X/cancel button,
+            // the resulting history.back() was strictly to clean the history stack. Consume it and do nothing else!
+            if (window._closingModalViaBack) {
+                window._closingModalViaBack = null;
+                return;
+            }
+
             // 1. Check if lightbox is open
             const lightbox = document.getElementById('lightbox');
             if (lightbox && lightbox.classList.contains('active')) {
@@ -17004,7 +17090,7 @@
             }
 
             // 6. If inside an active chat and user clicked back towards root:
-            if (activeChat) {
+            if (activeChat && (!state || state.view === 'gallery_main' || state.view === 'exit_trap')) {
                 selectChat(null, false);
                 try {
                     history.pushState({ app: 'wa_gallery', view: 'gallery_main' }, '');
@@ -17014,10 +17100,12 @@
 
             // 7. Last state reached (root of gallery / exit_trap):
             // Show exit confirmation modal instead of navigating to homescreen.
-            try {
-                history.pushState({ app: 'wa_gallery', view: 'modal_exit' }, '');
-            } catch (e) {}
-            confirmExitApp(false);
+            if (!state || state.view === 'exit_trap') {
+                try {
+                    history.pushState({ app: 'wa_gallery', view: 'modal_exit' }, '');
+                } catch (e) {}
+                confirmExitApp(false);
+            }
         });
 
         function navigateLightbox(dir) {

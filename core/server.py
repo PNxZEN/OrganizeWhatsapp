@@ -508,7 +508,7 @@ from core.gallery import (
 from core.organizer import zip_chat, zip_file_list
 from core.thumbnail import get_or_create_thumbnail
 from core.sync_session import SyncSessionManager
-from core.migrator import pick_folder_dialog, analyze_import_folder, execute_import_folder
+from core.migrator import pick_folder_dialog, analyze_import_folder, execute_import_folder, extract_key_from_folder
 import uuid
 
 _session_manager = SyncSessionManager()
@@ -1595,7 +1595,8 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(400, {"status": "error", "message": "source_path is required"})
                 return
 
-            res = execute_import_folder(source_path, str(self.output_dir))
+            import_key_flag = body.get("import_key", True)
+            res = execute_import_folder(source_path, str(self.output_dir), import_key=import_key_flag)
             if res.get("status") == "error":
                 self._send_json(400, res)
                 return
@@ -1605,6 +1606,44 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             sync_status["version"] = sync_status.get("version", 0) + 1
 
             self._send_json(200, {"status": "success", "data": res})
+            return
+
+        # /api/key/import-previous (directly import and save WhatsApp backup key from an older version)
+        if path == "/api/key/import-previous":
+            body = self._read_json_body() or {}
+            source_path = body.get("source_path", "").strip()
+
+            if not source_path:
+                try:
+                    source_path = pick_folder_dialog()
+                    if not source_path:
+                        self._send_json(200, {"status": "canceled", "message": "Folder selection was canceled."})
+                        return
+                except Exception as e:
+                    self._send_json(500, {"status": "error", "message": f"Failed to open folder picker: {e}"})
+                    return
+
+            found_key = extract_key_from_folder(source_path)
+            if not found_key:
+                self._send_json(200, {
+                    "status": "not_found",
+                    "source_path": source_path,
+                    "message": "No valid WhatsApp backup key (config.json, encrypted_backup.key, or whatsapp.cryptkey) was found in the selected folder. Please ensure you selected the previous installation or output folder.",
+                })
+                return
+
+            try:
+                save_config({"hex_key": found_key})
+                create_key_file(found_key, "encrypted_backup.key")
+                self._send_json(200, {
+                    "status": "success",
+                    "hex_key": found_key,
+                    "masked_key": mask_key(found_key),
+                    "source_path": source_path,
+                    "message": f"Successfully imported WhatsApp backup key from previous version ({mask_key(found_key)})!",
+                })
+            except Exception as e:
+                self._send_json(500, {"status": "error", "message": f"Failed to save imported key: {e}"})
             return
 
         # /api/config (save key and configuration)

@@ -198,6 +198,111 @@ def discover_source_media(source_dir: Path) -> List[Tuple[Path, str, int]]:
     return media_files
 
 
+def extract_key_from_folder(source_dir_or_file: str) -> Optional[str]:
+    """
+    Attempts to extract a valid 64-character WhatsApp hex backup key from an older installation
+    folder, an older output folder, or a key/config file.
+    Checks:
+    - config.json (hex_key, key, whatsapp_key, backup_key)
+    - encrypted_backup.key (59-byte Java serialized Key15: last 32 bytes)
+    - whatsapp.cryptkey, key, wa.key, whatsapp.key (32 bytes binary or 64 hex characters)
+    - Checks source_dir and parent directory if source_dir is an output folder.
+    Returns the validated 64-character lowercase hex string, or None if not found.
+    """
+    from core.decrypt import validate_hex_key
+
+    if not source_dir_or_file:
+        return None
+
+    p = Path(source_dir_or_file).resolve()
+
+    def _try_extract_from_file(file_path: Path) -> Optional[str]:
+        if not file_path.is_file():
+            return None
+        try:
+            # 1. Try JSON configuration
+            if file_path.name.lower().endswith(".json"):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    for k in ("hex_key", "key", "whatsapp_key", "backup_key"):
+                        val = data.get(k)
+                        if val and isinstance(val, str):
+                            is_val, _ = validate_hex_key(val)
+                            if is_val:
+                                return val.strip().lower()
+
+            # 2. Try binary / raw text key file
+            raw = file_path.read_bytes()
+            if len(raw) == 59 and raw.startswith(b"\xac\xed\x00\x05"):
+                # Java-serialized Key15: last 32 bytes are the raw key
+                cand = raw[-32:].hex().lower()
+                is_val, _ = validate_hex_key(cand)
+                if is_val:
+                    return cand
+
+            if len(raw) == 32:
+                # 32 bytes raw key
+                cand = raw.hex().lower()
+                is_val, _ = validate_hex_key(cand)
+                if is_val:
+                    return cand
+
+            if len(raw) == 64:
+                # 64 hex characters ascii
+                cand = raw.decode("ascii", errors="ignore").strip().lower()
+                is_val, _ = validate_hex_key(cand)
+                if is_val:
+                    return cand
+
+            # Also check text content in case there are trailing whitespace or newlines
+            try:
+                txt = raw.decode("utf-8", errors="ignore").strip().lower()
+                if len(txt) == 64:
+                    is_val, _ = validate_hex_key(txt)
+                    if is_val:
+                        return txt
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.debug(f"[Migrator] Error inspecting candidate key file {file_path}: {e}")
+
+        return None
+
+    # If user selected a file directly:
+    if p.is_file():
+        k = _try_extract_from_file(p)
+        if k:
+            return k
+        p = p.parent
+
+    # Candidate directories to search:
+    # 1. Directory itself (e.g. C:\OldInstall or C:\OldInstall\output)
+    # 2. Parent directory (e.g. C:\OldInstall when output was selected)
+    candidate_dirs = [p]
+    if p.parent and p.parent != p and p.parent.is_dir():
+        candidate_dirs.append(p.parent)
+
+    candidate_filenames = [
+        "config.json",
+        "encrypted_backup.key",
+        "whatsapp.cryptkey",
+        "key",
+        "wa.key",
+        "whatsapp.key",
+    ]
+
+    for d in candidate_dirs:
+        for fname in candidate_filenames:
+            cand_file = d / fname
+            k = _try_extract_from_file(cand_file)
+            if k:
+                return k
+
+    return None
+
+
 def analyze_import_folder(source_dir: str, target_dir: str) -> Dict[str, Any]:
     """
     Performs pre-flight analysis of the source older output folder without making changes.
@@ -235,6 +340,11 @@ def analyze_import_folder(source_dir: str, target_dir: str) -> Dict[str, Any]:
     total_bytes = sum(sz for _, _, sz in media_items)
     has_hashes_db = (src_path / ".hashes_cache.sqlite3").is_file() or (src_path / ".hashes_cache.json").is_file()
     has_sync_db = (src_path / ".sync_state.sqlite3").is_file() or (src_path / ".sync_session.sqlite3").is_file()
+
+    # Detect if source or its parent contains a WhatsApp backup key
+    found_key = extract_key_from_folder(str(src_path))
+    from core.config import mask_key
+    detected_key_masked = mask_key(found_key) if found_key else ""
 
     # Compare against target folder to check overlaps
     already_exists_count = 0
@@ -274,6 +384,8 @@ def analyze_import_folder(source_dir: str, target_dir: str) -> Dict[str, Any]:
         "has_gallery_data": has_gallery_data,
         "has_hashes_db": has_hashes_db,
         "has_sync_db": has_sync_db,
+        "has_key": bool(found_key),
+        "detected_key_masked": detected_key_masked,
     }
 
 
@@ -623,6 +735,7 @@ def execute_import_folder(
     source_dir: str,
     target_dir: str,
     progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    import_key: bool = True,
 ) -> Dict[str, Any]:
     """
     Safely migrates media from older output folder to target output folder.
@@ -632,6 +745,7 @@ def execute_import_folder(
     - Merges gallery_data.js
     - Merges .hashes_cache.sqlite3
     - Merges .sync_state.sqlite3
+    - Optionally imports WhatsApp backup key if found
     """
     valid, err, src_path, tgt_path = validate_paths(source_dir, target_dir)
     if not valid:
@@ -643,6 +757,23 @@ def execute_import_folder(
             "status": "error",
             "message": "The selected folder is not a valid WhatsApp Media Organizer output folder (missing gallery_data.js).",
         }
+
+    # Step 0: Optionally import encryption backup key from source
+    imported_key = False
+    masked_key = ""
+    if import_key:
+        found_key = extract_key_from_folder(str(src_path))
+        if found_key:
+            try:
+                from core.config import save_config, mask_key
+                from core.decrypt import create_key_file
+                save_config({"hex_key": found_key})
+                create_key_file(found_key, "encrypted_backup.key")
+                imported_key = True
+                masked_key = mask_key(found_key)
+                logger.info(f"[Migrator] Successfully imported backup key from source ({masked_key})")
+            except Exception as e:
+                logger.warning(f"[Migrator] Failed to save imported key: {e}")
 
     media_items = discover_source_media(src_path)
     total_files = len(media_items)
@@ -740,4 +871,6 @@ def execute_import_folder(
         "merged_hashes": merged_hashes,
         "merged_manifest_items": merged_manifest_items,
         "total_source_files": total_files,
+        "imported_key": imported_key,
+        "masked_key": masked_key,
     }
