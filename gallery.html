@@ -13157,7 +13157,7 @@
             return new Promise((resolve) => {
                 const vid = document.createElement('video');
                 vid.crossOrigin = 'anonymous';
-                vid.preload = 'metadata'; // Use metadata only to prevent buffering entire video into RAM/SSD
+                vid.preload = 'auto'; // Preload auto ensures reliable frame seeking across all browsers and offline file mode
                 vid.muted = true;
                 vid.playsInline = true;
 
@@ -13845,7 +13845,7 @@
                 } else {
                     const mime = primary.mime_type || 'video/mp4';
                     const kVidSrc = primary.preview_path ? (isHttpServer ? ('/api/media?path=' + encodeURIComponent(primary.preview_path)) : primary.preview_path) : primaryUrl;
-                    wrapK.innerHTML = `<video id="dupVidKeeper" controls preload="metadata" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;"><source src="${kVidSrc}" type="${mime}"></video>`;
+                    wrapK.innerHTML = `<video id="dupVidKeeper" controls preload="auto" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;"><source src="${kVidSrc}" type="${mime}"></video>`;
                 }
             }
 
@@ -13864,7 +13864,7 @@
                 } else {
                     const mime = dup.mime_type || 'video/mp4';
                     const dVidSrc = dup.preview_path ? (isHttpServer ? ('/api/media?path=' + encodeURIComponent(dup.preview_path)) : dup.preview_path) : dupUrl;
-                    wrapD.innerHTML = `<video id="dupVidDup" controls preload="metadata" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;"><source src="${dVidSrc}" type="${mime}"></video>`;
+                    wrapD.innerHTML = `<video id="dupVidDup" controls preload="auto" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;"><source src="${dVidSrc}" type="${mime}"></video>`;
                 }
             }
 
@@ -16201,7 +16201,7 @@
 
             const video = document.createElement('video');
             video.crossOrigin = 'anonymous';
-            video.preload = 'metadata';
+            video.preload = 'auto'; // Preload auto guarantees onloadeddata fires reliably for thumbnail extraction
             video.muted = true;
             video.playsInline = true;
 
@@ -16217,7 +16217,8 @@
                 video.onloadeddata = null;
                 video.onseeked = null;
                 video.onerror = null;
-                video.src = '';
+                video.removeAttribute('src');
+                try { video.load(); } catch (e) {}
             }
 
             video.onloadeddata = () => {
