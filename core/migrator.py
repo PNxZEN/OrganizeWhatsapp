@@ -50,17 +50,115 @@ IGNORED_FILES = {
 }
 
 
+def _pick_folder_windows_ctypes(initial_dir: Optional[str] = None) -> Optional[str]:
+    """Native Windows folder picker dialog using Win32 Shell API via ctypes."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class BROWSEINFOW(ctypes.Structure):
+            _fields_ = [
+                ("hwndOwner", wintypes.HWND),
+                ("pidlRoot", wintypes.LPVOID),
+                ("pszDisplayName", wintypes.LPWSTR),
+                ("lpszTitle", wintypes.LPCWSTR),
+                ("ulFlags", wintypes.UINT),
+                ("lpfn", wintypes.LPVOID),
+                ("lParam", wintypes.LPARAM),
+                ("iImage", wintypes.INT),
+            ]
+
+        ole32 = ctypes.windll.ole32
+        shell32 = ctypes.windll.shell32
+        user32 = ctypes.windll.user32
+
+        # Initialize COM on the calling thread
+        ole32.CoInitialize(None)
+
+        display_name = ctypes.create_unicode_buffer(wintypes.MAX_PATH)
+        bi = BROWSEINFOW()
+        # Attach to the active foreground window (e.g. user's browser)
+        bi.hwndOwner = user32.GetForegroundWindow()
+        bi.pszDisplayName = ctypes.cast(display_name, wintypes.LPWSTR)
+        bi.lpszTitle = "Select Older WhatsApp Output Folder"
+        # BIF_RETURNONLYFSDIRS (0x01) | BIF_NEWDIALOGSTYLE (0x40) | BIF_NONEWFOLDERBUTTON (0x200)
+        bi.ulFlags = 0x00000001 | 0x00000040 | 0x00000200
+
+        # Optional initial folder selection callback
+        cb_func = None
+        init_buf = None
+        if initial_dir and os.path.isdir(initial_dir):
+            BFFCALLBACK = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HWND, wintypes.UINT, wintypes.LPARAM, wintypes.LPARAM)
+            init_buf = ctypes.create_unicode_buffer(os.path.abspath(initial_dir))
+            def _cb(hwnd, uMsg, lParam, lpData):
+                if uMsg == 1 and lpData:  # BFFM_INITIALIZED
+                    user32.SendMessageW(hwnd, 0x400 + 103, 1, lpData)  # BFFM_SETSELECTIONW
+                return 0
+            cb_func = BFFCALLBACK(_cb)
+            bi.lpfn = ctypes.cast(cb_func, wintypes.LPVOID)
+            bi.lParam = ctypes.addressof(init_buf)
+
+        pidl = shell32.SHBrowseForFolderW(ctypes.byref(bi))
+        if pidl:
+            path_buf = ctypes.create_unicode_buffer(wintypes.MAX_PATH)
+            shell32.SHGetPathFromIDListW(pidl, path_buf)
+            ole32.CoTaskMemFree(pidl)
+            ole32.CoUninitialize()
+            res = path_buf.value
+            if res and os.path.isdir(res):
+                return os.path.abspath(res)
+            return None
+
+        ole32.CoUninitialize()
+        return None
+    except Exception as e:
+        logger.debug(f"[Migrator] Win32 ctypes folder picker failed: {e}")
+        return None
+
+
 def pick_folder_dialog(initial_dir: Optional[str] = None) -> Optional[str]:
     """
     Spawns a native OS folder picker dialog window (File Explorer on Windows,
-    Finder on macOS, or Tkinter/GTK on Linux) in a short-lived subprocess.
+    Finder on macOS, or Tkinter/GTK on Linux).
     Returns the chosen absolute path, or None if cancelled or failed.
-    Guarantees only ONE dialog is ever displayed.
     """
-    init_arg = f"initialdir={repr(initial_dir)}" if (initial_dir and os.path.isdir(initial_dir)) else "initialdir=None"
+    # 1. On Windows, use native Win32 ctypes (instant, zero child processes, works in embedded Python)
+    if sys.platform == "win32":
+        selected = _pick_folder_windows_ctypes(initial_dir=initial_dir)
+        if selected:
+            return selected
 
-    # 1. Primary method: Tkinter in a standalone subprocess.
-    # On Windows, filedialog.askdirectory natively opens the modern Windows File Explorer dialog.
+    # 2. On macOS, use native osascript / Finder dialog
+    if sys.platform == "darwin":
+        try:
+            prompt = "Select Older WhatsApp Output Folder"
+            init_part = f'default location POSIX file "{initial_dir}"' if (initial_dir and os.path.isdir(initial_dir)) else ""
+            script = f'POSIX path of (choose folder with prompt "{prompt}" {init_part})'
+            res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=120)
+            if res.returncode == 0 and res.stdout.strip():
+                p = res.stdout.strip()
+                if os.path.isdir(p):
+                    return os.path.abspath(p)
+        except Exception as e:
+            logger.debug(f"[Migrator] macOS osascript folder picker failed: {e}")
+
+    # 3. On Linux, use zenity or kdialog
+    if sys.platform.startswith("linux"):
+        for cmd in [
+            ["zenity", "--file-selection", "--directory", "--title=Select Older WhatsApp Output Folder"],
+            ["kdialog", "--getexistingdirectory"],
+        ]:
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                if res.returncode == 0 and res.stdout.strip():
+                    p = res.stdout.strip()
+                    if os.path.isdir(p):
+                        return os.path.abspath(p)
+            except Exception:
+                pass
+
+    # 4. Standard Python Tkinter in subprocess (if Tkinter is installed)
+    init_arg = f"initialdir={repr(initial_dir)}" if (initial_dir and os.path.isdir(initial_dir)) else "initialdir=None"
     try:
         py_code = (
             "import sys, os\n"
@@ -87,50 +185,12 @@ def pick_folder_dialog(initial_dir: Optional[str] = None) -> Optional[str]:
         )
         if res.returncode == 0:
             out = res.stdout.strip()
-            if out == "CANCELLED":
-                return None
             if out.startswith("SELECTED:"):
                 selected = out[len("SELECTED:"):].strip()
                 if selected and os.path.isdir(selected):
-                    return selected
-            return None
+                    return os.path.abspath(selected)
     except Exception as e:
-        logger.debug(f"[Migrator] Tkinter folder picker error: {e}")
-
-    # 2. Fallback only if python/tkinter process failed to execute (e.g. headless/broken):
-    if sys.platform == "win32":
-        try:
-            init_line = ""
-            if initial_dir and os.path.isdir(initial_dir):
-                safe_init = initial_dir.replace("'", "''")
-                init_line = f"$f.SelectedPath = '{safe_init}'; "
-
-            ps_script = (
-                "[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null; "
-                "$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
-                "$f.Description = 'Select Older WhatsApp Output Folder to Import'; "
-                "$f.ShowNewFolderButton = $false; "
-                f"{init_line}"
-                "$w = New-Object System.Windows.Forms.Form; "
-                "$w.TopMost = $true; "
-                "$res = $f.ShowDialog($w); "
-                "if ($res -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output ('SELECTED:' + $f.SelectedPath) } else { Write-Output 'CANCELLED' }"
-            )
-            res = subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            if res.returncode == 0:
-                out = res.stdout.strip()
-                if out.startswith("SELECTED:"):
-                    selected = out[len("SELECTED:"):].strip()
-                    if selected and os.path.isdir(selected):
-                        return selected
-                return None
-        except Exception as e:
-            logger.debug(f"[Migrator] Windows PowerShell folder picker fallback error: {e}")
+        logger.debug(f"[Migrator] Tkinter folder picker fallback error: {e}")
 
     return None
 

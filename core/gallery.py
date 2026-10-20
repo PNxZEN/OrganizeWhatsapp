@@ -65,7 +65,19 @@ def parse_gallery_data_js(raw):
     json_part = text[match.end() :].strip()
     if json_part.endswith(";"):
         json_part = json_part[:-1].rstrip()
-    return json.loads(json_part)
+    try:
+        return json.loads(json_part)
+    except Exception:
+        # Gracefully handle unquoted JavaScript property names (e.g. { chats: [], media: [] })
+        try:
+            fixed = re.sub(
+                r'([{\[,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:',
+                r'\1"\2":',
+                json_part,
+            )
+            return json.loads(fixed)
+        except Exception:
+            raise
 
 
 def generate_gallery(

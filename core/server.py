@@ -2252,7 +2252,7 @@ def start_gallery_server(
     if not dest_data_js.is_file():
         try:
             dest_data_js.write_text(
-                "// Auto-generated initial gallery dataset\nwindow.GALLERY_DATA = { chats: [], media: [] };\n",
+                '// Auto-generated initial gallery dataset\nwindow.GALLERY_DATA = {"chats": [], "media": []};\n',
                 encoding="utf-8",
             )
         except Exception:

@@ -9146,11 +9146,22 @@
             const errEl = document.getElementById('importPathError');
             if (errEl) errEl.style.display = 'none';
 
+            if (!isHttpServer) {
+                if (errEl) {
+                    errEl.innerText = 'Start the local server (start_gallery.bat) to use the native folder picker, or type/paste the path directly.';
+                    errEl.style.display = 'block';
+                }
+                return;
+            }
+
             if (btnText) btnText.innerText = 'Selecting...';
             if (btn) btn.disabled = true;
 
             try {
                 const res = await fetch('/api/import/browse', { method: 'POST' });
+                if (!res.ok) {
+                    throw new Error('Server returned HTTP ' + res.status);
+                }
                 const data = await res.json();
                 if (data.status === 'success' && data.folder) {
                     if (input) {
@@ -9158,9 +9169,18 @@
                         onImportPathChanged();
                         triggerAnalyzeImportFolder();
                     }
+                } else if (data.status === 'canceled') {
+                    // User closed or dismissed the dialog
+                } else if (data.message && errEl) {
+                    errEl.innerText = data.message;
+                    errEl.style.display = 'block';
                 }
             } catch (e) {
                 console.error('[Import] Failed to open folder picker:', e);
+                if (errEl) {
+                    errEl.innerText = 'Could not open folder picker window. Please paste or type your older folder path directly in the field.';
+                    errEl.style.display = 'block';
+                }
             } finally {
                 if (btnText) btnText.innerText = 'Browse...';
                 if (btn) btn.disabled = false;
