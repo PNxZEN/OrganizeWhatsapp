@@ -254,6 +254,21 @@ class TestFrontendScenarios(unittest.TestCase):
         self.assertIn('setReclaimChatSort', self.gallery_content)
         self.assertIn('renderReclaimChatList', self.gallery_content)
 
+    def test_15_frontend_js_engine_suite(self):
+        """Runs the exhaustive Node.js test suite testing gallery.html syntax, TDZ scoping, and duplicate engine."""
+        import subprocess
+        js_test_path = WORKSPACE_ROOT / "tests" / "js" / "test_frontend_engine.js"
+        self.assertTrue(js_test_path.is_file(), "Frontend JS test runner missing")
+        node_bin = shutil.which("node")
+        if not node_bin:
+            self.skipTest("Node.js is not installed on this system")
+        res = subprocess.run([node_bin, str(js_test_path)], capture_output=True, text=True, check=False)
+        self.assertEqual(
+            res.returncode,
+            0,
+            f"Frontend JS test suite failed:\nSTDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

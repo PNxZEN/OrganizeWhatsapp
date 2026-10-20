@@ -52,11 +52,52 @@ IGNORED_FILES = {
 
 def pick_folder_dialog(initial_dir: Optional[str] = None) -> Optional[str]:
     """
-    Spawns a native OS folder picker dialog window (Explorer on Windows,
-    Finder on macOS, or GTK/Tk on Linux) in a short-lived subprocess.
+    Spawns a native OS folder picker dialog window (File Explorer on Windows,
+    Finder on macOS, or Tkinter/GTK on Linux) in a short-lived subprocess.
     Returns the chosen absolute path, or None if cancelled or failed.
+    Guarantees only ONE dialog is ever displayed.
     """
-    # 1. On Windows: Try PowerShell FolderBrowserDialog for a 100% native WinForms experience
+    init_arg = f"initialdir={repr(initial_dir)}" if (initial_dir and os.path.isdir(initial_dir)) else "initialdir=None"
+
+    # 1. Primary method: Tkinter in a standalone subprocess.
+    # On Windows, filedialog.askdirectory natively opens the modern Windows File Explorer dialog.
+    try:
+        py_code = (
+            "import sys, os\n"
+            "try:\n"
+            "    import tkinter as tk\n"
+            "    from tkinter import filedialog\n"
+            "    root = tk.Tk()\n"
+            "    root.withdraw()\n"
+            "    root.wm_attributes('-topmost', 1)\n"
+            f"    p = filedialog.askdirectory(title='Select Older WhatsApp Output Folder', {init_arg})\n"
+            "    root.destroy()\n"
+            "    if p and os.path.isdir(p):\n"
+            "        print('SELECTED:' + os.path.abspath(p))\n"
+            "    else:\n"
+            "        print('CANCELLED')\n"
+            "except Exception:\n"
+            "    sys.exit(1)\n"
+        )
+        res = subprocess.run(
+            [sys.executable, "-c", py_code],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if res.returncode == 0:
+            out = res.stdout.strip()
+            if out == "CANCELLED":
+                return None
+            if out.startswith("SELECTED:"):
+                selected = out[len("SELECTED:"):].strip()
+                if selected and os.path.isdir(selected):
+                    return selected
+            return None
+    except Exception as e:
+        logger.debug(f"[Migrator] Tkinter folder picker error: {e}")
+
+    # 2. Fallback only if python/tkinter process failed to execute (e.g. headless/broken):
     if sys.platform == "win32":
         try:
             init_line = ""
@@ -73,7 +114,7 @@ def pick_folder_dialog(initial_dir: Optional[str] = None) -> Optional[str]:
                 "$w = New-Object System.Windows.Forms.Form; "
                 "$w.TopMost = $true; "
                 "$res = $f.ShowDialog($w); "
-                "if ($res -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }"
+                "if ($res -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output ('SELECTED:' + $f.SelectedPath) } else { Write-Output 'CANCELLED' }"
             )
             res = subprocess.run(
                 ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
@@ -82,42 +123,14 @@ def pick_folder_dialog(initial_dir: Optional[str] = None) -> Optional[str]:
                 timeout=120,
             )
             if res.returncode == 0:
-                selected = res.stdout.strip()
-                if selected and os.path.isdir(selected):
-                    return selected
+                out = res.stdout.strip()
+                if out.startswith("SELECTED:"):
+                    selected = out[len("SELECTED:"):].strip()
+                    if selected and os.path.isdir(selected):
+                        return selected
+                return None
         except Exception as e:
-            logger.debug(f"[Migrator] Windows PowerShell folder picker fallback: {e}")
-
-    # 2. Cross-platform fallback: Tkinter in a standalone subprocess
-    try:
-        init_arg = f"initialdir={repr(initial_dir)}" if (initial_dir and os.path.isdir(initial_dir)) else "initialdir=None"
-        py_code = (
-            "import sys, os\n"
-            "try:\n"
-            "    import tkinter as tk\n"
-            "    from tkinter import filedialog\n"
-            "    root = tk.Tk()\n"
-            "    root.withdraw()\n"
-            "    root.wm_attributes('-topmost', 1)\n"
-            f"    p = filedialog.askdirectory(title='Select Older WhatsApp Output Folder', {init_arg})\n"
-            "    root.destroy()\n"
-            "    if p and os.path.isdir(p):\n"
-            "        print(p)\n"
-            "except Exception:\n"
-            "    sys.exit(1)\n"
-        )
-        res = subprocess.run(
-            [sys.executable, "-c", py_code],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if res.returncode == 0:
-            selected = res.stdout.strip()
-            if selected and os.path.isdir(selected):
-                return selected
-    except Exception as e:
-        logger.debug(f"[Migrator] Tkinter folder picker fallback: {e}")
+            logger.debug(f"[Migrator] Windows PowerShell folder picker fallback error: {e}")
 
     return None
 
@@ -197,11 +210,29 @@ def analyze_import_folder(source_dir: str, target_dir: str) -> Dict[str, Any]:
             "error": err,
         }
 
-    media_items = discover_source_media(src_path)
-    total_bytes = sum(sz for _, _, sz in media_items)
+    # Check for database files in source: verify valid WhatsApp Media Organizer structure
+    has_gallery_data = (src_path / "gallery_data.js").is_file() or (src_path / "gallery.js").is_file()
+    if not has_gallery_data:
+        return {
+            "valid": False,
+            "error": "The selected folder is not a valid WhatsApp Media Organizer output folder (missing gallery_data.js). Please select a valid output directory.",
+            "source_dir": str(src_path),
+            "target_dir": str(tgt_path),
+            "has_gallery_data": False,
+        }
 
-    # Check for database files in source
-    has_gallery_data = (src_path / "gallery_data.js").is_file()
+    media_items = discover_source_media(src_path)
+    if len(media_items) == 0:
+        return {
+            "valid": False,
+            "error": "No media files found in the selected folder.",
+            "source_dir": str(src_path),
+            "target_dir": str(tgt_path),
+            "has_gallery_data": True,
+            "media_count": 0,
+        }
+
+    total_bytes = sum(sz for _, _, sz in media_items)
     has_hashes_db = (src_path / ".hashes_cache.sqlite3").is_file() or (src_path / ".hashes_cache.json").is_file()
     has_sync_db = (src_path / ".sync_state.sqlite3").is_file() or (src_path / ".sync_session.sqlite3").is_file()
 
@@ -605,6 +636,13 @@ def execute_import_folder(
     valid, err, src_path, tgt_path = validate_paths(source_dir, target_dir)
     if not valid:
         return {"status": "error", "message": err}
+
+    has_gallery_data = (src_path / "gallery_data.js").is_file() or (src_path / "gallery.js").is_file()
+    if not has_gallery_data:
+        return {
+            "status": "error",
+            "message": "The selected folder is not a valid WhatsApp Media Organizer output folder (missing gallery_data.js).",
+        }
 
     media_items = discover_source_media(src_path)
     total_files = len(media_items)

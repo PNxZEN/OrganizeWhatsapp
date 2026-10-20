@@ -2277,6 +2277,202 @@
             border-color: var(--accent);
         }
 
+        /* Settings Modal Master-Detail Layout & Slider Switch */
+        .settings-modal-card {
+            width: 780px;
+            max-width: 95vw;
+            height: 570px;
+            max-height: 88vh;
+            display: flex;
+            flex-direction: column;
+            padding: 0 !important;
+            overflow: hidden;
+        }
+
+        .settings-modal-layout {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .settings-nav-sidebar {
+            width: 210px;
+            flex-shrink: 0;
+            background: rgba(0, 0, 0, 0.22);
+            border-right: 1px solid var(--border-color);
+            padding: 14px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            overflow-y: auto;
+        }
+
+        .settings-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 9px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.18s ease;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .settings-nav-item svg {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            fill: currentColor;
+            opacity: 0.75;
+            transition: all 0.18s ease;
+        }
+
+        .settings-nav-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+        }
+
+        .settings-nav-item:hover svg {
+            opacity: 1;
+        }
+
+        .settings-nav-item.active {
+            background: rgba(16, 185, 129, 0.12);
+            border-color: rgba(16, 185, 129, 0.28);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .settings-nav-item.active svg {
+            opacity: 1;
+            fill: var(--accent);
+        }
+
+        .settings-content-pane {
+            flex: 1;
+            min-width: 0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-card);
+        }
+
+        @media (max-width: 680px) {
+            .settings-modal-card {
+                height: auto;
+                max-height: 92vh;
+            }
+            .settings-modal-layout {
+                flex-direction: column;
+            }
+            .settings-nav-sidebar {
+                width: 100%;
+                flex-direction: row;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+                padding: 8px 10px;
+                gap: 6px;
+                overflow-x: auto;
+            }
+            .settings-nav-item {
+                padding: 8px 12px;
+                font-size: 12px;
+                white-space: nowrap;
+                width: auto;
+            }
+        }
+
+        /* Modern Slider Switch Component */
+        .setting-switch-wrapper {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .setting-switch {
+            position: relative;
+            display: inline-block;
+            width: 46px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+
+        .setting-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+        }
+
+        .setting-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.14);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 24px;
+        }
+
+        .setting-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 2px;
+            bottom: 2px;
+            background-color: #ffffff;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 50%;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+        }
+
+        .setting-switch input:checked + .setting-slider {
+            background-color: var(--accent);
+            border-color: var(--accent);
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+        }
+
+        .setting-switch input:focus-visible + .setting-slider {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        .setting-switch input:checked + .setting-slider:before {
+            transform: translateX(22px);
+            background-color: #ffffff;
+        }
+
+        .setting-switch:hover .setting-slider {
+            background-color: rgba(255, 255, 255, 0.22);
+        }
+
+        .setting-switch input:checked:hover + .setting-slider {
+            filter: brightness(1.08);
+        }
+
+        .setting-switch-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            min-width: 58px;
+            transition: color 0.2s ease;
+        }
+
         .modal-card-xl {
             width: 980px;
             max-width: 96vw;
@@ -4297,7 +4493,7 @@
                 <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>
                 <span>Setup Guide</span>
             </button>
-            <button class="control-btn control-btn-secondary" id="btnControlKey" onclick="openKeyModal()">
+            <button class="control-btn control-btn-secondary" id="btnControlKey" onclick="openKeyModal('general')">
                 <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
                 <span>Key &amp; Settings</span>
                 <span class="key-status-indicator" id="keyIndicator"></span>
@@ -4591,8 +4787,8 @@
                 </div>
 
                 <!-- Hide duplicates -->
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label class="checkbox-wrapper" style="margin: 0;">
+                <div id="duplicateFilterControls" style="display: flex; align-items: center; gap: 8px;">
+                    <label class="checkbox-wrapper" id="hideDuplicatesLabel" style="margin: 0;">
                         <input type="checkbox" id="hideDuplicatesFilter" checked>
                         <span>Hide Duplicates <span id="hiddenDupsCount" style="color: var(--text-muted); font-size: 0.85rem; margin-left: 4px; display: none;">(0 hidden)</span></span>
                     </label>
@@ -5135,185 +5331,239 @@
 
     <!-- KEY & SETTINGS MODAL -->
     <div class="modal-overlay" id="modalKey">
-        <div class="modal-card modal-card-lg" style="max-width: 640px; display: flex; flex-direction: column;">
-            <div class="modal-header">
+        <div class="modal-card settings-modal-card">
+            <div class="modal-header" style="padding: 14px 20px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; background: rgba(255, 255, 255, 0.02);">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <button type="button" class="modal-back-btn" onclick="closeModal('modalKey')" title="Back">
                         <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
                     </button>
                     <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                        <svg class="icon" viewBox="0 0 24 24" style="width:18px;height:18px;fill:var(--accent);"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+                        <svg class="icon" viewBox="0 0 24 24" style="width:18px;height:18px;fill:var(--accent);"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
                     </div>
                     <div>
                         <h3 id="settingsModalTitle" style="margin: 0; font-size: 15px; font-weight: 600; color: var(--text-primary);">Settings &amp; Storage</h3>
-                        <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--text-muted);">Manage backup decryption key and storage</p>
+                        <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--text-muted);">Manage app preferences, backup decryption key, and data</p>
                     </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <!-- Navigation Tabs -->
-                    <div style="display: flex; background: rgba(0, 0, 0, 0.3); padding: 3px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08);">
-                        <button type="button" class="dup-tab-btn active" id="tabSettingsKey" onclick="switchSettingsTab('key')">
-                            Backup Key
-                        </button>
-                        <button type="button" class="dup-tab-btn" id="tabSettingsImport" onclick="switchSettingsTab('import')">
-                            Import Media
-                        </button>
-                        <button type="button" class="dup-tab-btn" id="tabSettingsRecycle" onclick="switchSettingsTab('recycle')" style="display:inline-flex;align-items:center;">
-                            <span>Recycle Bin</span>
-                            <span id="recycleBinCountPill" style="display:none;">0</span>
-                        </button>
-                    </div>
-                    <button class="modal-close" onclick="closeModal('modalKey')">&times;</button>
-                </div>
+                <button class="modal-close" onclick="closeModal('modalKey')">&times;</button>
             </div>
 
-            <!-- Tab 1: Key Body -->
-            <div id="settingsViewKey" class="modal-body" style="padding: 20px;">
-                <p style="color:var(--text-secondary);font-size:13px;line-height:1.5;margin-bottom:12px;">
-                    Enter your 64-character hexadecimal end-to-end encrypted backup key.
-                    This key decrypts your WhatsApp databases (msgstore.db.crypt15). It is saved locally in config.json.
-                </p>
-                <div id="keyCurrentStatus" style="margin-bottom:12px;font-size:12px;color:var(--text-muted);"></div>
-                <div style="position:relative;margin-bottom:8px;">
-                    <input type="text" id="hexKeyInput" class="key-input" placeholder="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" maxlength="64" spellcheck="false" autocomplete="off" oninput="onKeyInput(this.value)">
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                    <span id="keyCharCount" style="font-size:12px;color:var(--text-muted);">0 / 64 hex characters</span>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <button class="action-btn action-btn-secondary" id="btnKeyFetchPhone" style="font-size:12px;padding:4px 8px;display:none;align-items:center;gap:4px;" onclick="fetchKeyFromPhone()">
-                            <svg class="icon" viewBox="0 0 24 24" style="width:13px;height:13px;fill:currentColor;vertical-align:middle;margin-right:2px;"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
-                            <span id="btnKeyFetchPhoneText">Fetch from Phone</span>
-                        </button>
-                        <button class="action-btn action-btn-secondary" style="font-size:12px;padding:4px 8px;" onclick="pasteKeyFromClipboard()">Paste from Clipboard</button>
-                    </div>
-                </div>
-                <div id="keyFetchStatus" style="font-size:12px;margin-bottom:8px;min-height:0;"></div>
-                <div id="keyValidationFeedback" style="font-size:12px;min-height:16px;"></div>
-
-                <!-- Quick shortcut banner inside Backup Key tab -->
-                <div id="settingsKeyRecycleShortcut" style="display: none; align-items: center; justify-content: space-between; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; padding: 10px 14px; margin-top: 14px;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <svg class="icon" viewBox="0 0 24 24" style="width: 16px; height: 16px; fill: #fca5a5;"><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z"/></svg>
-                        <span id="settingsKeyRecycleShortcutText" style="font-size: 12px; color: var(--text-primary); font-weight: 500;">0 file(s) in Recycle Bin</span>
-                    </div>
-                    <button type="button" class="action-btn action-btn-secondary" style="font-size: 11px; padding: 4px 10px; color: #fca5a5; border-color: rgba(239, 68, 68, 0.35);" onclick="closeModal('modalKey'); openDuplicateReviewModal('recycle-bin');">
-                        Open Recycle Bin &rarr;
+            <div class="settings-modal-layout">
+                <!-- Left Nav Sidebar -->
+                <div class="settings-nav-sidebar">
+                    <button type="button" class="settings-nav-item active" id="tabSettingsGeneral" onclick="switchSettingsTab('general')">
+                        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                        <span>Preferences</span>
+                    </button>
+                    <button type="button" class="settings-nav-item" id="tabSettingsKey" onclick="switchSettingsTab('key')">
+                        <svg viewBox="0 0 24 24"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+                        <span>Backup Key</span>
+                    </button>
+                    <button type="button" class="settings-nav-item" id="tabSettingsImport" onclick="switchSettingsTab('import')">
+                        <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+                        <span>Import Media</span>
+                    </button>
+                    <button type="button" class="settings-nav-item" id="tabSettingsRecycle" onclick="switchSettingsTab('recycle')" style="justify-content: space-between;">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <svg viewBox="0 0 24 24"><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z"/></svg>
+                            <span>Recycle Bin</span>
+                        </div>
+                        <span id="recycleBinCountPill" class="badge-tag" style="display:none; font-size:11px; padding:1px 6px; border-radius:10px; background:rgba(239,68,68,0.2); color:#fca5a5;">0</span>
                     </button>
                 </div>
 
-                <div class="modal-footer" style="padding: 16px 0 0 0; margin-top: 16px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px;">
-                    <button class="action-btn action-btn-secondary" onclick="closeModal('modalKey')">Cancel</button>
-                    <button class="action-btn action-btn-primary" id="btnSaveKey" onclick="saveKeyConfig()" disabled>Save Settings</button>
-                </div>
-            </div>
+                <!-- Right Content Pane -->
+                <div class="settings-content-pane">
+                    <!-- Tab 0: General Preferences Body -->
+                    <div id="settingsViewGeneral" class="modal-body" style="padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+                        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 20px; transition: border-color 0.2s ease;">
+                            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;">
+                                <div style="flex: 1;">
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                        <span style="font-size: 15px; font-weight: 600; color: var(--text-primary);">Duplicate Media Detection</span>
+                                        <span class="badge-tag" style="background: rgba(16, 185, 129, 0.12); color: var(--accent); font-size: 10px; padding: 2px 7px; border-radius: 10px;">Smart Engine</span>
+                                    </div>
+                                    <p style="color: var(--text-secondary); font-size: 13px; line-height: 1.5; margin: 0 0 12px 0;">
+                                        Automatically detect, index, and cluster duplicate images and videos across chats.
+                                        Turn this off to eliminate additional CPU and memory computation on large libraries.
+                                        Disabling duplicate detection also hides duplicate filters and review controls.
+                                    </p>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--text-muted);">
+                                        <div style="display: flex; align-items: center; gap: 5px;">
+                                            <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: var(--accent);"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                            Exact MD5 &amp; Collision Stem Matching
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 5px;">
+                                            <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: var(--accent);"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                            Multi-frame Perceptual Video Matching
+                                        </div>
+                                    </div>
+                                </div>
 
-            <!-- Tab 2: Import Older Media Body -->
-            <div id="settingsViewImport" class="modal-body" style="display:none; padding: 20px; flex-direction: column; gap: 14px;">
-                <p style="color:var(--text-secondary);font-size:13px;line-height:1.5;margin:0 0 4px 0;">
-                    Migrate WhatsApp photos, videos, and documents from a previous installation or older output folder into your current gallery.
-                    Safely copies files, merges duplicate hash indices (<code style="color:var(--accent);">.hashes_cache.sqlite3</code>), and updates sync manifests (<code style="color:var(--accent);">.sync_state.sqlite3</code>) so existing media is never redownloaded from your phone.
-                </p>
+                                <!-- Modern Slider Switch Toggle -->
+                                <label class="setting-switch-wrapper" for="settingEnableDuplicates" title="Toggle duplicate detection">
+                                    <div class="setting-switch">
+                                        <input type="checkbox" id="settingEnableDuplicates" checked onchange="onToggleDuplicateDetectionSetting(this.checked); updateDuplicateSwitchLabel(this.checked);">
+                                        <span class="setting-slider"></span>
+                                    </div>
+                                    <span class="setting-switch-label" id="settingDuplicatesSwitchLabel">Enabled</span>
+                                </label>
+                            </div>
+                        </div>
 
-                <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 14px 16px;">
-                    <label style="display:block; font-size:12px; font-weight:600; color:var(--text-primary); margin-bottom:8px;">
-                        Older Output Folder Location:
-                    </label>
-                    <div style="display:flex; gap:8px; align-items:center;">
-                        <input type="text" id="importFolderPathInput" class="key-input" style="flex:1; font-size:12px; padding:8px 12px;" placeholder="e.g. C:\Downloads\WhatsAppMediaOrganizer\output" spellcheck="false" autocomplete="off" oninput="onImportPathChanged()">
-                        <button type="button" class="action-btn action-btn-secondary" id="btnBrowseImportFolder" onclick="browseImportFolder()" style="display:inline-flex; align-items:center; gap:6px; white-space:nowrap; padding:8px 14px; font-size:12px;">
-                            <svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                            <span id="btnBrowseImportFolderText">Browse...</span>
-                        </button>
-                        <button type="button" class="action-btn action-btn-secondary" id="btnAnalyzeImportFolder" onclick="triggerAnalyzeImportFolder()" style="white-space:nowrap; padding:8px 14px; font-size:12px;" disabled>
-                            Analyze
-                        </button>
-                    </div>
-                    <div id="importPathError" style="color:var(--danger); font-size:11px; margin-top:6px; display:none;"></div>
-                </div>
-
-                <!-- Analysis Summary Box (hidden until analyzed) -->
-                <div id="importAnalysisBox" style="display:none; background:rgba(16, 185, 129, 0.05); border:1px solid rgba(16, 185, 129, 0.25); border-radius:10px; padding:14px 16px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                        <span style="font-size:13px; font-weight:600; color:var(--text-primary);">Folder Analysis Summary</span>
-                        <span id="importAnalysisStatusBadge" class="badge-tag" style="background:rgba(16,185,129,0.15); color:var(--accent);">Ready to Migrate</span>
-                    </div>
-                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap:10px; font-size:12px; margin-bottom:12px;">
-                        <div style="background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px;">
-                            <div style="color:var(--text-muted); font-size:11px;">Total Media Found</div>
-                            <div id="importStatTotalMedia" style="font-weight:700; color:var(--text-primary); font-size:14px; margin-top:2px;">0 files</div>
-                        </div>
-                        <div style="background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px;">
-                            <div style="color:var(--text-muted); font-size:11px;">Total Size</div>
-                            <div id="importStatTotalSize" style="font-weight:700; color:var(--text-primary); font-size:14px; margin-top:2px;">0 MB</div>
-                        </div>
-                        <div style="background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px;">
-                            <div style="color:var(--text-muted); font-size:11px;">New to Import</div>
-                            <div id="importStatNewMedia" style="font-weight:700; color:var(--accent); font-size:14px; margin-top:2px;">0 files</div>
-                        </div>
-                        <div style="background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px;">
-                            <div style="color:var(--text-muted); font-size:11px;">Already Present</div>
-                            <div id="importStatSkippedMedia" style="font-weight:700; color:var(--text-muted); font-size:14px; margin-top:2px;">0 files</div>
+                        <div class="modal-footer" style="padding: 16px 0 0 0; margin-top: auto; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">
+                            <button class="action-btn action-btn-secondary" onclick="closeModal('modalKey')">Close</button>
                         </div>
                     </div>
-                    <div id="importDbBadges" style="display:flex; gap:8px; flex-wrap:wrap; font-size:11px;"></div>
-                </div>
 
-                <!-- Migration In Progress Box -->
-                <div id="importProgressBox" style="display:none; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px;">
-                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-                        <div class="sync-spinner" style="width:20px;height:20px;border-width:2.5px;"></div>
-                        <span id="importProgressMessage" style="font-size:13px; font-weight:500; color:var(--text-primary);">Migrating media...</span>
-                    </div>
-                    <div class="sync-progress-bar-bg" style="height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden;">
-                        <div id="importProgressBar" class="sync-progress-bar-fill" style="width:0%; height:100%; background:var(--accent); transition:width 0.2s ease;"></div>
-                    </div>
-                </div>
-
-                <!-- Migration Result Box -->
-                <div id="importResultBox" style="display:none; background:rgba(16, 185, 129, 0.1); border:1px solid rgba(16, 185, 129, 0.3); border-radius:10px; padding:16px;">
-                    <div style="font-size:14px; font-weight:700; color:var(--text-primary); margin-bottom:6px;">Migration Finished Successfully!</div>
-                    <p id="importResultDetails" style="font-size:12px; color:var(--text-secondary); line-height:1.5; margin:0 0 12px 0;"></p>
-                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                        <button type="button" class="action-btn action-btn-primary" onclick="closeModal('modalKey'); openSyncModal();" style="padding:7px 16px; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:6px;">
-                            <span>Sync Newer Media From Phone &rarr;</span>
-                        </button>
-                        <button type="button" class="action-btn action-btn-secondary" onclick="closeModal('modalKey'); if (isHttpServer) { reloadChatsList(true); } else { reloadGalleryData(); }" style="padding:7px 16px; font-size:12px;">
-                            View Gallery
-                        </button>
-                    </div>
-                </div>
-
-                <div class="modal-footer" style="padding: 12px 0 0 0; margin-top: auto; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px;">
-                    <button class="action-btn action-btn-secondary" onclick="closeModal('modalKey')">Close</button>
-                    <button class="action-btn action-btn-primary" id="btnStartImport" onclick="startFolderImport()" style="display:none;">Start Import</button>
-                </div>
-            </div>
-
-            <!-- Tab 3: Storage & Recycle Bin Body -->
-            <div id="settingsViewRecycle" class="modal-body" style="display:none; padding: 24px; flex-direction: column; gap: 16px;">
-                <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 28px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px;">
-                    <div style="width: 52px; height: 52px; border-radius: 26px; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.25); display: flex; align-items: center; justify-content: center;">
-                        <svg class="icon" viewBox="0 0 24 24" style="width: 26px; height: 26px; fill: #fca5a5;"><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z"/></svg>
-                    </div>
-                    <div>
-                        <div id="settingsRecycleTotalText" style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">0 file(s) quarantined (0 B)</div>
-                        <p style="font-size: 13px; color: var(--text-secondary); max-width: 440px; margin: 0 auto; line-height: 1.5;">
-                            Duplicate media removed from chats are kept safely in the Recycle Bin. You can compare copies side-by-side, restore them to their original chats, or permanently delete them.
+                    <!-- Tab 1: Key Body -->
+                    <div id="settingsViewKey" class="modal-body" style="display:none; padding: 24px; flex-direction: column;">
+                        <p style="color:var(--text-secondary);font-size:13px;line-height:1.5;margin-bottom:12px;">
+                            Enter your 64-character hexadecimal end-to-end encrypted backup key.
+                            This key decrypts your WhatsApp databases (msgstore.db.crypt15). It is saved locally in config.json.
                         </p>
-                    </div>
-                    <div style="display: flex; gap: 10px; align-items: center; margin-top: 6px;">
-                        <button type="button" class="action-btn action-btn-primary" id="btnOpenRecycleBin" onclick="closeModal('modalKey'); openDuplicateReviewModal('recycle-bin');" style="padding: 8px 18px; font-size: 13px; display: inline-flex; align-items: center; gap: 8px;" title="Open Recycle Bin in Fullscreen View">
-                            <svg class="icon" viewBox="0 0 24 24" style="width: 15px; height: 15px; fill: currentColor;"><path d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
-                            <span>Open Fullscreen Recycle Bin</span>
-                        </button>
-                        <button type="button" class="action-btn" id="btnSettingsEmptyBin" style="padding: 8px 16px; font-size: 13px; background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); display: none;" onclick="executeEmptyRecycleBin().then(() => updateRecycleBinPill())">
-                            Empty Bin
-                        </button>
-                    </div>
-                </div>
+                        <div id="keyCurrentStatus" style="margin-bottom:12px;font-size:12px;color:var(--text-muted);"></div>
+                        <div style="position:relative;margin-bottom:8px;">
+                            <input type="text" id="hexKeyInput" class="key-input" placeholder="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" maxlength="64" spellcheck="false" autocomplete="off" oninput="onKeyInput(this.value)">
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                            <span id="keyCharCount" style="font-size:12px;color:var(--text-muted);">0 / 64 hex characters</span>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <button class="action-btn action-btn-secondary" id="btnKeyFetchPhone" style="font-size:12px;padding:4px 8px;display:none;align-items:center;gap:4px;" onclick="fetchKeyFromPhone()">
+                                    <svg class="icon" viewBox="0 0 24 24" style="width:13px;height:13px;fill:currentColor;vertical-align:middle;margin-right:2px;"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
+                                    <span id="btnKeyFetchPhoneText">Fetch from Phone</span>
+                                </button>
+                                <button class="action-btn action-btn-secondary" style="font-size:12px;padding:4px 8px;" onclick="pasteKeyFromClipboard()">Paste from Clipboard</button>
+                            </div>
+                        </div>
+                        <div id="keyFetchStatus" style="font-size:12px;margin-bottom:8px;min-height:0;"></div>
+                        <div id="keyValidationFeedback" style="font-size:12px;min-height:16px;"></div>
 
-                <div class="modal-footer" style="padding: 12px 0 0 0; margin-top: 0; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">
-                    <button class="action-btn action-btn-secondary" onclick="closeModal('modalKey')">Close</button>
+                        <!-- Quick shortcut banner inside Backup Key tab -->
+                        <div id="settingsKeyRecycleShortcut" style="display: none; align-items: center; justify-content: space-between; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; padding: 10px 14px; margin-top: 14px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <svg class="icon" viewBox="0 0 24 24" style="width: 16px; height: 16px; fill: #fca5a5;"><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z"/></svg>
+                                <span id="settingsKeyRecycleShortcutText" style="font-size: 12px; color: var(--text-primary); font-weight: 500;">0 file(s) in Recycle Bin</span>
+                            </div>
+                            <button type="button" class="action-btn action-btn-secondary" style="font-size: 11px; padding: 4px 10px; color: #fca5a5; border-color: rgba(239, 68, 68, 0.35);" onclick="closeModal('modalKey'); openDuplicateReviewModal('recycle-bin');">
+                                Open Recycle Bin &rarr;
+                            </button>
+                        </div>
+
+                        <div class="modal-footer" style="padding: 16px 0 0 0; margin-top: auto; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px;">
+                            <button class="action-btn action-btn-secondary" onclick="closeModal('modalKey')">Cancel</button>
+                            <button class="action-btn action-btn-primary" id="btnSaveKey" onclick="saveKeyConfig()" disabled>Save Settings</button>
+                        </div>
+                    </div>
+
+                    <!-- Tab 2: Import Older Media Body -->
+                    <div id="settingsViewImport" class="modal-body" style="display:none; padding: 24px; flex-direction: column; gap: 14px;">
+                        <p style="color:var(--text-secondary);font-size:13px;line-height:1.5;margin:0 0 4px 0;">
+                            Migrate WhatsApp photos, videos, and documents from a previous installation or older output folder into your current gallery without redownloading them from your phone.
+                        </p>
+
+                        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 14px 16px;">
+                            <label style="display:block; font-size:12px; font-weight:600; color:var(--text-primary); margin-bottom:8px;">
+                                Older Output Folder Location:
+                            </label>
+                            <div style="display:flex; gap:8px; align-items:center;">
+                                <input type="text" id="importFolderPathInput" class="key-input" style="flex:1; font-size:12px; padding:8px 12px;" placeholder="e.g. C:\Downloads\WhatsAppMediaOrganizer\output" spellcheck="false" autocomplete="off" oninput="onImportPathChanged()">
+                                <button type="button" class="action-btn action-btn-secondary" id="btnBrowseImportFolder" onclick="browseImportFolder()" style="display:inline-flex; align-items:center; gap:6px; white-space:nowrap; padding:8px 14px; font-size:12px;">
+                                    <svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                    <span id="btnBrowseImportFolderText">Browse...</span>
+                                </button>
+                                <button type="button" class="action-btn action-btn-secondary" id="btnAnalyzeImportFolder" onclick="triggerAnalyzeImportFolder()" style="white-space:nowrap; padding:8px 14px; font-size:12px;" disabled>
+                                    Analyze
+                                </button>
+                            </div>
+                            <div id="importPathError" style="color:var(--danger); font-size:11px; margin-top:6px; display:none;"></div>
+                        </div>
+
+                        <!-- Analysis Summary Box (hidden until analyzed) -->
+                        <div id="importAnalysisBox" style="display:none; background:rgba(16, 185, 129, 0.05); border:1px solid rgba(16, 185, 129, 0.25); border-radius:10px; padding:14px 16px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                                <span style="font-size:13px; font-weight:600; color:var(--text-primary);">Folder Analysis Summary</span>
+                                <span id="importAnalysisStatusBadge" class="badge-tag" style="background:rgba(16,185,129,0.15); color:var(--accent);">Ready to Migrate</span>
+                            </div>
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap:10px; font-size:12px; margin-bottom:12px;">
+                                <div style="background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px;">
+                                    <div style="color:var(--text-muted); font-size:11px;">Total Media Found</div>
+                                    <div id="importStatTotalMedia" style="font-weight:700; color:var(--text-primary); font-size:14px; margin-top:2px;">0 files</div>
+                                </div>
+                                <div style="background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px;">
+                                    <div style="color:var(--text-muted); font-size:11px;">Total Size</div>
+                                    <div id="importStatTotalSize" style="font-weight:700; color:var(--text-primary); font-size:14px; margin-top:2px;">0 MB</div>
+                                </div>
+                                <div style="background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px;">
+                                    <div style="color:var(--text-muted); font-size:11px;">New to Import</div>
+                                    <div id="importStatNewMedia" style="font-weight:700; color:var(--accent); font-size:14px; margin-top:2px;">0 files</div>
+                                </div>
+                                <div style="background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px;">
+                                    <div style="color:var(--text-muted); font-size:11px;">Already Present</div>
+                                    <div id="importStatSkippedMedia" style="font-weight:700; color:var(--text-muted); font-size:14px; margin-top:2px;">0 files</div>
+                                </div>
+                            </div>
+                            <div id="importDbBadges" style="display:flex; gap:8px; flex-wrap:wrap; font-size:11px;"></div>
+                        </div>
+
+                        <!-- Migration In Progress Box -->
+                        <div id="importProgressBox" style="display:none; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px;">
+                            <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                                <div class="sync-spinner" style="width:20px;height:20px;border-width:2.5px;"></div>
+                                <span id="importProgressMessage" style="font-size:13px; font-weight:500; color:var(--text-primary);">Migrating media...</span>
+                            </div>
+                            <div class="sync-progress-bar-bg" style="height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden;">
+                                <div id="importProgressBar" class="sync-progress-bar-fill" style="width:0%; height:100%; background:var(--accent); transition:width 0.2s ease;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Migration Result Box -->
+                        <div id="importResultBox" style="display:none; background:rgba(16, 185, 129, 0.1); border:1px solid rgba(16, 185, 129, 0.3); border-radius:10px; padding:16px;">
+                            <div style="font-size:14px; font-weight:700; color:var(--text-primary); margin-bottom:6px;">Migration Finished Successfully!</div>
+                            <p id="importResultDetails" style="font-size:12px; color:var(--text-secondary); line-height:1.5; margin:0 0 12px 0;"></p>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                <button type="button" class="action-btn action-btn-primary" onclick="closeModal('modalKey'); openSyncModal();" style="padding:7px 16px; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:6px;">
+                                    <span>Sync Newer Media From Phone &rarr;</span>
+                                </button>
+                                <button type="button" class="action-btn action-btn-secondary" onclick="closeModal('modalKey'); if (isHttpServer) { reloadChatsList(true); } else { reloadGalleryData(); }" style="padding:7px 16px; font-size:12px;">
+                                    View Gallery
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="modal-footer" style="padding: 12px 0 0 0; margin-top: auto; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px;">
+                            <button class="action-btn action-btn-secondary" onclick="closeModal('modalKey')">Close</button>
+                            <button class="action-btn action-btn-primary" id="btnStartImport" onclick="startFolderImport()" style="display:none;">Start Import</button>
+                        </div>
+                    </div>
+
+                    <!-- Tab 3: Storage & Recycle Bin Body -->
+                    <div id="settingsViewRecycle" class="modal-body" style="display:none; padding: 24px; flex-direction: column; gap: 16px;">
+                        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 28px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px;">
+                            <div style="width: 52px; height: 52px; border-radius: 26px; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.25); display: flex; align-items: center; justify-content: center;">
+                                <svg class="icon" viewBox="0 0 24 24" style="width: 26px; height: 26px; fill: #fca5a5;"><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z"/></svg>
+                            </div>
+                            <div>
+                                <div id="settingsRecycleTotalText" style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">0 file(s) quarantined (0 B)</div>
+                                <p style="font-size: 13px; color: var(--text-secondary); max-width: 440px; margin: 0 auto; line-height: 1.5;">
+                                    Duplicate media removed from chats are kept safely in the Recycle Bin. You can compare copies side-by-side, restore them to their original chats, or permanently delete them.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center; margin-top: 6px;">
+                                <button type="button" class="action-btn action-btn-primary" id="btnOpenRecycleBin" onclick="closeModal('modalKey'); openDuplicateReviewModal('recycle-bin');" style="padding: 8px 18px; font-size: 13px; display: inline-flex; align-items: center; gap: 8px;" title="Open Recycle Bin in Fullscreen View">
+                                    <svg class="icon" viewBox="0 0 24 24" style="width: 15px; height: 15px; fill: currentColor;"><path d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+                                    <span>Open Fullscreen Recycle Bin</span>
+                                </button>
+                                <button type="button" class="action-btn" id="btnSettingsEmptyBin" style="padding: 8px 16px; font-size: 13px; background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); display: none;" onclick="executeEmptyRecycleBin().then(() => updateRecycleBinPill())">
+                                    Empty Bin
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="modal-footer" style="padding: 12px 0 0 0; margin-top: auto; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">
+                            <button class="action-btn action-btn-secondary" onclick="closeModal('modalKey')">Close</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -5815,13 +6065,10 @@
         </div>
     </div>
     <!-- EXIT CONFIRMATION MODAL -->
-    <div class="modal-overlay" id="modalExit">
+    <div class="modal-overlay" id="modalExit" onclick="if (event.target === this) cancelExitApp()">
         <div class="modal-card" style="max-width: 450px; border-color: rgba(239, 68, 68, 0.35); box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 24px rgba(239, 68, 68, 0.15);">
             <div class="modal-header" style="border-bottom-color: rgba(239, 68, 68, 0.2);">
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <button type="button" class="modal-back-btn" onclick="closeModal('modalExit')" title="Back">
-                        <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
-                    </button>
                     <div style="width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);display:flex;align-items:center;justify-content:center;">
                         <svg class="icon" viewBox="0 0 24 24" style="width:18px;height:18px;fill:#ef4444;"><path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg>
                     </div>
@@ -5830,11 +6077,11 @@
                         <p style="font-size:12px;color:var(--text-muted);margin:2px 0 0 0;">Shut down local gallery server</p>
                     </div>
                 </div>
-                <button class="modal-close" onclick="closeModal('modalExit')">&times;</button>
+                <button class="modal-close" onclick="cancelExitApp()">&times;</button>
             </div>
             <div class="modal-body">
                 <!-- Sync Warning Callout (displayed dynamically if sync is active) -->
-                <div id="exitSyncWarning" style="display:none;margin-bottom:14px;padding:12px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;display:none;gap:10px;align-items:flex-start;">
+                <div id="exitSyncWarning" style="display:none;margin-bottom:14px;padding:12px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;gap:10px;align-items:flex-start;">
                     <svg class="icon" viewBox="0 0 24 24" style="width:20px;height:20px;fill:#ef4444;flex-shrink:0;margin-top:2px;"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
                     <div>
                         <div style="color:#f87171;font-weight:600;font-size:13px;margin-bottom:2px;">Warning: Phone Sync in Progress!</div>
@@ -5852,7 +6099,7 @@
                 </div>
             </div>
             <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;">
-                <button class="action-btn action-btn-secondary" onclick="closeModal('modalExit')">Cancel</button>
+                <button class="action-btn action-btn-secondary" onclick="cancelExitApp()">Cancel</button>
                 <button class="action-btn" id="btnExecuteExit" onclick="executeShutdown()" style="background:#dc2626;color:#ffffff;border:1px solid #ef4444;box-shadow:0 2px 10px rgba(220,38,38,0.35);">
                     <svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px;fill:#ffffff;"><path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg>
                     <span>Shut Down &amp; Exit</span>
@@ -8773,16 +9020,79 @@
         let keyModalPollTimer = null;
         let _lastAnalyzedImportPath = '';
 
+        function isDuplicateDetectionEnabled() {
+            try {
+                const val = localStorage.getItem('wa_setting_duplicate_detection');
+                if (val === 'false') return false;
+            } catch (e) {}
+            return true;
+        }
+
+        function setDuplicateDetectionEnabled(enabled) {
+            try {
+                localStorage.setItem('wa_setting_duplicate_detection', enabled ? 'true' : 'false');
+            } catch (e) {}
+            applyDuplicateDetectionSetting();
+        }
+
+        function applyDuplicateDetectionSetting() {
+            const enabled = isDuplicateDetectionEnabled();
+            const filterControls = document.getElementById('duplicateFilterControls');
+            const reviewBtn = document.getElementById('btnReviewDuplicates');
+            const quickBtn = document.getElementById('btnQuickReviewDups');
+            const chk = document.getElementById('settingEnableDuplicates');
+            if (chk) {
+                chk.checked = enabled;
+                updateDuplicateSwitchLabel(enabled);
+            }
+
+            if (!enabled) {
+                if (filterControls) filterControls.style.display = 'none';
+                if (reviewBtn) reviewBtn.style.display = 'none';
+                if (quickBtn) quickBtn.style.display = 'none';
+                window._videoHashQueue = [];
+                window._isVideoHashingRunning = false;
+                window._currentChatDupSet = new Set();
+                window._currentChatDupInfo = {};
+                window._currentChatDuplicateGroups = [];
+            } else {
+                if (filterControls) filterControls.style.display = 'flex';
+            }
+
+            if (typeof activeChat !== 'undefined' && activeChat) {
+                activeChat._dupCache = null;
+            }
+            if (typeof filterAndRenderMedia === 'function') {
+                filterAndRenderMedia();
+            }
+        }
+
+        function updateDuplicateSwitchLabel(enabled) {
+            const lbl = document.getElementById('settingDuplicatesSwitchLabel');
+            if (lbl) {
+                lbl.innerText = enabled ? 'Enabled' : 'Disabled';
+                lbl.style.color = enabled ? 'var(--accent)' : 'var(--text-muted)';
+            }
+        }
+
+        function onToggleDuplicateDetectionSetting(checked) {
+            setDuplicateDetectionEnabled(checked);
+            updateDuplicateSwitchLabel(checked);
+            showToast(checked ? 'Duplicate detection enabled' : 'Duplicate detection disabled', 'info');
+        }
+
         function switchSettingsTab(tab) {
+            const tabGeneral = document.getElementById('tabSettingsGeneral');
             const tabKey = document.getElementById('tabSettingsKey');
             const tabImport = document.getElementById('tabSettingsImport');
             const tabRecycle = document.getElementById('tabSettingsRecycle');
+            const viewGeneral = document.getElementById('settingsViewGeneral');
             const viewKey = document.getElementById('settingsViewKey');
             const viewImport = document.getElementById('settingsViewImport');
             const viewRecycle = document.getElementById('settingsViewRecycle');
-            if (!tabKey || !viewKey) return;
 
-            [tabKey, tabImport, tabRecycle].forEach(t => t && t.classList.remove('active'));
+            [tabGeneral, tabKey, tabImport, tabRecycle].forEach(t => t && t.classList.remove('active'));
+            if (viewGeneral) viewGeneral.style.display = 'none';
             if (viewKey) viewKey.style.display = 'none';
             if (viewImport) viewImport.style.display = 'none';
             if (viewRecycle) viewRecycle.style.display = 'none';
@@ -8794,9 +9104,18 @@
                 if (tabImport) tabImport.classList.add('active');
                 if (viewImport) viewImport.style.display = 'flex';
                 onImportPathChanged();
-            } else {
+            } else if (tab === 'key') {
                 if (tabKey) tabKey.classList.add('active');
-                if (viewKey) viewKey.style.display = 'block';
+                if (viewKey) viewKey.style.display = 'flex';
+            } else {
+                if (tabGeneral) tabGeneral.classList.add('active');
+                if (viewGeneral) viewGeneral.style.display = 'flex';
+                const chk = document.getElementById('settingEnableDuplicates');
+                if (chk) {
+                    const isEnabled = isDuplicateDetectionEnabled();
+                    chk.checked = isEnabled;
+                    updateDuplicateSwitchLabel(isEnabled);
+                }
             }
             updateRecycleBinPill();
         }
@@ -8984,7 +9303,7 @@
             }
         }
 
-        async function openKeyModal(initialTab = 'key') {
+        async function openKeyModal(initialTab = 'general') {
             openModal('modalKey');
             switchSettingsTab(initialTab);
             const statusDiv = document.getElementById('keyCurrentStatus');
@@ -10247,7 +10566,9 @@
             } catch (e) {}
         }
 
-        function confirmExitApp() {
+        let _exitModalOpen = false;
+
+        function confirmExitApp(pushHistory = true) {
             if (!isHttpServer) {
                 window.close();
                 return;
@@ -10256,7 +10577,23 @@
             if (warnEl) {
                 warnEl.style.display = _syncActive ? 'flex' : 'none';
             }
-            openModal('modalExit');
+            _exitModalOpen = true;
+            openModal('modalExit', false);
+            if (pushHistory) {
+                try {
+                    history.pushState({ app: 'wa_gallery', view: 'modal_exit' }, '');
+                } catch (e) {}
+            }
+        }
+
+        function cancelExitApp() {
+            _exitModalOpen = false;
+            closeModal('modalExit', false);
+            try {
+                if (history.state && history.state.view === 'modal_exit') {
+                    history.replaceState({ app: 'wa_gallery', view: 'gallery_main' }, '');
+                }
+            } catch (e) {}
         }
 
         // Cross-tab synchronization channel
@@ -10348,6 +10685,15 @@
             setupLightbox();
             setupInfiniteScroll();
             setupCollapsibleFilterPanel();
+            applyDuplicateDetectionSetting();
+
+            // Initialize History Exit Trap
+            try {
+                if (!history.state || !history.state.app) {
+                    history.replaceState({ app: 'wa_gallery', view: 'exit_trap' }, '');
+                    history.pushState({ app: 'wa_gallery', view: 'gallery_main' }, '');
+                }
+            } catch (e) {}
 
             // Check URL onboarding flag or first-time launch
             const urlParams = new URLSearchParams(window.location.search);
@@ -10418,6 +10764,23 @@
             }
             chatsToShow = 10;
             renderSidebar(false);
+        }
+
+        function updateSidebarActiveChat(activeJid) {
+            const chatList = document.getElementById('chatList');
+            if (!chatList) return;
+            const items = chatList.querySelectorAll('.chat-item');
+            if (items.length === 0) {
+                renderSidebar();
+                return;
+            }
+            items.forEach(el => {
+                if (el.dataset.jid === activeJid) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
         }
 
         // Render sidebar chats
@@ -10509,6 +10872,7 @@
                 const isTargetSelected = isReclaimMode ? customCleanTargetJids.has(chat.jid) : false;
                 const item = document.createElement('div');
                 item.className = `chat-item glass ${activeClass} ${isTargetSelected ? 'reclaim-selected' : ''}`;
+                item.dataset.jid = chat.jid;
 
                 let cbHtml = '';
                 if (isReclaimMode) {
@@ -12339,6 +12703,28 @@
             return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         }
 
+        function updateDuplicateCountBadgesUI() {
+            const badge = document.getElementById('hiddenDupsCount');
+            const filter = document.getElementById('hideDuplicatesFilter');
+            const hideDuplicates = filter ? filter.checked : true;
+            const count = (window._currentChatDupSet ? window._currentChatDupSet.size : 0);
+            if (badge) {
+                if (count === 0) {
+                    badge.innerText = '(No duplicates)';
+                    badge.style.color = 'var(--text-muted)';
+                    badge.style.display = 'inline';
+                } else if (hideDuplicates) {
+                    badge.innerText = `(${count} hidden)`;
+                    badge.style.color = 'var(--accent)';
+                    badge.style.display = 'inline';
+                } else {
+                    badge.innerText = `(${count} duplicates)`;
+                    badge.style.color = 'var(--text-muted)';
+                    badge.style.display = 'inline';
+                }
+            }
+        }
+
         function updateDuplicateReviewButtonUI() {
             const btnReview = document.getElementById('btnReviewDuplicates');
             const pillCount = document.getElementById('dupCountReviewPill');
@@ -12361,6 +12747,7 @@
                     btnQuick.style.display = 'none';
                 }
             }
+            updateDuplicateCountBadgesUI();
         }
 
         function openDuplicateReviewModal(initialTab = 'review') {
@@ -12863,20 +13250,69 @@
         window._isVideoHashingRunning = false;
 
         function queueVideoCandidateHashing(chat, isHighPriority = false) {
+            if (typeof isDuplicateDetectionEnabled === 'function' && !isDuplicateDetectionEnabled()) return;
             if (!chat || !chat.media) return;
-            const candidates = [];
             const waVidPattern = /^VID-(\d{8})-WA(\d{4})(?:_dup\d+)?(?:\.[^.]+)?$/i;
+
+            const dateGroups = new Map();
+            const collisionCandidates = [];
+
             chat.media.forEach(it => {
                 if (!isVideoItem(it)) return;
                 const fn = it.filename || '';
                 const key = it.rel_path || it.filename;
                 if (window._cachedVideo3FrameHashes[key] || window._video3FrameHashPending.has(key)) return;
-                if (waVidPattern.test(fn) || /_dup\d+/i.test(fn)) {
-                    candidates.push({ item: it, chatJid: chat.jid });
+
+                if (/_dup\d+/i.test(fn)) {
+                    collisionCandidates.push({ item: it, chatJid: chat.jid });
+                    return;
+                }
+
+                const m = fn.match(waVidPattern);
+                if (m) {
+                    const datePart = m[1];
+                    const counter = parseInt(m[2], 10);
+                    if (!dateGroups.has(datePart)) dateGroups.set(datePart, []);
+                    dateGroups.get(datePart).push({ item: it, counter, dur: it.media_duration });
                 }
             });
 
+            const candidates = [];
+            // Only queue videos from date groups where at least one potential pair exists!
+            dateGroups.forEach((vids, datePart) => {
+                if (vids.length > 1) {
+                    const eligible = new Set();
+                    for (let a = 0; a < vids.length; a++) {
+                        for (let b = a + 1; b < vids.length; b++) {
+                            const cDiff = Math.abs(vids[a].counter - vids[b].counter);
+                            const durA = vids[a].dur;
+                            const durB = vids[b].dur;
+                            let durMatch = false;
+                            if (durA !== undefined && durB !== undefined && durA !== null && durB !== null) {
+                                durMatch = Math.abs(Number(durA) - Number(durB)) <= 0.5;
+                            }
+                            if (cDiff <= 4 || durMatch) {
+                                eligible.add(a);
+                                eligible.add(b);
+                            }
+                        }
+                    }
+                    eligible.forEach(idx => {
+                        candidates.push({ item: vids[idx].item, chatJid: chat.jid });
+                    });
+                }
+            });
+
+            collisionCandidates.forEach(c => candidates.push(c));
+
             if (candidates.length === 0) return;
+
+            // Prioritize newest dates first (e.g. June 2026 before 2024)
+            candidates.sort((a, b) => {
+                const fnA = a.item.filename || '';
+                const fnB = b.item.filename || '';
+                return fnB.localeCompare(fnA);
+            });
 
             if (isHighPriority) {
                 window._videoHashQueue = candidates.concat(window._videoHashQueue.filter(q => q.chatJid !== chat.jid));
@@ -12902,13 +13338,21 @@
             try {
                 await computeVideo3FrameHash(job.item);
                 if (activeChat && activeChat.jid === job.chatJid) {
+                    const prevDupCount = window._currentChatDupSet ? window._currentChatDupSet.size : 0;
                     activeChat._dupCache = null;
                     const { chatDupSet, dupInfoMap, duplicateGroups } = computeChatDuplicates(activeChat);
                     window._currentChatDupSet = chatDupSet;
                     window._currentChatDupInfo = dupInfoMap;
                     window._currentChatDuplicateGroups = duplicateGroups;
                     updateDuplicateReviewButtonUI();
-                    updateGridDuplicateBadges();
+
+                    const hideDuplicates = document.getElementById('hideDuplicatesFilter')?.checked;
+                    if (hideDuplicates && chatDupSet.size !== prevDupCount) {
+                        // Re-filter and render gallery with scroll preservation so newly detected duplicates are immediately hidden
+                        filterAndRenderMedia({ preserveScroll: true, keepItemsCount: true });
+                    } else {
+                        updateGridDuplicateBadges();
+                    }
                 }
             } catch (e) {
                 // Non-fatal
@@ -12921,10 +13365,14 @@
 
         function updateGridDuplicateBadges() {
             const cards = document.querySelectorAll('.media-card[data-rel-path]');
+            const hideDuplicates = document.getElementById('hideDuplicatesFilter')?.checked;
             cards.forEach(card => {
                 const relPath = card.getAttribute('data-rel-path');
                 if (!relPath) return;
                 const isDup = window._currentChatDupSet && window._currentChatDupSet.has(relPath);
+                if (hideDuplicates && isDup) {
+                    card.style.display = 'none';
+                }
                 const badgeContainer = card.querySelector('.card-badges-left');
                 if (!badgeContainer) return;
                 let dupBadge = badgeContainer.querySelector('.badge-tag-dup');
@@ -12941,15 +13389,7 @@
                     dupBadge.remove();
                 }
             });
-            const hideDupsCount = document.getElementById('hiddenDupsCount');
-            if (hideDupsCount && window._currentChatDupSet) {
-                const hideDuplicates = document.getElementById('hideDuplicatesFilter')?.checked;
-                if (window._currentChatDupSet.size === 0) {
-                    hideDupsCount.innerText = '(No duplicates)';
-                } else if (hideDuplicates) {
-                    hideDupsCount.innerText = `(${window._currentChatDupSet.size} duplicates)`;
-                }
-            }
+            updateDuplicateCountBadgesUI();
         }
 
         function renderDuplicateReviewContent() {
@@ -14131,11 +14571,27 @@
             }
         }
 
+        let _activeChatRequestId = 0;
+        let _activeChatAbortCtrl = null;
+
         // Select a Chat
         async function selectChat(chat, pushHistory = true) {
+            _activeChatRequestId++;
+            const thisRequestId = _activeChatRequestId;
+
+            if (_activeChatAbortCtrl) {
+                try {
+                    _activeChatAbortCtrl.abort();
+                } catch (e) {}
+                _activeChatAbortCtrl = null;
+            }
+
+            // Immediately clear background video candidate queue from prior chat
+            window._videoHashQueue = [];
+
             if (!chat) {
                 activeChat = null;
-                renderSidebar();
+                updateSidebarActiveChat(null);
                 const titleEl = document.getElementById('currentChatName');
                 const metaEl = document.getElementById('currentChatMeta');
                 if (titleEl) titleEl.innerText = 'All WhatsApp Media';
@@ -14143,6 +14599,7 @@
                 filterAndRenderMedia();
                 return;
             }
+
             if (pushHistory) {
                 try {
                     history.pushState({ app: 'wa_gallery', view: 'chat', chat: chat.jid }, '');
@@ -14153,8 +14610,8 @@
             const pill = document.getElementById('newMediaPill');
             if (pill) pill.style.display = 'none';
             
-            // Highlight in sidebar
-            renderSidebar();
+            // Fast active class toggle in sidebar without rebuilding all DOM nodes
+            updateSidebarActiveChat(chat.jid);
 
             // Update main header
             const displayName = chat.name ? (chat.name.endsWith('@s.whatsapp.net') ? formatJIDName(chat.name) : chat.name) : formatJIDName(chat.jid);
@@ -14181,8 +14638,40 @@
                 updateFilterToggleBtnState(false);
             }
 
+            // If media is already cached in memory, render immediately!
+            if (chat.media && chat.media.length > 0) {
+                if (!chat._relPathDeduped) {
+                    const seenRel = new Set();
+                    const uniqueList = [];
+                    for (const item of chat.media) {
+                        const r = item.rel_path;
+                        if (r) {
+                            if (seenRel.has(r)) continue;
+                            seenRel.add(r);
+                        }
+                        uniqueList.push(item);
+                    }
+                    chat.media = uniqueList;
+                    chat._relPathDeduped = true;
+                }
+                populateSenders(chat.media);
+                setDateRangeLimits(chat.media);
+                document.getElementById('searchFilter').value = '';
+                document.getElementById('senderFilter').value = 'all';
+                document.getElementById('hideDuplicatesFilter').checked = true;
+                document.getElementById('directionFilter').value = 'all';
+                document.getElementById('starredFilter').checked = false;
+                document.getElementById('forwardedFilter').checked = false;
+                document.getElementById('freqForwardedFilter').checked = false;
+                activeTypes = new Set(['all']);
+                updateTypeFilterButtonsUI();
+                filterAndRenderMedia();
+                queueVideoCandidateHashing(chat, true);
+                return;
+            }
+
             // If running over HTTP server and media not yet loaded in memory:
-            if (isHttpServer && (!chat.media || chat.media.length === 0)) {
+            if (isHttpServer) {
                 if (chat.file_count > 0) {
                     const container = document.getElementById('galleryContent');
                     if (container) {
@@ -14193,11 +14682,27 @@
                             </div>
                         `;
                     }
+                    const abortCtrl = new AbortController();
+                    _activeChatAbortCtrl = abortCtrl;
                     try {
-                        const res = await fetch('/api/chats/' + encodeURIComponent(chat.jid) + '/media');
+                        const res = await fetch('/api/chats/' + encodeURIComponent(chat.jid) + '/media', { signal: abortCtrl.signal });
+                        if (thisRequestId !== _activeChatRequestId) return;
                         if (res.ok) {
                             const data = await res.json();
-                            chat.media = data.media || [];
+                            if (thisRequestId !== _activeChatRequestId) return;
+                            const rawMedia = data.media || [];
+                            const seenRel = new Set();
+                            const uniqueList = [];
+                            for (const item of rawMedia) {
+                                const r = item.rel_path;
+                                if (r) {
+                                    if (seenRel.has(r)) continue;
+                                    seenRel.add(r);
+                                }
+                                uniqueList.push(item);
+                            }
+                            chat.media = uniqueList;
+                            chat._relPathDeduped = true;
                             chat.media.forEach(item => {
                                 if (!item.monthGroup) {
                                     item.monthGroup = getMonthGroupForItem(item);
@@ -14211,17 +14716,22 @@
                             }
                             const metaEl = document.getElementById('currentChatMeta');
                             if (metaEl && activeChat && activeChat.jid === chat.jid) {
-                                const subtitle = (chat.jid === '_unmatched') 
+                                const sub = (chat.jid === '_unmatched') 
                                     ? `${chat.file_count} files • Unindexed WhatsApp Media` 
                                     : `${chat.file_count} files • Total storage: ${formatBytes(chat.total_size)}`;
-                                metaEl.innerText = subtitle;
+                                metaEl.innerText = sub;
                             }
                         } else {
                             chat.media = [];
                         }
                     } catch (e) {
+                        if (e.name === 'AbortError') return;
                         console.error('Failed to load chat media:', e);
                         chat.media = [];
+                    } finally {
+                        if (_activeChatAbortCtrl === abortCtrl) {
+                            _activeChatAbortCtrl = null;
+                        }
                     }
                 } else {
                     chat.media = [];
@@ -14230,10 +14740,8 @@
                 chat.media = [];
             }
 
-            // If user clicked another chat while loading, abort rendering for this stale one
-            if (activeChat && activeChat.jid !== chat.jid) {
-                return;
-            }
+            if (thisRequestId !== _activeChatRequestId) return;
+            if (activeChat && activeChat.jid !== chat.jid) return;
 
             // Populate sender filter safely
             populateSenders(chat.media);
@@ -14858,11 +15366,24 @@
         // Cache and compute duplicate clusters for a chat
         function computeChatDuplicates(chat) {
             if (!chat) return { chatDupSet: new Set(), dupInfoMap: {}, duplicateGroups: [] };
+            if (typeof isDuplicateDetectionEnabled === 'function' && !isDuplicateDetectionEnabled()) {
+                return { chatDupSet: new Set(), dupInfoMap: {}, duplicateGroups: [] };
+            }
             if (chat._dupCache) return chat._dupCache;
 
             const chatDupSet = new Set();
             const dupInfoMap = {};
-            const mediaList = chat.media || [];
+            const rawList = chat.media || [];
+            const seenRel = new Set();
+            const mediaList = [];
+            for (const item of rawList) {
+                const r = item.rel_path;
+                if (r) {
+                    if (seenRel.has(r)) continue;
+                    seenRel.add(r);
+                }
+                mediaList.push(item);
+            }
 
             // Helper: Disjoint Set Union (DSU)
             const parent = Array.from({ length: mediaList.length }, (_, idx) => idx);
@@ -15017,8 +15538,10 @@
                     }
 
                     // If frame hashes are available, compare them:
-                    if (hA && hB) {
-                        return compareVideo3FrameHashes(hA, hB);
+                    const vHashA = window._cachedVideo3FrameHashes?.[keyA];
+                    const vHashB = window._cachedVideo3FrameHashes?.[keyB];
+                    if (vHashA && vHashB) {
+                        return compareVideo3FrameHashes(vHashA, vHashB);
                     }
 
                     // If neither exact MD5 nor collision stem, and frame hashes are unavailable,
@@ -15031,19 +15554,19 @@
 
                 // Layered guards for images:
                 // Guard 1: Aspect Ratio Invariance (strict 2% tolerance when dimensions are known)
-                const wA = itemA.width || 0, hA = itemA.height || 0;
-                const wB = itemB.width || 0, hB = itemB.height || 0;
-                if (wA > 0 && hA > 0 && wB > 0 && hB > 0) {
-                    const rA = wA / hA;
-                    const rB = wB / hB;
+                const wA = itemA.width || 0, heightA = itemA.height || 0;
+                const wB = itemB.width || 0, heightB = itemB.height || 0;
+                if (wA > 0 && heightA > 0 && wB > 0 && heightB > 0) {
+                    const rA = wA / heightA;
+                    const rB = wB / heightB;
                     if (Math.abs(rA - rB) > 0.02) {
                         return false;
                     }
                 }
 
                 // Guard 2: If both images have max dimension > 1600 px, neither is an SD copy!
-                const maxDimA = Math.max(wA, hA);
-                const maxDimB = Math.max(wB, hB);
+                const maxDimA = Math.max(wA, heightA);
+                const maxDimB = Math.max(wB, heightB);
                 if (maxDimA > 1600 && maxDimB > 1600) {
                     return false;
                 }
@@ -15063,24 +15586,59 @@
             }
 
             // 4. Perceptual pHash clustering (images only): strict threshold dist <= 2
+            // Uses Pigeonhole Multi-Index Hashing:
+            // 16-hex char pHash is partitioned into 4 blocks of 4 hex chars (16 bits each).
+            // Any two hashes with Hamming distance <= 2 must have 0 bit errors in at least 2 blocks.
+            // Indexing into 4 block tables eliminates the O(N^2) multi-million iteration loop down to O(1) candidate lookup,
+            // preventing JavaScript event loop freezes on large chats.
+            const blockTables = [new Map(), new Map(), new Map(), new Map()];
             const phashItems = [];
             mediaList.forEach((item, idx) => {
                 if (!isImageItem(item) || isVideoItem(item)) return;
-                if (item.phash && item.phash.length >= 8) {
-                    phashItems.push({ idx, phash: item.phash, item });
-                }
-            });
-            for (let a = 0; a < phashItems.length; a++) {
-                for (let b = a + 1; b < phashItems.length; b++) {
-                    if (findRoot(phashItems[a].idx) === findRoot(phashItems[b].idx)) continue;
-                    const d = hexHammingDist(phashItems[a].phash, phashItems[b].phash);
-                    // Tightened to <= 2 to prevent burst photo collisions (which occur at distance 3-4)
-                    if (d <= 2) {
-                        if (isValidDuplicateCandidate(phashItems[a].item, phashItems[b].item)) {
-                            unionNodes(phashItems[a].idx, phashItems[b].idx);
+                const ph = item.phash;
+                if (ph && ph.length >= 16) {
+                    phashItems.push({ idx, phash: ph, item });
+                    const pIdx = phashItems.length - 1;
+                    for (let b = 0; b < 4; b++) {
+                        const chunk = ph.substr(b * 4, 4);
+                        let bucket = blockTables[b].get(chunk);
+                        if (!bucket) {
+                            bucket = [];
+                            blockTables[b].set(chunk, bucket);
                         }
+                        bucket.push(pIdx);
                     }
                 }
+            });
+
+            const checkedPairs = new Set();
+            for (let b = 0; b < 4; b++) {
+                blockTables[b].forEach(indices => {
+                    if (indices.length > 1) {
+                        for (let i = 0; i < indices.length; i++) {
+                            const pA = indices[i];
+                            const candA = phashItems[pA];
+                            const rootA = findRoot(candA.idx);
+                            for (let j = i + 1; j < indices.length; j++) {
+                                const pB = indices[j];
+                                const candB = phashItems[pB];
+                                if (rootA === findRoot(candB.idx)) continue;
+
+                                const minIdx = pA < pB ? pA : pB;
+                                const maxIdx = pA < pB ? pB : pA;
+                                const pairKey = (minIdx * 100000) + maxIdx;
+                                if (checkedPairs.has(pairKey)) continue;
+                                checkedPairs.add(pairKey);
+
+                                if (hexHammingDist(candA.phash, candB.phash) <= 2) {
+                                    if (isValidDuplicateCandidate(candA.item, candB.item)) {
+                                        unionNodes(candA.idx, candB.idx);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
             }
 
             // 5a. WhatsApp quality pairs: images (IMG-YYYYMMDD-WAXXXX)
@@ -15162,18 +15720,6 @@
                                 if (compareVideo3FrameHashes(hA, hB)) {
                                     isPair = true;
                                 }
-                            } else {
-                                const durA = itemA.media_duration !== undefined ? itemA.media_duration : (window._cachedImageDims[keyA]?.dur);
-                                const durB = itemB.media_duration !== undefined ? itemB.media_duration : (window._cachedImageDims[keyB]?.dur);
-                                if (durA !== undefined && durB !== undefined && durA !== null && durB !== null) {
-                                    if (Math.abs(Number(durA) - Number(durB)) <= 0.5) {
-                                        const szA = itemA.size_bytes || 0;
-                                        const szB = itemB.size_bytes || 0;
-                                        if (szA > 0 && szB > 0 && (Math.max(szA, szB) / Math.min(szA, szB)) >= 1.35) {
-                                            isPair = true;
-                                        }
-                                    }
-                                }
                             }
                             if (isPair) {
                                 unionNodes(bucket[a].idx, bucket[b].idx);
@@ -15191,6 +15737,7 @@
                 clusterMap.get(root).push(item);
             });
 
+            const primarySet = new Set();
             clusterMap.forEach(cluster => {
                 if (cluster.length > 1) {
                     cluster.sort((a, b) => {
@@ -15216,15 +15763,19 @@
 
                         const timeA = a.received_at || '9999-99-99';
                         const timeB = b.received_at || '9999-99-99';
-                        return timeA.localeCompare(timeB);
+                        return timeB.localeCompare(timeA);
                     });
 
                     const primary = cluster[0];
+                    const primaryKey = primary.rel_path || primary.filename;
+                    primarySet.add(primaryKey);
+                    if (primary.filename) primarySet.add(primary.filename);
 
                     for (let k = 1; k < cluster.length; k++) {
                         const dup = cluster[k];
                         if (!isValidDuplicateCandidate(primary, dup)) continue;
                         const dupKey = dup.rel_path || dup.filename;
+                        if (dupKey === primaryKey || dup.rel_path === primary.rel_path || primarySet.has(dupKey) || primarySet.has(dup.filename)) continue;
                         chatDupSet.add(dupKey);
 
                         let reason = 'quality';
@@ -15254,6 +15805,9 @@
                         return;
                     }
                     const k = item.rel_path || item.filename;
+                    if (primarySet.has(k) || primarySet.has(item.filename)) {
+                        return;
+                    }
                     if (window._ignoredDupKeys && (window._ignoredDupKeys.has(k) || window._ignoredDupKeys.has(item.filename))) {
                         return;
                     }
@@ -15310,7 +15864,14 @@
                 }
             });
 
-            const result = { chatDupSet, dupInfoMap, duplicateGroups };
+            // Primary files must NEVER be marked as duplicates
+            primarySet.forEach(pKey => {
+                chatDupSet.delete(pKey);
+                delete dupInfoMap[pKey];
+            });
+            const validDuplicateGroups = duplicateGroups.filter(grp => !chatDupSet.has(grp.primary.rel_path || grp.primary.filename));
+
+            const result = { chatDupSet, dupInfoMap, duplicateGroups: validDuplicateGroups };
             chat._dupCache = result;
             return result;
         }
@@ -15497,21 +16058,7 @@
             });
 
             // Update hidden duplicates badge
-            if (hiddenDupsBadge) {
-                if (chatDupSet.size === 0) {
-                    hiddenDupsBadge.innerText = '(No duplicates)';
-                    hiddenDupsBadge.style.color = 'var(--text-muted)';
-                    hiddenDupsBadge.style.display = 'inline';
-                } else if (hideDuplicates) {
-                    hiddenDupsBadge.innerText = `(${hiddenDuplicatesCount} hidden)`;
-                    hiddenDupsBadge.style.color = 'var(--accent)';
-                    hiddenDupsBadge.style.display = 'inline';
-                } else {
-                    hiddenDupsBadge.innerText = `(${chatDupSet.size} duplicates)`;
-                    hiddenDupsBadge.style.color = 'var(--text-muted)';
-                    hiddenDupsBadge.style.display = 'inline';
-                }
-            }
+            updateDuplicateCountBadgesUI();
 
             // Apply sorting
             const sortBy = document.getElementById('sortFilter').value;
@@ -16395,6 +16942,7 @@
 
         window.addEventListener('popstate', (e) => {
             const state = e.state;
+
             // 1. Check if lightbox is open
             const lightbox = document.getElementById('lightbox');
             if (lightbox && lightbox.classList.contains('active')) {
@@ -16415,28 +16963,61 @@
                 }
             }
 
-            // 3. Check if any modal is open
-            const openModals = document.querySelectorAll('.modal.open');
+            // 3. Check if exit modal is open
+            // If user presses back while exit modal is open, close it safely and do NOT exit.
+            // App only exits when user explicitly presses the "Shut Down and Exit" button!
+            const exitModal = document.getElementById('modalExit');
+            if (_exitModalOpen || (exitModal && exitModal.classList.contains('open'))) {
+                cancelExitApp();
+                try {
+                    history.pushState({ app: 'wa_gallery', view: 'gallery_main' }, '');
+                } catch (e) {}
+                return;
+            }
+
+            // 4. Check if any other modal is open
+            const openModals = document.querySelectorAll('.modal-overlay.open');
             if (openModals && openModals.length > 0) {
                 const topModal = openModals[openModals.length - 1];
-                if (!state || state.view !== 'modal' || state.modal !== topModal.id) {
-                    closeModal(topModal.id, false);
-                    return;
+                if (topModal.id !== 'modalExit') {
+                    if (!state || state.view !== 'modal' || state.modal !== topModal.id) {
+                        closeModal(topModal.id, false);
+                        return;
+                    }
                 }
             }
 
-            // 4. Chat navigation
+            // 5. Chat navigation
             if (state && state.view === 'chat' && state.chat) {
                 if (!activeChat || activeChat.jid !== state.chat) {
                     const currentChats = getChatsArray();
                     const target = (currentChats || []).find(c => c.jid === state.chat);
                     if (target) selectChat(target, false);
                 }
-            } else if (!state || !state.view) {
-                if (activeChat) {
-                    selectChat(null, false);
-                }
+                return;
+            } else if (state && state.view === 'modal') {
+                openModal(state.modal, false);
+                return;
+            } else if (state && state.view === 'lightbox') {
+                openLightbox(state.index, false);
+                return;
             }
+
+            // 6. If inside an active chat and user clicked back towards root:
+            if (activeChat) {
+                selectChat(null, false);
+                try {
+                    history.pushState({ app: 'wa_gallery', view: 'gallery_main' }, '');
+                } catch (e) {}
+                return;
+            }
+
+            // 7. Last state reached (root of gallery / exit_trap):
+            // Show exit confirmation modal instead of navigating to homescreen.
+            try {
+                history.pushState({ app: 'wa_gallery', view: 'modal_exit' }, '');
+            } catch (e) {}
+            confirmExitApp(false);
         });
 
         function navigateLightbox(dir) {

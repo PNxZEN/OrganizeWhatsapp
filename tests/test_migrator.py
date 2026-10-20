@@ -242,12 +242,16 @@ class TestMigrator(unittest.TestCase):
         (tgt_chat / "same.jpg").write_bytes(b"IDENTICAL_CONTENT")
         (tgt_chat / "diff.jpg").write_bytes(b"NEWER_TARGET_CONTENT_LONGER_BYTES")
 
+        (self.src_dir / "gallery_data.js").write_text("window.GALLERY_DATA = {chats: []};", encoding="utf-8")
+
         analysis = analyze_import_folder(str(self.src_dir), str(self.tgt_dir))
+        self.assertTrue(analysis["valid"])
         self.assertEqual(analysis["media_count"], 2)
         self.assertEqual(analysis["already_exists_count"], 1)
         self.assertEqual(analysis["collision_count"], 1)
 
         res = execute_import_folder(str(self.src_dir), str(self.tgt_dir))
+        self.assertEqual(res["status"], "success")
         self.assertEqual(res["copied_count"], 1)
         self.assertEqual(res["skipped_count"], 1)
 
@@ -256,6 +260,29 @@ class TestMigrator(unittest.TestCase):
         # Colliding file from source must be safely saved as _imported_1
         self.assertTrue((tgt_chat / "diff_imported_1.jpg").is_file())
         self.assertEqual((tgt_chat / "diff_imported_1.jpg").read_bytes(), b"OLDER_DIFFERENT_CONTENT")
+
+    def test_04_reject_folder_without_gallery_data(self):
+        # Folder has media but NO gallery_data.js / gallery.js
+        random_folder = Path(self.temp_dir) / "random_photos"
+        random_folder.mkdir(parents=True)
+        (random_folder / "photo.jpg").write_bytes(b"RANDOM_PHOTO")
+
+        analysis = analyze_import_folder(str(random_folder), str(self.tgt_dir))
+        self.assertFalse(analysis["valid"])
+        self.assertIn("missing gallery_data.js", analysis["error"])
+
+        exec_res = execute_import_folder(str(random_folder), str(self.tgt_dir))
+        self.assertEqual(exec_res["status"], "error")
+        self.assertIn("missing gallery_data.js", exec_res["message"])
+
+    def test_05_reject_empty_folder(self):
+        empty_folder = Path(self.temp_dir) / "empty_output"
+        empty_folder.mkdir(parents=True)
+        (empty_folder / "gallery_data.js").write_text("window.GALLERY_DATA = {chats: []};", encoding="utf-8")
+
+        analysis = analyze_import_folder(str(empty_folder), str(self.tgt_dir))
+        self.assertFalse(analysis["valid"])
+        self.assertIn("No media files found", analysis["error"])
 
 
 if __name__ == "__main__":

@@ -963,12 +963,17 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 pass
 
     def _send_json(self, status_code, data):
-        """Sends a JSON response with proper headers."""
+        """Sends a JSON response with proper Content-Length and caching headers."""
+        body = json.dumps(data).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.end_headers()
-        self.wfile.write(json.dumps(data).encode("utf-8"))
+        try:
+            self.wfile.write(body)
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            pass
 
     def _read_json_body(self):
         """Safely parses JSON request body."""

@@ -101,7 +101,7 @@ def generate_gallery(
     chats_names_map = chat_names or {}
 
     # Only run quality duplicate detection if not already analyzed in Step 5
-    already_analyzed = any("is_duplicate" in item for item in organized_list[:100]) if organized_list else True
+    already_analyzed = any(item.get("is_duplicate") or item.get("duplicate_primary") for item in organized_list) if organized_list else False
     if not already_analyzed:
         try:
             from core.duplicates import detect_quality_duplicates
@@ -422,6 +422,7 @@ _memory_cache = {
     "mtime": None,
     "data": None,
     "path": None,
+    "by_jid": {},
 }
 
 
@@ -457,6 +458,9 @@ def load_gallery_data(output_dir):
                 _memory_cache["data"] = parsed
                 _memory_cache["mtime"] = current_mtime
                 _memory_cache["path"] = str(data_path)
+                _memory_cache["by_jid"] = {
+                    c.get("jid"): c for c in parsed.get("chats", []) if c.get("jid")
+                }
                 return parsed
         except Exception as e:
             sys.stderr.write(f"[Gallery] Warning: Failed to parse gallery_data.js: {e}\n")
@@ -489,16 +493,10 @@ def get_chats_summary(output_dir):
 
 def get_chat_media(output_dir, jid, offset=0, limit=None):
     """
-    Returns media items for a specific chat JID with pagination support.
+    Returns media items for a specific chat JID with pagination support and O(1) index lookup.
     """
-    data = load_gallery_data(output_dir)
-    chats = data.get("chats", [])
-
-    matched = None
-    for c in chats:
-        if c.get("jid") == jid:
-            matched = c
-            break
+    load_gallery_data(output_dir)
+    matched = _memory_cache.get("by_jid", {}).get(jid)
 
     if not matched:
         return None
