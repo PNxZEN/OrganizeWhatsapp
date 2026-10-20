@@ -95,11 +95,15 @@ jobs:
           bash -n install.sh
           echo "[OK] POSIX shell syntax validated"
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
       - name: Run Python unit tests
         run: |
-          python3 -m venv venv
-          ./venv/bin/pip install -q -r requirements.txt
-          ./venv/bin/python -m unittest discover tests
+          pip install -q -r requirements.txt
+          python -m unittest discover tests
           echo "[OK] All unit tests passed"
 
       - name: Create Unix source archive
