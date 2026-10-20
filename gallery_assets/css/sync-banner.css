@@ -1,0 +1,95 @@
+/* Live-sync banner and spinners */
+
+/* ── Live-sync banner ─────────────────────────────────────────── */
+#syncBanner {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 500;
+    display: none;  /* shown by JS when sync is active or paused */
+    align-items: center;
+    gap: 14px;
+    padding: 10px 24px;
+    background: rgba(8, 16, 34, 0.82);
+    border-top: 1px solid rgba(16, 185, 129, 0.35);
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.45);
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    animation: syncBannerSlideUp 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+}
+body.lightbox-open #syncBanner {
+    display: none !important;
+}
+#syncBanner.banner-hidden {
+    transform: translateY(100%);
+    opacity: 0;
+    pointer-events: none;
+}
+@keyframes syncBannerSlideUp {
+    from { transform: translateY(100%); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+.sync-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(16, 185, 129, 0.3);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    flex-shrink: 0;
+}
+.action-btn-primary .sync-spinner,
+.action-btn.action-btn-primary .sync-spinner,
+.btn-primary .sync-spinner {
+    border: 2px solid rgba(255, 255, 255, 0.35) !important;
+    border-top-color: #ffffff !important;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+.sync-banner-label {
+    flex-grow: 1;
+    color: var(--text-secondary);
+}
+.sync-banner-label strong {
+    color: var(--text-primary);
+}
+.sync-refresh-btn {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    border-radius: 8px;
+    color: var(--accent-hover);
+    padding: 5px 14px;
+    font-size: 0.8rem;
+    font-family: var(--font-family);
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+.sync-refresh-btn:hover {
+    background: rgba(16, 185, 129, 0.28);
+}
+.sync-banner-close {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+    padding: 0;
+}
+.sync-banner-close:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+}

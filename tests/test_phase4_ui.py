@@ -21,13 +21,15 @@ WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(WORKSPACE_ROOT))
 
 import core.server as srv
+from gallery_sources import read_gallery_bundle
 
 
 class TestPhase4UI(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.gallery_path = WORKSPACE_ROOT / "gallery.html"
-        cls.html_content = cls.gallery_path.read_text(encoding="utf-8")
+        # gallery.html plus its linked gallery_assets CSS/JS modules
+        cls.html_content = read_gallery_bundle()
 
         # Start live server on ephemeral port to test HTTP delivery
         cls.port = srv.find_open_port(preferred_port=8870, host="127.0.0.1")

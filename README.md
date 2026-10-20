@@ -263,7 +263,13 @@ OrganizeWhatsapp/
 │   ├── thumbnail.py               # On-demand image downscaling & video frame extraction
 │   └── assets/
 │       └── tutorial/              # Onboarding guide step images (WebP)
-├── gallery.html                   # 60 FPS virtualized offline gallery UI
+├── gallery.html                   # Gallery page shell (markup + module includes)
+├── gallery_assets/                # Gallery frontend modules (see gallery_assets/README.md)
+│   ├── css/                       # Stylesheets, one per UI area
+│   └── js/
+│       ├── core/                  # State, formatting, escaping, modal stack, navigation
+│       ├── features/              # Sidebar, grid, lightbox, sync, reclaim, duplicates...
+│       └── app.js                 # Bootstrap (loads last)
 ├── wa_media_organizer.py          # Main CLI entrypoint
 ├── start_gallery.bat              # Windows launcher (portable runtime + dev venv)
 ├── start_gallery.sh               # macOS / Linux companion launcher

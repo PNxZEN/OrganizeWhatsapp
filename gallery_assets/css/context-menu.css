@@ -1,0 +1,106 @@
+/* Media right-click context menu */
+
+/* Context Menu Styles */
+.media-context-menu {
+    position: fixed;
+    background: rgba(17, 24, 39, 0.96);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255, 255, 255, 0.2);
+    border-radius: 11px;
+    padding: 6px;
+    z-index: 100050;
+    min-width: 220px;
+    max-width: 290px;
+    user-select: none;
+    animation: ctxFadeIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes ctxFadeIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.context-menu-header {
+    padding: 6px 10px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ctx-menu-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ctx-menu-subtitle {
+    font-size: 11.5px;
+    color: var(--text-primary);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.context-menu-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 4px 0;
+}
+
+.context-menu-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 10px;
+    background: transparent;
+    border: none;
+    border-radius: 7px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+.context-menu-item:hover {
+    background: rgba(16, 185, 129, 0.16);
+    color: #ffffff;
+}
+
+.context-menu-item .ctx-item-left {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.context-menu-item .ctx-icon {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+}
+
+.context-menu-item:hover .ctx-icon {
+    color: var(--accent);
+}
+
+.context-menu-item .ctx-shortcut {
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    padding-left: 6px;
+}

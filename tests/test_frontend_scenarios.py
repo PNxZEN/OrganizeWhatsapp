@@ -24,6 +24,7 @@ WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(WORKSPACE_ROOT))
 
 import core.server as srv
+from gallery_sources import read_gallery_bundle
 from core.clean_planner import CleanProfile
 from core.gallery import generate_gallery
 
@@ -32,8 +33,8 @@ class TestFrontendScenarios(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.gallery_path = WORKSPACE_ROOT / "gallery.html"
-        with open(cls.gallery_path, "r", encoding="utf-8") as f:
-            cls.gallery_content = f.read()
+        # gallery.html plus its linked gallery_assets CSS/JS modules
+        cls.gallery_content = read_gallery_bundle()
 
         cls.temp_dir = tempfile.mkdtemp(prefix="wa_test_frontend_")
         cls.output_dir = Path(cls.temp_dir) / "output"

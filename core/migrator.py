@@ -40,7 +40,7 @@ KNOWN_MEDIA_EXTENSIONS = {
 # Directories and files to strictly skip during media discovery
 IGNORED_DIRS = {
     ".git", "__pycache__", ".gemini", ".cache", ".thumbnails", ".part",
-    "node_modules", ".temp", ".tempmediaStorage"
+    "node_modules", ".temp", ".tempmediaStorage", "gallery_assets"
 }
 IGNORED_FILES = {
     "gallery.html", "index.html", ".hashes_cache.sqlite3", ".hashes_cache.sqlite3-wal",
@@ -50,8 +50,20 @@ IGNORED_FILES = {
 }
 
 
-def _pick_folder_windows_ctypes(initial_dir: Optional[str] = None) -> Optional[str]:
-    """Native Windows folder picker dialog using Win32 Shell API via ctypes."""
+PICK_SELECTED = "selected"
+PICK_CANCELLED = "cancelled"
+PICK_UNAVAILABLE = "unavailable"
+
+
+def _pick_folder_windows_ctypes(initial_dir: Optional[str] = None) -> Tuple[str, Optional[str]]:
+    """
+    Native Windows folder picker dialog using the Win32 Shell API via ctypes.
+    Returns (PICK_SELECTED, path), (PICK_CANCELLED, None) or (PICK_UNAVAILABLE, None).
+
+    Every pointer-returning call declares its restype/argtypes: ctypes defaults to a 32-bit
+    int, which truncated the PIDL from SHBrowseForFolderW on 64-bit Windows whenever it lived
+    above 4 GB. SHGetPathFromIDListW then failed and the chosen folder was silently dropped.
+    """
     try:
         import ctypes
         from ctypes import wintypes
@@ -59,74 +71,95 @@ def _pick_folder_windows_ctypes(initial_dir: Optional[str] = None) -> Optional[s
         class BROWSEINFOW(ctypes.Structure):
             _fields_ = [
                 ("hwndOwner", wintypes.HWND),
-                ("pidlRoot", wintypes.LPVOID),
+                ("pidlRoot", ctypes.c_void_p),
                 ("pszDisplayName", wintypes.LPWSTR),
                 ("lpszTitle", wintypes.LPCWSTR),
                 ("ulFlags", wintypes.UINT),
-                ("lpfn", wintypes.LPVOID),
+                ("lpfn", ctypes.c_void_p),
                 ("lParam", wintypes.LPARAM),
-                ("iImage", wintypes.INT),
+                ("iImage", ctypes.c_int),
             ]
 
         ole32 = ctypes.windll.ole32
         shell32 = ctypes.windll.shell32
         user32 = ctypes.windll.user32
 
-        # Initialize COM on the calling thread
-        ole32.CoInitialize(None)
+        ole32.CoInitialize.argtypes = [ctypes.c_void_p]
+        ole32.CoInitialize.restype = ctypes.c_long
+        ole32.CoUninitialize.argtypes = []
+        ole32.CoUninitialize.restype = None
+        ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+        ole32.CoTaskMemFree.restype = None
+        shell32.SHBrowseForFolderW.argtypes = [ctypes.POINTER(BROWSEINFOW)]
+        shell32.SHBrowseForFolderW.restype = ctypes.c_void_p
+        shell32.SHGetPathFromIDListW.argtypes = [ctypes.c_void_p, wintypes.LPWSTR]
+        shell32.SHGetPathFromIDListW.restype = wintypes.BOOL
+        user32.GetForegroundWindow.argtypes = []
+        user32.GetForegroundWindow.restype = wintypes.HWND
+        user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        user32.SendMessageW.restype = ctypes.c_ssize_t
 
-        display_name = ctypes.create_unicode_buffer(wintypes.MAX_PATH)
-        bi = BROWSEINFOW()
-        # Attach to the active foreground window (e.g. user's browser)
-        bi.hwndOwner = user32.GetForegroundWindow()
-        bi.pszDisplayName = ctypes.cast(display_name, wintypes.LPWSTR)
-        bi.lpszTitle = "Select Older WhatsApp Output Folder"
-        # BIF_RETURNONLYFSDIRS (0x01) | BIF_NEWDIALOGSTYLE (0x40) | BIF_NONEWFOLDERBUTTON (0x200)
-        bi.ulFlags = 0x00000001 | 0x00000040 | 0x00000200
+        # Initialize COM (apartment threaded) on the calling HTTP handler thread
+        com_hr = ole32.CoInitialize(None)
+        try:
+            display_name = ctypes.create_unicode_buffer(260)
+            bi = BROWSEINFOW()
+            # Attach to the active foreground window (the user's browser) so the dialog stays on top
+            bi.hwndOwner = user32.GetForegroundWindow()
+            bi.pszDisplayName = ctypes.cast(display_name, wintypes.LPWSTR)
+            bi.lpszTitle = "Select Older WhatsApp Output Folder"
+            # BIF_RETURNONLYFSDIRS (0x01) | BIF_NEWDIALOGSTYLE (0x40) | BIF_NONEWFOLDERBUTTON (0x200)
+            bi.ulFlags = 0x00000001 | 0x00000040 | 0x00000200
 
-        # Optional initial folder selection callback
-        cb_func = None
-        init_buf = None
-        if initial_dir and os.path.isdir(initial_dir):
-            BFFCALLBACK = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HWND, wintypes.UINT, wintypes.LPARAM, wintypes.LPARAM)
-            init_buf = ctypes.create_unicode_buffer(os.path.abspath(initial_dir))
-            def _cb(hwnd, uMsg, lParam, lpData):
-                if uMsg == 1 and lpData:  # BFFM_INITIALIZED
-                    user32.SendMessageW(hwnd, 0x400 + 103, 1, lpData)  # BFFM_SETSELECTIONW
-                return 0
-            cb_func = BFFCALLBACK(_cb)
-            bi.lpfn = ctypes.cast(cb_func, wintypes.LPVOID)
-            bi.lParam = ctypes.addressof(init_buf)
+            # Optional initial folder selection callback (kept referenced until the dialog closes)
+            cb_func = None
+            init_buf = None
+            if initial_dir and os.path.isdir(initial_dir):
+                BFFCALLBACK = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HWND, wintypes.UINT, wintypes.LPARAM, wintypes.LPARAM)
+                init_buf = ctypes.create_unicode_buffer(os.path.abspath(initial_dir))
 
-        pidl = shell32.SHBrowseForFolderW(ctypes.byref(bi))
-        if pidl:
-            path_buf = ctypes.create_unicode_buffer(wintypes.MAX_PATH)
-            shell32.SHGetPathFromIDListW(pidl, path_buf)
-            ole32.CoTaskMemFree(pidl)
-            ole32.CoUninitialize()
-            res = path_buf.value
+                def _cb(hwnd, uMsg, lParam, lpData):
+                    if uMsg == 1 and lpData:  # BFFM_INITIALIZED
+                        user32.SendMessageW(hwnd, 0x400 + 103, 1, lpData)  # BFFM_SETSELECTIONW
+                    return 0
+
+                cb_func = BFFCALLBACK(_cb)
+                bi.lpfn = ctypes.cast(cb_func, ctypes.c_void_p)
+                bi.lParam = ctypes.addressof(init_buf)
+
+            pidl = shell32.SHBrowseForFolderW(ctypes.byref(bi))
+            if not pidl:
+                return PICK_CANCELLED, None
+            try:
+                path_buf = ctypes.create_unicode_buffer(32768)
+                ok = shell32.SHGetPathFromIDListW(pidl, path_buf)
+            finally:
+                ole32.CoTaskMemFree(pidl)
+            res = path_buf.value if ok else ""
             if res and os.path.isdir(res):
-                return os.path.abspath(res)
-            return None
-
-        ole32.CoUninitialize()
-        return None
+                return PICK_SELECTED, os.path.abspath(res)
+            # A virtual location (e.g. "This PC", a library) has no file system path
+            return PICK_CANCELLED, None
+        finally:
+            if com_hr >= 0:
+                ole32.CoUninitialize()
     except Exception as e:
-        logger.debug(f"[Migrator] Win32 ctypes folder picker failed: {e}")
-        return None
+        logger.warning(f"[Migrator] Win32 folder picker failed: {e}")
+        return PICK_UNAVAILABLE, None
 
 
-def pick_folder_dialog(initial_dir: Optional[str] = None) -> Optional[str]:
+def pick_folder(initial_dir: Optional[str] = None) -> Tuple[str, Optional[str]]:
     """
     Spawns a native OS folder picker dialog window (File Explorer on Windows,
-    Finder on macOS, or Tkinter/GTK on Linux).
-    Returns the chosen absolute path, or None if cancelled or failed.
+    Finder on macOS, zenity/kdialog or Tkinter on Linux).
+    Returns (PICK_SELECTED, path), (PICK_CANCELLED, None) if the user dismissed the dialog,
+    or (PICK_UNAVAILABLE, None) if no picker could be shown on this system.
     """
     # 1. On Windows, use native Win32 ctypes (instant, zero child processes, works in embedded Python)
     if sys.platform == "win32":
-        selected = _pick_folder_windows_ctypes(initial_dir=initial_dir)
-        if selected:
-            return selected
+        status, selected = _pick_folder_windows_ctypes(initial_dir=initial_dir)
+        if status != PICK_UNAVAILABLE:
+            return status, selected
 
     # 2. On macOS, use native osascript / Finder dialog
     if sys.platform == "darwin":
@@ -134,26 +167,33 @@ def pick_folder_dialog(initial_dir: Optional[str] = None) -> Optional[str]:
             prompt = "Select Older WhatsApp Output Folder"
             init_part = f'default location POSIX file "{initial_dir}"' if (initial_dir and os.path.isdir(initial_dir)) else ""
             script = f'POSIX path of (choose folder with prompt "{prompt}" {init_part})'
-            res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=120)
+            res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=600)
             if res.returncode == 0 and res.stdout.strip():
                 p = res.stdout.strip()
                 if os.path.isdir(p):
-                    return os.path.abspath(p)
+                    return PICK_SELECTED, os.path.abspath(p)
+            # osascript exits 1 with "User canceled" when the dialog is dismissed
+            if "-128" in (res.stderr or "") or "cancel" in (res.stderr or "").lower():
+                return PICK_CANCELLED, None
         except Exception as e:
             logger.debug(f"[Migrator] macOS osascript folder picker failed: {e}")
 
-    # 3. On Linux, use zenity or kdialog
+    # 3. On Linux, use zenity or kdialog (exit code 1 means the user cancelled)
     if sys.platform.startswith("linux"):
         for cmd in [
             ["zenity", "--file-selection", "--directory", "--title=Select Older WhatsApp Output Folder"],
             ["kdialog", "--getexistingdirectory"],
         ]:
+            if not shutil.which(cmd[0]):
+                continue
             try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
                 if res.returncode == 0 and res.stdout.strip():
                     p = res.stdout.strip()
                     if os.path.isdir(p):
-                        return os.path.abspath(p)
+                        return PICK_SELECTED, os.path.abspath(p)
+                if res.returncode == 1:
+                    return PICK_CANCELLED, None
             except Exception:
                 pass
 
@@ -181,18 +221,26 @@ def pick_folder_dialog(initial_dir: Optional[str] = None) -> Optional[str]:
             [sys.executable, "-c", py_code],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=600,
         )
         if res.returncode == 0:
             out = res.stdout.strip()
             if out.startswith("SELECTED:"):
                 selected = out[len("SELECTED:"):].strip()
                 if selected and os.path.isdir(selected):
-                    return os.path.abspath(selected)
+                    return PICK_SELECTED, os.path.abspath(selected)
+            if out == "CANCELLED":
+                return PICK_CANCELLED, None
     except Exception as e:
         logger.debug(f"[Migrator] Tkinter folder picker fallback error: {e}")
 
-    return None
+    return PICK_UNAVAILABLE, None
+
+
+def pick_folder_dialog(initial_dir: Optional[str] = None) -> Optional[str]:
+    """Returns the chosen absolute path, or None if cancelled or no picker is available."""
+    status, path = pick_folder(initial_dir)
+    return path if status == PICK_SELECTED else None
 
 
 def validate_paths(source_dir: str, target_dir: str) -> Tuple[bool, str, Optional[Path], Optional[Path]]:
@@ -410,6 +458,7 @@ def analyze_import_folder(source_dir: str, target_dir: str) -> Dict[str, Any]:
     already_exists_count = 0
     collision_count = 0
     new_files_count = 0
+    bytes_to_import = 0
 
     # Collect chats inferred from folders or gallery_data.js
     chat_names = set()
@@ -426,10 +475,13 @@ def analyze_import_folder(source_dir: str, target_dir: str) -> Dict[str, Any]:
                     already_exists_count += 1
                 else:
                     collision_count += 1
+                    bytes_to_import += sz
             except OSError:
                 new_files_count += 1
+                bytes_to_import += sz
         else:
             new_files_count += 1
+            bytes_to_import += sz
 
     return {
         "valid": True,
@@ -440,6 +492,10 @@ def analyze_import_folder(source_dir: str, target_dir: str) -> Dict[str, Any]:
         "new_files_count": new_files_count,
         "already_exists_count": already_exists_count,
         "collision_count": collision_count,
+        "files_to_import": new_files_count + collision_count,
+        "bytes_to_import": bytes_to_import,
+        # Moving within one drive is a rename (instant); across drives it is copy + delete
+        "same_volume": is_same_volume(src_path, tgt_path),
         "chat_count": len(chat_names),
         "has_gallery_data": has_gallery_data,
         "has_hashes_db": has_hashes_db,
@@ -791,22 +847,93 @@ def _merge_sync_manifests(source_dir: Path, target_dir: Path, copied_files_map: 
         return 0
 
 
+IMPORT_MODE_COPY = "copy"
+IMPORT_MODE_MOVE = "move"
+_COPY_CHUNK_BYTES = 8 * 1024 * 1024
+_PROGRESS_INTERVAL_SECS = 0.25
+_TEMP_SUFFIX = ".importing"
+
+
+class ImportCancelled(Exception):
+    """Raised inside a file transfer when the user cancels the import."""
+
+
+def is_same_volume(path_a: Path, path_b: Path) -> bool:
+    """True when both paths live on the same file system, so a move is a cheap rename."""
+    try:
+        b = path_b if path_b.exists() else path_b.parent
+        return os.stat(path_a).st_dev == os.stat(b).st_dev
+    except OSError:
+        return False
+
+
+def _copy_with_progress(src: Path, dest: Path, on_bytes: Callable[[int], None], cancel_event=None) -> None:
+    """
+    Copies src to dest through a temporary sibling file, verifies the size and atomically
+    renames it into place, so an interrupted import never leaves a truncated media file.
+    """
+    tmp = dest.with_name(f".{dest.name}{_TEMP_SUFFIX}")
+    try:
+        with open(src, "rb") as fin, open(tmp, "wb") as fout:
+            while True:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise ImportCancelled()
+                chunk = fin.read(_COPY_CHUNK_BYTES)
+                if not chunk:
+                    break
+                fout.write(chunk)
+                on_bytes(len(chunk))
+        shutil.copystat(src, tmp)
+        if tmp.stat().st_size != src.stat().st_size:
+            raise OSError(f"Size mismatch after copying {src.name}")
+        os.replace(tmp, dest)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def _transfer_file(src: Path, dest: Path, mode: str, on_bytes: Callable[[int], None], cancel_event=None) -> None:
+    """Copies or moves one file. Moves use a rename when possible, else copy + verify + delete."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    size = src.stat().st_size
+    if mode == IMPORT_MODE_MOVE:
+        try:
+            os.rename(src, dest)  # same drive: instant and atomic
+            on_bytes(size)
+            return
+        except OSError:
+            pass  # different drive (or locked file): fall back to copy then delete the source
+    _copy_with_progress(src, dest, on_bytes, cancel_event)
+    if mode == IMPORT_MODE_MOVE:
+        os.unlink(src)
+
+
 def execute_import_folder(
     source_dir: str,
     target_dir: str,
     progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     import_key: bool = True,
+    mode: str = IMPORT_MODE_COPY,
+    cancel_event=None,
 ) -> Dict[str, Any]:
     """
-    Safely migrates media from older output folder to target output folder.
-    - Copies new media files
-    - Avoids duplicate work for files with identical size
+    Safely migrates media from an older output folder into the target output folder.
+    - mode "copy" keeps the source untouched; mode "move" relocates files (instant on the
+      same drive, copy + verify + delete across drives). Files already present with the same
+      size are skipped and, in move mode, left in the source.
+    - Copies are atomic (temp file + size check + rename): no truncated files on failure
     - Renames on size collision to prevent data loss
-    - Merges gallery_data.js
-    - Merges .hashes_cache.sqlite3
-    - Merges .sync_state.sqlite3
+    - Reports byte-accurate progress (phase, percent, files, bytes, speed, ETA)
+    - Honors cancel_event; already transferred files are still merged into the gallery
+    - Merges gallery_data.js, .hashes_cache.sqlite3 and .sync_state.sqlite3
     - Optionally imports WhatsApp backup key if found
     """
+    if mode not in (IMPORT_MODE_COPY, IMPORT_MODE_MOVE):
+        return {"status": "error", "message": f"Unknown import mode: {mode}"}
+
     valid, err, src_path, tgt_path = validate_paths(source_dir, target_dir)
     if not valid:
         return {"status": "error", "message": err}
@@ -817,6 +944,15 @@ def execute_import_folder(
             "status": "error",
             "message": "The selected folder is not a valid WhatsApp Media Organizer output folder (missing gallery_data.js).",
         }
+
+    def emit(update: Dict[str, Any]) -> None:
+        if progress_callback:
+            try:
+                progress_callback(update)
+            except Exception:
+                pass
+
+    emit({"phase": "scanning", "percent": 0, "message": "Scanning older folder..."})
 
     # Step 0: Optionally import encryption backup key from source
     imported_key = False
@@ -835,102 +971,131 @@ def execute_import_folder(
             except Exception as e:
                 logger.warning(f"[Migrator] Failed to save imported key: {e}")
 
+    # Step 1: Plan every file first so progress is measured against known totals
     media_items = discover_source_media(src_path)
     total_files = len(media_items)
-
-    copied_count = 0
-    skipped_count = 0
-    copied_bytes = 0
     copied_files_map: Dict[str, str] = {}  # orig_rel -> final_rel
-
-    for idx, (src_file, rel_path, sz) in enumerate(media_items):
+    plan: List[Tuple[Path, Path, str, int]] = []
+    skipped_count = 0
+    for src_file, rel_path, sz in media_items:
         target_file = tgt_path / rel_path
-
         if target_file.is_file():
             try:
                 if target_file.stat().st_size == sz:
-                    # Identical size: safe to skip copying
+                    # Identical size: already imported, nothing to transfer
                     skipped_count += 1
                     copied_files_map[rel_path] = rel_path
                     continue
-                else:
-                    # Collision with different size: rename safely
-                    stem, ext = os.path.splitext(target_file.name)
-                    counter = 1
-                    while True:
-                        cand_name = f"{stem}_imported_{counter}{ext}"
-                        cand_file = target_file.parent / cand_name
-                        if not cand_file.exists():
-                            target_file = cand_file
-                            break
-                        counter += 1
+                # Collision with different size: import under a new name
+                stem, ext = os.path.splitext(target_file.name)
+                counter = 1
+                while True:
+                    cand_file = target_file.parent / f"{stem}_imported_{counter}{ext}"
+                    if not cand_file.exists():
+                        target_file = cand_file
+                        break
+                    counter += 1
             except OSError:
                 pass
+        plan.append((src_file, target_file, rel_path, sz))
 
-        # Perform safe copy
+    bytes_total = sum(item[3] for item in plan)
+    files_to_transfer = len(plan)
+    same_volume = is_same_volume(src_path, tgt_path)
+
+    # Step 2: Transfer files with byte-level progress
+    state = {"bytes_done": 0, "last_emit": 0.0}
+    start_time = time.time()
+    copied_count = 0
+    copied_bytes = 0
+    failed: List[Dict[str, str]] = []
+    cancelled = False
+    current_name = ""
+
+    def emit_transfer(force: bool = False) -> None:
+        now = time.time()
+        if not force and now - state["last_emit"] < _PROGRESS_INTERVAL_SECS:
+            return
+        state["last_emit"] = now
+        elapsed = max(now - start_time, 1e-6)
+        done = state["bytes_done"]
+        speed = done / elapsed if elapsed > 0.5 else 0
+        remaining = max(bytes_total - done, 0)
+        frac = (done / bytes_total) if bytes_total else ((copied_count + len(failed)) / max(files_to_transfer, 1))
+        emit({
+            "phase": "transferring",
+            "mode": mode,
+            "percent": round(2 + 86 * min(frac, 1.0), 1),
+            "files_done": copied_count + len(failed),
+            "files_total": files_to_transfer,
+            "bytes_done": done,
+            "bytes_total": bytes_total,
+            "speed_bps": round(speed),
+            "eta_seconds": round(remaining / speed) if speed > 0 else None,
+            "current_file": current_name,
+            "skipped_count": skipped_count,
+        })
+
+    def on_bytes(n: int) -> None:
+        state["bytes_done"] += n
+        emit_transfer()
+
+    emit_transfer(force=True)
+    for src_file, target_file, rel_path, sz in plan:
+        if cancel_event is not None and cancel_event.is_set():
+            cancelled = True
+            break
+        current_name = rel_path
+        before = state["bytes_done"]
         try:
-            target_file.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_file, target_file)
+            _transfer_file(src_file, target_file, mode, on_bytes, cancel_event)
             copied_count += 1
             copied_bytes += sz
-            final_rel = str(target_file.relative_to(tgt_path)).replace("\\", "/")
-            copied_files_map[rel_path] = final_rel
+            copied_files_map[rel_path] = str(target_file.relative_to(tgt_path)).replace("\\", "/")
+        except ImportCancelled:
+            state["bytes_done"] = before
+            cancelled = True
+            break
         except Exception as e:
-            logger.warning(f"[Migrator] Failed to copy {src_file} -> {target_file}: {e}")
+            # Keep byte totals honest: count the failed file as processed
+            state["bytes_done"] = before + sz
+            logger.warning(f"[Migrator] Failed to {mode} {src_file} -> {target_file}: {e}")
+            failed.append({"file": rel_path, "error": str(e)})
+        emit_transfer()
+    emit_transfer(force=True)
 
-        if progress_callback and (idx % 25 == 0 or idx == total_files - 1):
-            progress_callback({
-                "phase": "copying",
-                "current": idx + 1,
-                "total": total_files,
-                "percent": int(((idx + 1) / max(total_files, 1)) * 75),
-                "copied_count": copied_count,
-                "skipped_count": skipped_count,
-            })
-
-    # Step 2: Merge Gallery Data
-    if progress_callback:
-        progress_callback({
-            "phase": "merging_gallery",
-            "percent": 80,
-            "message": "Updating gallery dataset...",
-        })
+    # Steps 3-5: Merge metadata for everything that is now in the target (also after a cancel)
+    emit({"phase": "merging_gallery", "percent": 90, "message": "Updating gallery dataset..."})
     added_gallery_entries = _merge_gallery_data(src_path, tgt_path, copied_files_map)
 
-    # Step 3: Merge Hash Cache
-    if progress_callback:
-        progress_callback({
-            "phase": "merging_hashes",
-            "percent": 90,
-            "message": "Merging duplicate hash index...",
-        })
+    emit({"phase": "merging_hashes", "percent": 94, "message": "Merging duplicate hash index..."})
     merged_hashes = _merge_hash_databases(src_path, tgt_path, copied_files_map)
 
-    # Step 4: Merge Sync State
-    if progress_callback:
-        progress_callback({
-            "phase": "merging_sync",
-            "percent": 95,
-            "message": "Reconciling sync manifests...",
-        })
+    emit({"phase": "merging_sync", "percent": 97, "message": "Reconciling sync manifests..."})
     merged_manifest_items = _merge_sync_manifests(src_path, tgt_path, copied_files_map)
 
-    if progress_callback:
-        progress_callback({
-            "phase": "done",
-            "percent": 100,
-            "message": "Migration completed successfully!",
-        })
+    status = "cancelled" if cancelled else "success"
+    emit({
+        "phase": "cancelled" if cancelled else "done",
+        "percent": 100,
+        "message": "Import cancelled." if cancelled else "Migration completed successfully!",
+    })
 
     return {
-        "status": "success",
+        "status": status,
+        "mode": mode,
+        "same_volume": same_volume,
         "copied_count": copied_count,
         "skipped_count": skipped_count,
         "copied_bytes": copied_bytes,
+        "failed_count": len(failed),
+        "failed": failed[:20],
+        "left_in_source_count": skipped_count if mode == IMPORT_MODE_MOVE else 0,
         "added_gallery_entries": added_gallery_entries,
         "merged_hashes": merged_hashes,
         "merged_manifest_items": merged_manifest_items,
         "total_source_files": total_files,
         "imported_key": imported_key,
         "masked_key": masked_key,
+        "elapsed_seconds": round(time.time() - start_time, 2),
     }

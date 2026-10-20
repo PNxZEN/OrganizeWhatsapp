@@ -13,7 +13,10 @@ const assert = require('assert');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const galleryPath = path.join(ROOT, 'gallery.html');
-const galleryHtml = fs.readFileSync(galleryPath, 'utf8');
+const { loadGallerySources } = require('./gallery_sources');
+// gallery.html plus its linked gallery_assets CSS/JS modules
+const gallerySources = loadGallerySources();
+const galleryHtml = gallerySources.bundle;
 
 console.log('======================================================================');
 console.log('RUNNING TEST SUITE: SETTINGS LAYOUT, SLIDER TOGGLE & IMPORT MEDIA');

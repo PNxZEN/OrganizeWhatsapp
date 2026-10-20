@@ -114,7 +114,7 @@ jobs:
           mkdir -p "$STAGING"
 
           # Copy source files
-          cp -r core wa_media_organizer.py gallery.html requirements.txt README.md "$STAGING/"
+          cp -r core gallery_assets wa_media_organizer.py gallery.html requirements.txt README.md "$STAGING/"
           cp start_gallery.sh install.sh "$STAGING/"
           chmod +x "$STAGING/start_gallery.sh" "$STAGING/install.sh"
 

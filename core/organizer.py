@@ -635,6 +635,11 @@ def zip_file_list(rel_paths, output_dir, verify=True, cancel_event=None):
     return True, str(zip_path), len(packed)
 
 
+# Live-sync gallery_data.js flush cadence (see StreamingMediaRouter.record_committed_file)
+LIVE_FLUSH_MAX_ITEMS = 200
+LIVE_FLUSH_INTERVAL_SECS = 3.0
+
+
 class StreamingMediaRouter:
     """
     On-the-fly streaming router and live organizer for WhatsApp media transfers.
@@ -1035,8 +1040,10 @@ class StreamingMediaRouter:
             self.gallery_buffer.append(item)
             self.all_organized.append(item)
 
+            # Each flush rewrites gallery_data.js; batching keeps the live gallery within a few
+            # seconds of the transfer without rewriting a large index for every handful of files.
             now = time.time()
-            if len(self.gallery_buffer) >= 50 or (now - self.last_flush_time) >= 2.0:
+            if len(self.gallery_buffer) >= LIVE_FLUSH_MAX_ITEMS or (now - self.last_flush_time) >= LIVE_FLUSH_INTERVAL_SECS:
                 self._flush_buffer()
 
     def _flush_buffer(self):
@@ -1419,14 +1426,10 @@ def reorganize_unmatched_media(
         except Exception as e:
             sys.stderr.write(f"[Reorganize] Warning: Failed to refresh media_index.csv: {e}\n")
 
-    # Copy gallery.html if present
-    src_html = Path("gallery.html")
-    dest_html = out_dir / "gallery.html"
-    if src_html.is_file() and (not dest_html.is_file() or src_html.stat().st_mtime > dest_html.stat().st_mtime):
-        try:
-            shutil.copy2(src_html, dest_html)
-        except Exception:
-            pass
+    # Copy gallery.html and its CSS/JS modules if outdated
+    from core.gallery import install_gallery_frontend
+
+    install_gallery_frontend(out_dir)
 
     return summary
 

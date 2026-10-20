@@ -436,8 +436,8 @@ def run_pipeline(
         print("\n" + "=" * 60)
         print("STEP 5b: Salvage unmatched Media files")
         print("=" * 60)
-        gallery_exts = {".js", ".html", ".csv", ".json"}
-        skip_dirs = {".thumbnails", ".cache", "_unmatched"}
+        gallery_exts = {".js", ".css", ".html", ".csv", ".json"}
+        skip_dirs = {".thumbnails", ".cache", "_unmatched", "gallery_assets"}
         organized_lower = set()
         for root, dirs, files in os.walk(output_dir):
             dirs[:] = [d for d in dirs if d not in skip_dirs]

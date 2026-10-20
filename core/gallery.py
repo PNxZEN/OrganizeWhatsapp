@@ -19,6 +19,69 @@ from core.contacts import resolve_jid_name
 # Global re-entrant mutex protecting gallery_data.js and media_index.csv against concurrent writes
 gallery_data_lock = threading.RLock()
 
+# Frontend shell (gallery.html) and its modular CSS/JS live side by side at the application root
+APP_ROOT = Path(__file__).resolve().parent.parent
+GALLERY_HTML_NAME = "gallery.html"
+GALLERY_ASSETS_DIRNAME = "gallery_assets"
+
+
+def resolve_frontend_root() -> Path:
+    """Returns the directory containing gallery.html and gallery_assets/ (app root, else CWD)."""
+    if (APP_ROOT / GALLERY_HTML_NAME).is_file():
+        return APP_ROOT
+    return Path.cwd().resolve()
+
+
+def _copy_if_newer(src: Path, dest: Path, force: bool) -> None:
+    if force or not dest.is_file() or src.stat().st_mtime > dest.stat().st_mtime:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(src), str(dest))
+
+
+def install_gallery_frontend(output_dir, force=False) -> bool:
+    """
+    Copies gallery.html and gallery_assets/ into output_dir when missing or outdated,
+    so the gallery also opens directly from disk (file://). Stale asset files that no
+    longer exist in the source tree are removed. Returns True when the source was found.
+    """
+    src_root = resolve_frontend_root()
+    src_html = src_root / GALLERY_HTML_NAME
+    if not src_html.is_file():
+        return False
+    out_path = Path(output_dir)
+    try:
+        if out_path.resolve() == src_root:
+            return True
+    except Exception:
+        pass
+    try:
+        _copy_if_newer(src_html, out_path / GALLERY_HTML_NAME, force)
+    except Exception as e:
+        sys.stderr.write(f"[Gallery] Warning: Failed to copy gallery.html: {e}\n")
+
+    src_assets = src_root / GALLERY_ASSETS_DIRNAME
+    dest_assets = out_path / GALLERY_ASSETS_DIRNAME
+    if not src_assets.is_dir():
+        return True
+    wanted = set()
+    for src_file in src_assets.rglob("*"):
+        if not src_file.is_file():
+            continue
+        rel = src_file.relative_to(src_assets)
+        wanted.add(rel.as_posix())
+        try:
+            _copy_if_newer(src_file, dest_assets / rel, force)
+        except Exception as e:
+            sys.stderr.write(f"[Gallery] Warning: Failed to copy {rel.as_posix()}: {e}\n")
+    if dest_assets.is_dir():
+        for dest_file in list(dest_assets.rglob("*")):
+            try:
+                if dest_file.is_file() and dest_file.relative_to(dest_assets).as_posix() not in wanted:
+                    dest_file.unlink()
+            except Exception:
+                pass
+    return True
+
 
 def is_subpath(child: Path, parent: Path) -> bool:
     """Safely verifies child path is strictly inside parent directory (prevents path traversal)."""
@@ -194,12 +257,8 @@ def generate_gallery(
         sys.stdout.write(f"\r[Progress] Streamed {len(organized_list)} files to gallery_data.js...")
         sys.stdout.flush()
     else:
-        # Copy gallery.html template to output directory
-        script_dir = Path(__file__).resolve().parent.parent
-        src_html = script_dir / "gallery.html"
-        dest_html = out_path / "gallery.html"
-        if src_html.is_file():
-            shutil.copy2(src_html, dest_html)
+        # Copy gallery.html and its CSS/JS modules to output directory
+        install_gallery_frontend(out_path, force=True)
 
         # Create start_gallery.bat launcher in output_dir
         bat_path = out_path / "start_gallery.bat"
@@ -315,22 +374,43 @@ def update_gallery_data_live(new_organized, output_dir, contacts=None, lid_to_ph
     chats_names_map = chat_names or {}
 
     with gallery_data_lock:
-        existing_data = {"chats": []}
-        if data_path.is_file():
-            try:
-                with open(data_path, "r", encoding="utf-8") as f:
-                    raw = f.read()
-                parsed = parse_gallery_data_js(raw)
-                if parsed is not None:
-                    existing_data = parsed
-            except Exception as e:
-                sys.stderr.write(f"[Live] Warning: Could not parse gallery_data.js: {e}\n")
+        # Reuse the parsed dataset from our previous flush while gallery_data.js is still exactly
+        # the file we wrote; any other writer changes its signature and forces a re-read.
+        sig = _file_signature(data_path)
+        if (
+            _live_state["chats_by_jid"] is not None
+            and _live_state["path"] == str(data_path)
+            and _live_state["sig"] == sig
+        ):
+            chats_by_jid = _live_state["chats_by_jid"]
+            existing_rel_paths = _live_state["rel_paths"]
+            chat_json = _live_state["chat_json"]
+        else:
+            existing_data = {"chats": []}
+            if data_path.is_file():
+                try:
+                    with open(data_path, "r", encoding="utf-8") as f:
+                        raw = f.read()
+                    parsed = parse_gallery_data_js(raw)
+                    if parsed is not None:
+                        existing_data = parsed
+                except Exception as e:
+                    sys.stderr.write(f"[Live] Warning: Could not parse gallery_data.js: {e}\n")
 
-        chats_by_jid = {c["jid"]: c for c in existing_data.get("chats", [])}
-        existing_rel_paths = {
-            m["rel_path"] for c in chats_by_jid.values() for m in c.get("media", [])
-        }
+            chats_by_jid = {c["jid"]: c for c in existing_data.get("chats", [])}
+            existing_rel_paths = {
+                m["rel_path"] for c in chats_by_jid.values() for m in c.get("media", [])
+            }
+            chat_json = {}
+            _live_state.update({
+                "path": str(data_path),
+                "sig": sig,
+                "chats_by_jid": chats_by_jid,
+                "rel_paths": existing_rel_paths,
+                "chat_json": chat_json,
+            })
 
+        touched_jids = set()
         added = 0
         for item in new_organized:
             rel_path = item.get("rel_path")
@@ -396,13 +476,25 @@ def update_gallery_data_live(new_organized, output_dir, contacts=None, lid_to_ph
             chats_by_jid[jid]["total_size"] += item.get("size_bytes") or 0
             chats_by_jid[jid]["file_count"] += 1
             existing_rel_paths.add(rel_path)
+            touched_jids.add(jid)
             added += 1
 
         if added == 0:
             return 0
 
+        # Only chats that received media are re-serialized; the rest reuse their cached JSON.
+        # The joined result is byte-identical to json.dumps({"chats": sorted_chats}).
+        for jid in touched_jids:
+            chat_json.pop(jid, None)
         sorted_chats = sorted(chats_by_jid.values(), key=lambda x: x["total_size"], reverse=True)
-        new_content = f"const GALLERY_DATA = {json.dumps({'chats': sorted_chats})};"
+        parts = []
+        for chat in sorted_chats:
+            encoded = chat_json.get(chat["jid"])
+            if encoded is None:
+                encoded = json.dumps(chat)
+                chat_json[chat["jid"]] = encoded
+            parts.append(encoded)
+        new_content = 'const GALLERY_DATA = {"chats": [' + ", ".join(parts) + "]};"
 
         tmp_path = data_path.with_suffix(".tmp")
         for attempt in range(5):
@@ -414,9 +506,12 @@ def update_gallery_data_live(new_organized, output_dir, contacts=None, lid_to_ph
                     current_mtime = data_path.stat().st_mtime
                 except Exception:
                     current_mtime = None
+                _live_state["sig"] = _file_signature(data_path)
                 _memory_cache["data"] = {"chats": sorted_chats}
                 _memory_cache["mtime"] = current_mtime
                 _memory_cache["path"] = str(data_path)
+                # Keep the per-chat index in step, or /api/chats/<jid>/media serves stale media
+                _memory_cache["by_jid"] = {c.get("jid"): c for c in sorted_chats if c.get("jid")}
                 return added
             except (PermissionError, OSError) as e:
                 if attempt == 4:
@@ -428,6 +523,24 @@ def update_gallery_data_live(new_organized, output_dir, contacts=None, lid_to_ph
                 return 0
         return 0
 
+
+def _file_signature(path: Path):
+    """(mtime_ns, size) of a file, or None when it does not exist."""
+    try:
+        st = path.stat()
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+# Parsed dataset and per-chat JSON kept between live-sync flushes (see update_gallery_data_live)
+_live_state = {
+    "path": None,
+    "sig": None,
+    "chats_by_jid": None,
+    "rel_paths": None,
+    "chat_json": {},
+}
 
 # In-memory cached gallery data for fast REST API responses
 _memory_cache = {

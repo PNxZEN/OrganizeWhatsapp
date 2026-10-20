@@ -1,0 +1,297 @@
+/* Phone Storage Reclaim Studio */
+
+/* Storage Reclaim Studio & Profiles */
+.control-btn-reclaim.active {
+    background: rgba(0, 168, 132, 0.22) !important;
+    border-color: var(--accent) !important;
+    color: #6ee7b7 !important;
+    box-shadow: 0 0 14px rgba(0, 168, 132, 0.3) !important;
+}
+
+.reclaim-studio-view {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    animation: studioFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes studioFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.reclaim-studio-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border-color);
+    background: rgba(17, 24, 39, 0.7);
+    backdrop-filter: blur(16px);
+    flex-shrink: 0;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.reclaim-phone-widget {
+    min-width: 310px;
+    padding: 9px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.25);
+}
+
+.refresh-spinning {
+    animation: spin 0.8s linear infinite !important;
+    transform-origin: center;
+}
+
+.reclaim-safety-hero {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 13px 18px;
+    border-radius: 12px;
+    background: rgba(0, 168, 132, 0.08);
+    border: 1px solid rgba(0, 168, 132, 0.25);
+    margin-bottom: 18px;
+}
+
+.reclaim-safety-icon-wrap {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(0, 168, 132, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--accent);
+}
+
+.reclaim-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.reclaim-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 16px 18px;
+    cursor: pointer;
+    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    min-height: 185px;
+    overflow: hidden;
+}
+.reclaim-card:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+}
+.reclaim-card.selected {
+    background: linear-gradient(145deg, rgba(0, 168, 132, 0.12), rgba(0, 168, 132, 0.03));
+    border-color: var(--accent);
+    box-shadow: 0 0 20px rgba(0, 168, 132, 0.18), inset 0 0 0 1px rgba(0, 168, 132, 0.35);
+}
+
+.reclaim-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.reclaim-card-icon-wrap {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.reclaim-card-title {
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.reclaim-card-subtitle {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+
+.reclaim-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: var(--text-secondary);
+    flex-grow: 1;
+}
+
+.reclaim-scope-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.reclaim-scope-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+}
+.reclaim-scope-dot.red {
+    background: #f87171;
+    box-shadow: 0 0 5px rgba(248, 113, 113, 0.6);
+}
+.reclaim-scope-dot.green {
+    background: #4ade80;
+    box-shadow: 0 0 5px rgba(74, 222, 128, 0.6);
+}
+
+.reclaim-card-footer {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 11px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.reclaim-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.reclaim-badge-green {
+    background: rgba(0, 168, 132, 0.2);
+    color: var(--accent);
+    border: 1px solid rgba(0, 168, 132, 0.4);
+}
+.reclaim-badge-blue {
+    background: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+    border: 1px solid rgba(59, 130, 246, 0.4);
+}
+.reclaim-badge-purple {
+    background: rgba(168, 85, 247, 0.2);
+    color: #d8b4fe;
+    border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.reclaim-config-drawer {
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-bottom: 18px;
+    transition: all 0.25s ease;
+}
+
+.drawer-subpanel {
+    animation: fadeInSubpanel 0.2s ease-out;
+}
+
+@keyframes fadeInSubpanel {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.drawer-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 8px;
+}
+
+.drawer-controls-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 12px;
+}
+
+.drawer-control-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.drawer-control-item label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+.drawer-control-item select, .drawer-control-item input {
+    height: 32px;
+    font-size: 12px;
+    border-radius: 7px;
+    padding: 4px 8px;
+    background: #161e2e;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
+}
+
+.storage-bar-track {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 6px;
+    position: relative;
+}
+.storage-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #00a884);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+
+.sidebar-reclaim-banner {
+    margin: 0 16px 10px 16px;
+    padding: 10px 12px;
+    background: rgba(0, 168, 132, 0.12);
+    border: 1px solid rgba(0, 168, 132, 0.35);
+    border-radius: 9px;
+    animation: fadeInSubpanel 0.2s ease-out;
+}
+
+.chat-item.reclaim-selected {
+    background: rgba(0, 168, 132, 0.12) !important;
+    border-color: var(--accent) !important;
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.chat-item-reclaim-cb {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    cursor: pointer;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+}

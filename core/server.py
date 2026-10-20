@@ -500,15 +500,57 @@ PASTE_KEY_HTML = """<!DOCTYPE html>
 </html>
 """
 from core.gallery import (
+    GALLERY_ASSETS_DIRNAME,
+    GALLERY_HTML_NAME,
     get_chat_media,
     get_chats_summary,
+    install_gallery_frontend,
+    is_subpath,
+    resolve_frontend_root,
     update_gallery_data_js,
     update_media_index_csv,
 )
+
+from core.device_inventory import DeviceInventory
+
+# Shared USB connection + WhatsApp account inventory. The lambdas resolve this module's names at
+# call time so the ADB functions stay patchable from tests.
+_device_inventory = DeviceInventory(
+    check_fn=lambda: check_adb_device(),
+    discover_fn=lambda **kwargs: discover_whatsapp_accounts(**kwargs),
+)
+
+# Output dirs whose gallery frontend copy was refreshed recently (avoids re-scanning assets on every request)
+_frontend_install_checked: Dict[str, float] = {}
+_FRONTEND_INSTALL_RECHECK_SECS = 5.0
+
+
+def _ensure_frontend_installed(output_dir: Path) -> None:
+    key = str(output_dir)
+    now = time.time()
+    if now - _frontend_install_checked.get(key, 0.0) < _FRONTEND_INSTALL_RECHECK_SECS:
+        return
+    _frontend_install_checked[key] = now
+    install_gallery_frontend(output_dir)
 from core.organizer import zip_chat, zip_file_list
 from core.thumbnail import get_or_create_thumbnail
 from core.sync_session import SyncSessionManager
-from core.migrator import pick_folder_dialog, analyze_import_folder, execute_import_folder, extract_key_from_folder
+from core.migrator import (
+    IMPORT_MODE_COPY,
+    IMPORT_MODE_MOVE,
+    PICK_SELECTED,
+    PICK_UNAVAILABLE,
+    analyze_import_folder,
+    extract_key_from_folder,
+    pick_folder,
+    pick_folder_dialog,
+    validate_paths,
+)
+from core.import_job import ImportJobManager
+
+# Background "Import Older Media" job (one at a time; polled by the gallery for progress)
+_import_job = ImportJobManager()
+_IMPORT_BUSY_MESSAGE = "An import of older media is running. Please wait for it to finish before syncing."
 import uuid
 
 _session_manager = SyncSessionManager()
@@ -900,29 +942,38 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
     and zero-terminal control REST APIs.
     """
 
+    # Explicit types: on Windows, mimetypes reads the registry and may map .js/.css to text/plain,
+    # which makes browsers refuse the gallery stylesheets.
+    extensions_map = {
+        **SimpleHTTPRequestHandler.extensions_map,
+        ".js": "text/javascript; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".html": "text/html; charset=utf-8",
+        ".json": "application/json",
+        ".svg": "image/svg+xml",
+        ".webp": "image/webp",
+    }
+
     def __init__(self, *args, directory=None, **kwargs):
         self.output_dir = Path(directory).resolve() if directory else Path(".").resolve()
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        dest_gallery = self.output_dir / "gallery.html"
-        root_gallery = Path(__file__).resolve().parent.parent / "gallery.html"
-        if not root_gallery.is_file():
-            root_gallery = Path("gallery.html").resolve()
-        if root_gallery.is_file():
-            if not dest_gallery.is_file() or os.path.getmtime(root_gallery) > os.path.getmtime(dest_gallery):
-                try:
-                    shutil.copy2(str(root_gallery), str(dest_gallery))
-                except Exception:
-                    pass
+        _ensure_frontend_installed(self.output_dir)
         super().__init__(*args, directory=str(self.output_dir), **kwargs)
 
     def translate_path(self, path):
-        clean_path = path.split("?", 1)[0].split("#", 1)[0]
-        if clean_path in ("/gallery.html", "/"):
-            root_gallery = Path(__file__).resolve().parent.parent / "gallery.html"
-            if not root_gallery.is_file():
-                root_gallery = Path("gallery.html").resolve()
+        clean_path = urllib.parse.unquote(path.split("?", 1)[0].split("#", 1)[0])
+        frontend_root = resolve_frontend_root()
+        if clean_path in ("/" + GALLERY_HTML_NAME, "/"):
+            root_gallery = frontend_root / GALLERY_HTML_NAME
             if root_gallery.is_file():
                 return str(root_gallery)
+        # Serve gallery CSS/JS modules straight from the application so they always match gallery.html
+        assets_prefix = "/" + GALLERY_ASSETS_DIRNAME + "/"
+        if clean_path.startswith(assets_prefix):
+            assets_root = frontend_root / GALLERY_ASSETS_DIRNAME
+            candidate = assets_root / clean_path[len(assets_prefix):]
+            if candidate.is_file() and is_subpath(candidate, assets_root):
+                return str(candidate.resolve())
         return super().translate_path(path)
 
     def end_headers(self):
@@ -952,6 +1003,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "/api/phone/status",
                     "/api/heartbeat",
                     "/api/tab-closed",
+                    "/api/import/status",
                 )
             ):
                 return
@@ -1077,14 +1129,17 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             return
 
         # /api/device-status or /api/phone/status
+        # Never blocks on the account scan unless asked: ?refresh=1 forces a rescan,
+        # ?wait=<seconds> (max 30) waits for an in-flight scan to finish.
         if path in ("/api/device-status", "/api/phone/status"):
-            res = check_adb_device()
-            connected, authorized, err_msg, serial, model = res[:5]
-            usb_debugging = getattr(res, "usb_debugging", True)
-
-            accounts = []
-            if connected and authorized:
-                accounts = discover_whatsapp_accounts(device_serial=serial)
+            query = urllib.parse.parse_qs(parsed_url.query)
+            refresh = query.get("refresh", ["0"])[0] in ("1", "true")
+            try:
+                wait_secs = min(30.0, max(0.0, float(query.get("wait", ["0"])[0])))
+            except ValueError:
+                wait_secs = 0.0
+            snap = _device_inventory.snapshot(refresh=refresh, wait_timeout=wait_secs)
+            accounts = snap["accounts"]
 
             cfg = load_config()
             selected_path = cfg.get("selected_account_path", "")
@@ -1101,19 +1156,25 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(
                 200,
                 {
-                    "connected": connected,
-                    "authorized": authorized,
-                    "usb_debugging": usb_debugging,
-                    "serial": serial,
-                    "model": model,
-                    "error": err_msg,
+                    "connected": snap["connected"],
+                    "authorized": snap["authorized"],
+                    "usb_debugging": snap["usb_debugging"],
+                    "serial": snap["serial"],
+                    "model": snap["model"],
+                    "error": snap["error"],
                     "accounts": accounts,
+                    "accounts_scan": snap["accounts_scan"],
                     "selected_account": selected_acc,
                     "selected_account_path": selected_path,
                     "has_selected_account": bool(selected_path and any(acc["path"] == selected_path for acc in accounts)),
                     "has_multiple_accounts": len(accounts) > 1,
                 },
             )
+            return
+
+        # /api/import/status (progress of the background "Import Older Media" job)
+        if path == "/api/import/status":
+            self._send_json(200, _import_job.status())
             return
 
         # /api/config
@@ -1564,9 +1625,15 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         # /api/import/browse (triggers native OS Explorer / Finder folder picker dialog)
         if path == "/api/import/browse":
             try:
-                selected = pick_folder_dialog()
-                if selected:
+                pick_status, selected = pick_folder()
+                if pick_status == PICK_SELECTED and selected:
                     self._send_json(200, {"status": "success", "folder": selected})
+                elif pick_status == PICK_UNAVAILABLE:
+                    self._send_json(200, {
+                        "status": "unavailable",
+                        "folder": "",
+                        "message": "The folder picker could not be opened on this computer. Paste the folder path into the field instead.",
+                    })
                 else:
                     self._send_json(200, {"status": "canceled", "folder": ""})
             except Exception as e:
@@ -1595,17 +1662,44 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(400, {"status": "error", "message": "source_path is required"})
                 return
 
-            import_key_flag = body.get("import_key", True)
-            res = execute_import_folder(source_path, str(self.output_dir), import_key=import_key_flag)
-            if res.get("status") == "error":
-                self._send_json(400, res)
+            mode = body.get("mode", IMPORT_MODE_COPY)
+            if mode not in (IMPORT_MODE_COPY, IMPORT_MODE_MOVE):
+                self._send_json(400, {"status": "error", "message": f"Unknown import mode: {mode}"})
+                return
+            if sync_status.get("active"):
+                self._send_json(409, {"status": "busy", "message": "A phone sync is running. Import older media after it finishes."})
+                return
+            valid, err, src_resolved, _ = validate_paths(source_path, str(self.output_dir))
+            if not valid:
+                self._send_json(400, {"status": "error", "message": err})
+                return
+            if not ((src_resolved / "gallery_data.js").is_file() or (src_resolved / "gallery.js").is_file()):
+                self._send_json(400, {
+                    "status": "error",
+                    "message": "The selected folder is not a valid WhatsApp Media Organizer output folder (missing gallery_data.js).",
+                })
                 return
 
-            # Bump sync version to notify live gallery reload
-            global sync_status
-            sync_status["version"] = sync_status.get("version", 0) + 1
+            def _on_import_finished(_snapshot):
+                # Bump sync version so open galleries reload the merged chats
+                sync_status["version"] = sync_status.get("version", 0) + 1
 
-            self._send_json(200, {"status": "success", "data": res})
+            started = _import_job.start(
+                source_path, str(self.output_dir), mode=mode,
+                import_key=bool(body.get("import_key", True)), on_finished=_on_import_finished,
+            )
+            if not started:
+                self._send_json(409, {"status": "busy", "message": "An import is already running."})
+                return
+            self._send_json(202, {"status": "started", "job": _import_job.status()})
+            return
+
+        # /api/import/cancel (stops the running import after the current file)
+        if path == "/api/import/cancel":
+            if _import_job.cancel():
+                self._send_json(200, {"status": "cancelling"})
+            else:
+                self._send_json(409, {"status": "idle", "message": "No import is running."})
             return
 
         # /api/key/import-previous (directly import and save WhatsApp backup key from an older version)
@@ -1792,6 +1886,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     409,
                     {"status": "busy", "message": "Synchronization is already active."},
                 )
+                return
+            if _import_job.is_running():
+                self._send_json(409, {"status": "import_running", "message": _IMPORT_BUSY_MESSAGE})
                 return
 
             # Pre-flight Check 1: Device connected
@@ -2025,6 +2122,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             if sync_status["active"]:
                 self._send_json(409, {"status": "busy", "message": "Synchronization is already active."})
                 return
+            if _import_job.is_running():
+                self._send_json(409, {"status": "import_running", "message": _IMPORT_BUSY_MESSAGE})
+                return
 
             sess_id = sync_status.get("session_id")
             paused_sess = _session_manager.get_session(sess_id) if sess_id else _session_manager.get_latest_paused_session()
@@ -2235,17 +2335,8 @@ def start_gallery_server(
     out_path = Path(output_dir).resolve()
     out_path.mkdir(parents=True, exist_ok=True)
 
-    # Auto-synthesize gallery.html in output directory if missing or outdated
-    dest_gallery = out_path / "gallery.html"
-    root_gallery = Path(__file__).resolve().parent.parent / "gallery.html"
-    if not root_gallery.is_file():
-        root_gallery = Path("gallery.html").resolve()
-    if root_gallery.is_file():
-        if not dest_gallery.is_file() or os.path.getmtime(root_gallery) > os.path.getmtime(dest_gallery):
-            try:
-                shutil.copy2(str(root_gallery), str(dest_gallery))
-            except Exception:
-                pass
+    # Auto-synthesize gallery.html and its CSS/JS modules in output directory if missing or outdated
+    install_gallery_frontend(out_path)
 
     # Auto-synthesize initial empty gallery_data.js if missing
     dest_data_js = out_path / "gallery_data.js"

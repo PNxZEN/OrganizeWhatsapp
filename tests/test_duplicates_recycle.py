@@ -11,6 +11,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from gallery_sources import read_gallery_bundle
+
 from core.gallery import (
     list_recycled_items,
     recycle_media_items,
@@ -239,7 +241,7 @@ class TestDuplicateRecycle(unittest.TestCase):
         """Verify Keep Both reversibility elements, tabs, and undo handlers in gallery.html."""
         gallery_path = Path(__file__).resolve().parent.parent / "gallery.html"
         self.assertTrue(gallery_path.exists())
-        content = gallery_path.read_text(encoding="utf-8")
+        content = read_gallery_bundle()
 
         # HTML elements
         self.assertIn('id="tabBtnIgnored"', content)
@@ -377,7 +379,7 @@ class TestDuplicateRecycle(unittest.TestCase):
     def test_06_video_duplicate_frontend_features(self):
         """Verify video duplicate detection frontend implementation in gallery.html."""
         gallery_path = Path(__file__).resolve().parent.parent / "gallery.html"
-        content = gallery_path.read_text(encoding="utf-8")
+        content = read_gallery_bundle()
 
         # 3-frame hash engine and comparison
         self.assertIn("function computeVideo3FrameHash(", content)

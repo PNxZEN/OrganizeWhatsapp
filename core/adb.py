@@ -619,6 +619,73 @@ def _safe_status_emit(callback, phase, label, total_files=None, detail=None):
                     pass
 
 
+# SIM numbers per device serial: reading them costs up to ~18 ADB shell calls, and the device
+# inventory rescans every 90 s, so they are remembered for a while.
+_SIM_NUMBERS_CACHE = {}
+_SIM_NUMBERS_TTL_SECS = 600
+
+# Storage roots probed for WhatsApp / WhatsApp Business data (each may also contain accounts/*)
+WHATSAPP_PROBE_ROOTS = (
+    "/storage/emulated/*/Android/media/com.whatsapp/WhatsApp",
+    "/storage/emulated/*/Android/media/com.whatsapp.w4b/WhatsApp\\ Business",
+    "/storage/emulated/*/WhatsApp",
+    "/storage/emulated/*/WhatsApp\\ Business",
+    "/storage/emulated/0/DualApp/WhatsApp",
+    "/storage/emulated/0/DUAL_APP/WhatsApp",
+    "/storage/emulated/0/Parallel/WhatsApp",
+    "/storage/emulated/0/Clone/WhatsApp",
+    "/sdcard/WhatsApp",
+    "/storage/*-*/Android/media/com.whatsapp/WhatsApp",
+    "/storage/*-*/WhatsApp",
+)
+
+
+def build_account_probe_script(roots=WHATSAPP_PROBE_ROOTS) -> str:
+    """
+    Builds the single `sh` script that inventories every WhatsApp folder in one ADB round trip.
+    Emits one line per folder: ACC|<path>|<has_media>|<has_db>|<db_file>|<db_mtime>|<db_size>.
+    The reported database is the NEWEST msgstore backup (crypt15 preferred, then crypt14, then any):
+    WhatsApp keeps dated daily copies (msgstore-YYYY-MM-DD.1.db.crypt15) that sort before
+    msgstore.db.crypt15, so taking the first glob match reported the oldest backup's age.
+    """
+    return (
+        "file_stat() { "
+        "st=$(stat -c \"%Y:%s\" \"$1\" 2>/dev/null); "
+        "if [ -n \"$st\" ]; then echo \"$st\"; "
+        "else echo \"$(date -r \"$1\" +%s 2>/dev/null || echo 0):$(wc -c < \"$1\" 2>/dev/null || echo 0)\"; fi; "
+        "}; "
+        "probe_dir() { "
+        "p=\"$1\"; "
+        "[ -d \"$p\" ] || return; "
+        "has_media=0; [ -d \"$p/Media\" ] && has_media=1; "
+        "has_db=0; db_file=\"\"; db_mtime=0; db_size=0; "
+        "if [ -d \"$p/Databases\" ]; then "
+        "has_db=1; "
+        "for pat in 'msgstore*.crypt15' 'msgstore*.crypt14' 'msgstore*'; do "
+        "best_f=\"\"; best_m=-1; best_s=0; "
+        "for f in \"$p/Databases\"/$pat; do "
+        "[ -f \"$f\" ] || continue; "
+        "st=$(file_stat \"$f\"); m=\"${st%%:*}\"; sz=\"${st##*:}\"; "
+        "case \"$m\" in ''|*[!0-9]*) m=0;; esac; "
+        "if [ \"$m\" -gt \"$best_m\" ]; then best_f=\"$f\"; best_m=\"$m\"; best_s=\"$sz\"; fi; "
+        "done; "
+        "if [ -n \"$best_f\" ]; then db_file=\"${best_f##*/}\"; db_mtime=\"$best_m\"; db_size=\"$best_s\"; break; fi; "
+        "done; "
+        "fi; "
+        "echo \"ACC|$p|$has_media|$has_db|$db_file|$db_mtime|$db_size\"; "
+        "}; "
+        "for r in " + " ".join(roots) + " ; do "
+        "[ -d \"$r\" ] || continue; "
+        "probe_dir \"$r\"; "
+        "if [ -d \"$r/accounts\" ]; then "
+        "for acc in \"$r/accounts\"/*; do "
+        "[ -d \"$acc\" ] && probe_dir \"$acc\"; "
+        "done; "
+        "fi; "
+        "done"
+    )
+
+
 def discover_whatsapp_accounts(
     adb_path=None,
     hex_key=None,
@@ -643,54 +710,7 @@ def discover_whatsapp_accounts(
             detail="Checking storage directories and multi-account folders via ADB",
         )
 
-    probe_script = (
-        "probe_dir() { "
-        "p=\"$1\"; "
-        "[ -d \"$p\" ] || return; "
-        "has_media=0; [ -d \"$p/Media\" ] && has_media=1; "
-        "has_db=0; db_file=\"\"; db_mtime=0; db_size=0; "
-        "if [ -d \"$p/Databases\" ]; then "
-        "has_db=1; "
-        "best_f=\"\"; "
-        "for f in \"$p/Databases\"/msgstore*.crypt15 \"$p/Databases\"/msgstore*.crypt14 \"$p/Databases\"/msgstore*; do "
-        "[ -f \"$f\" ] || continue; "
-        "best_f=\"$f\"; break; "
-        "done; "
-        "if [ -n \"$best_f\" ]; then "
-        "db_file=\"${best_f##*/}\"; "
-        "st=$(stat -c \"%Y:%s\" \"$best_f\" 2>/dev/null); "
-        "if [ -n \"$st\" ]; then "
-        "db_mtime=\"${st%%:*}\"; db_size=\"${st##*:}\"; "
-        "else "
-        "db_size=$(wc -c < \"$best_f\" 2>/dev/null); "
-        "db_mtime=$(date -r \"$best_f\" +%s 2>/dev/null); "
-        "fi; "
-        "fi; "
-        "fi; "
-        "echo \"ACC|$p|$has_media|$has_db|$db_file|$db_mtime|$db_size\"; "
-        "}; "
-        "for r in "
-        "/storage/emulated/*/Android/media/com.whatsapp/WhatsApp "
-        "/storage/emulated/*/Android/media/com.whatsapp.w4b/WhatsApp\\ Business "
-        "/storage/emulated/*/WhatsApp "
-        "/storage/emulated/*/WhatsApp\\ Business "
-        "/storage/emulated/0/DualApp/WhatsApp "
-        "/storage/emulated/0/DUAL_APP/WhatsApp "
-        "/storage/emulated/0/Parallel/WhatsApp "
-        "/storage/emulated/0/Clone/WhatsApp "
-        "/sdcard/WhatsApp "
-        "/storage/*-*/Android/media/com.whatsapp/WhatsApp "
-        "/storage/*-*/WhatsApp "
-        "; do "
-        "[ -d \"$r\" ] || continue; "
-        "probe_dir \"$r\"; "
-        "if [ -d \"$r/accounts\" ]; then "
-        "for acc in \"$r/accounts\"/*; do "
-        "[ -d \"$acc\" ] && probe_dir \"$acc\"; "
-        "done; "
-        "fi; "
-        "done"
-    )
+    probe_script = build_account_probe_script()
 
     try:
         res = subprocess.run(
@@ -724,11 +744,43 @@ def discover_whatsapp_accounts(
         )
     registered = get_registered_whatsapp_accounts(cmd, device_serial=device_serial)
 
-    has_hex = bool(hex_key)
-    if not has_hex:
-        cfg = load_config()
-        has_hex = bool(cfg.get("hex_key"))
+    cfg = load_config()
+    has_hex = bool(hex_key) or bool(cfg.get("hex_key"))
+    known_accounts = cfg.get("known_accounts", {})
 
+    # Expensive lookups run at most once per scan (previously once per candidate folder):
+    # SIM numbers need up to ~18 ADB shell calls, self info opens the local msgstore.db.
+    sim_numbers = None
+    self_info = None
+
+    def _get_sim_numbers():
+        nonlocal sim_numbers
+        if sim_numbers is None:
+            cached = _SIM_NUMBERS_CACHE.get(device_serial) if device_serial else None
+            if cached and time.time() - cached[0] < _SIM_NUMBERS_TTL_SECS:
+                sim_numbers = cached[1]
+            else:
+                sim_numbers = get_device_sim_phone_numbers(cmd, device_serial=device_serial) or []
+                if device_serial:
+                    _SIM_NUMBERS_CACHE[device_serial] = (time.time(), sim_numbers)
+        return sim_numbers
+
+    def _get_self_info():
+        nonlocal self_info
+        if self_info is None:
+            self_info = {}
+            try:
+                from core.contacts import extract_self_account_info
+                self_info = extract_self_account_info("Databases/msgstore.db") or {}
+                if not self_info.get("phone_number") and not self_info.get("push_name"):
+                    out_db = Path(cfg.get("output_dir", "./output")) / "Databases" / "msgstore.db"
+                    if out_db.is_file():
+                        self_info = extract_self_account_info(str(out_db)) or {}
+            except Exception:
+                self_info = {}
+        return self_info
+
+    first_resolved_phone = ""
     candidates_by_path = {}
     for line in lines:
         parts = line.split("|")
@@ -777,38 +829,23 @@ def discover_whatsapp_accounts(
             parent_path = p
 
         # Correlate phone number from known_accounts, registered accounts, SIMs, or local DB
-        cfg = load_config()
-        known_accounts = cfg.get("known_accounts", {})
         phone_number = known_accounts.get(p, "")
         if not phone_number:
             matched_reg = [r for r in registered if r["user_id"] == user_id and r["app_type"] == app_type]
             if matched_reg and matched_reg[0]["phone_number"]:
                 phone_number = matched_reg[0]["phone_number"]
         if not phone_number:
-            sims = get_device_sim_phone_numbers(cmd, device_serial=device_serial)
+            sims = _get_sim_numbers()
             if sims:
                 phone_number = sims[0]
 
-        push_name = ""
-        try:
-            from core.contacts import extract_self_account_info
-            self_info = extract_self_account_info("Databases/msgstore.db")
-            if not self_info.get("phone_number") and not self_info.get("push_name"):
-                out_db = Path(cfg.get("output_dir", "./output")) / "Databases" / "msgstore.db"
-                if out_db.is_file():
-                    self_info = extract_self_account_info(str(out_db))
-            if not phone_number and self_info.get("phone_number"):
-                phone_number = self_info["phone_number"]
-            if self_info.get("push_name"):
-                push_name = self_info["push_name"]
-        except Exception:
-            pass
+        info = _get_self_info()
+        if not phone_number and info.get("phone_number"):
+            phone_number = info["phone_number"]
+        push_name = info.get("push_name") or ""
 
-        if phone_number and not cfg.get("selected_account_phone"):
-            try:
-                save_config({"selected_account_phone": phone_number})
-            except Exception:
-                pass
+        if phone_number and not first_resolved_phone:
+            first_resolved_phone = phone_number
 
         # Human-readable formatted date and size
         if db_mtime > 0:
@@ -878,6 +915,12 @@ def discover_whatsapp_accounts(
         }
         candidates_by_path[p] = cand_record
 
+    if first_resolved_phone and not cfg.get("selected_account_phone"):
+        try:
+            save_config({"selected_account_phone": first_resolved_phone})
+        except Exception:
+            pass
+
     account_list = list(candidates_by_path.values())
     account_list.sort(key=lambda c: c["score"], reverse=True)
     if account_list:
@@ -940,6 +983,34 @@ def discover_android_base_path(
     return "/storage/emulated/0/Android/media/com.whatsapp/WhatsApp"
 
 
+def already_pulled_roots(dest_media=None):
+    """
+    Folders whose files count as "already on the PC" for a sync, each walked once.
+    The parent of dest_media only matters for the legacy output/Media layout; for the default
+    dest_media ("./output") the parent is the application folder itself, which used to make every
+    sync walk the whole app (runtime, venv, Databases) plus the output folder a second time.
+    """
+    candidates = [Path("./output")]
+    if dest_media:
+        media_path = Path(dest_media)
+        candidates.append(media_path)
+        if media_path.name.lower() == "media":
+            candidates.append(media_path.parent)
+    roots = []
+    for cand in candidates:
+        try:
+            resolved = cand.resolve()
+        except OSError:
+            continue
+        if resolved.is_dir() and resolved not in roots:
+            roots.append(resolved)
+    # A root inside another root is already covered by walking the outer one
+    return [
+        str(r) for r in roots
+        if not any(other != r and r.is_relative_to(other) for other in roots)
+    ]
+
+
 def build_already_pulled_index(output_dir):
     """
     Builds a set of (normalized_filename, size) tuples already present in output_dir.
@@ -957,7 +1028,7 @@ def build_already_pulled_index(output_dir):
         try:
             if p.is_file():
                 parts = p.parts
-                if any(part in (".cache", ".thumbnails", ".Links", ".git") for part in parts) or p.name == ".nomedia":
+                if any(part in (".cache", ".thumbnails", ".Links", ".git", "gallery_assets") for part in parts) or p.name == ".nomedia":
                     continue
                 if p.name in (
                     "media_index.csv",
@@ -1140,6 +1211,34 @@ def is_skippable_system_path(rel_p: str) -> bool:
 
 
 _session_inventory_cache = {}
+
+
+_DATED_MSGSTORE_RE = re.compile(r"^msgstore-(\d{4}-\d{2}-\d{2})\.(\d+)\.db\.crypt\d+$", re.IGNORECASE)
+_CURRENT_MSGSTORE_RE = re.compile(r"^msgstore\.db(\.crypt\d+)?$", re.IGNORECASE)
+
+
+def select_database_files(phone_files):
+    """
+    Picks which files under Databases/ are worth transferring.
+    WhatsApp keeps the current backup as msgstore.db.cryptNN plus up to ~7 dated daily copies
+    (msgstore-YYYY-MM-DD.N.db.cryptNN). Only the current one is ever decrypted, so the dated
+    copies (each as large as the whole chat history) are skipped. If the current file is
+    missing, the newest dated copy is kept instead. Every other file (wa.db, settings) is kept.
+    """
+    current_present = any(_CURRENT_MSGSTORE_RE.match(os.path.basename(p)) for p, _ in phone_files)
+    newest_dated = None
+    selected = []
+    for rel_path, size in phone_files:
+        m = _DATED_MSGSTORE_RE.match(os.path.basename(rel_path))
+        if not m:
+            selected.append((rel_path, size))
+            continue
+        key = (m.group(1), int(m.group(2)))
+        if newest_dated is None or key > newest_dated[0]:
+            newest_dated = (key, (rel_path, size))
+    if not current_present and newest_dated is not None:
+        selected.append(newest_dated[1])
+    return selected
 
 
 def adb_pull_tar(
@@ -1333,6 +1432,10 @@ def adb_pull_tar(
         # Filter out Android system marker files (.nomedia) and link preview cache (.Links)
         phone_files = [(p, sz) for p, sz in phone_files if not is_skippable_system_path(p)]
 
+        if is_db_only:
+            # Only the current backup is decrypted: skip WhatsApp's dated daily rotations
+            phone_files = select_database_files(phone_files)
+
         if cache_key and not is_db_only and phone_files:
             _session_inventory_cache[cache_key] = phone_files
 
@@ -1417,14 +1520,9 @@ def adb_pull_tar(
             pass
         if not is_db_only:
             # Reconcile already organized files in output so even fresh/cancelled sessions skip existing files
-            out_candidates = ["./output"]
-            if dest_media:
-                out_candidates.append(str(dest_media))
-                out_candidates.append(str(Path(dest_media).parent))
             already_pulled = set()
-            for cand_out in set(out_candidates):
-                if os.path.isdir(cand_out):
-                    already_pulled.update(build_already_pulled_index(cand_out))
+            for cand_out in already_pulled_roots(dest_media):
+                already_pulled.update(build_already_pulled_index(cand_out))
 
             pending_rows = session_manager.get_pending_files(session_id)
             existing_batch = []
@@ -1460,14 +1558,9 @@ def adb_pull_tar(
                 total_files=sess_info.get("total_files", len(phone_files)),
             )
     else:
-        out_candidates = ["./output"]
-        if dest_media:
-            out_candidates.append(str(dest_media))
-            out_candidates.append(str(Path(dest_media).parent))
         already_pulled = set()
-        for cand_out in set(out_candidates):
-            if os.path.isdir(cand_out):
-                already_pulled.update(build_already_pulled_index(cand_out))
+        for cand_out in already_pulled_roots(dest_media):
+            already_pulled.update(build_already_pulled_index(cand_out))
 
         for rel_path, size in phone_files:
             if rel_path.startswith("Databases/"):

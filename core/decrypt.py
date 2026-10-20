@@ -3,6 +3,8 @@ WhatsApp Media Organizer - Database Decryption Engine.
 Handles 64-character hex key derivation and wadecrypt execution.
 """
 
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -190,7 +192,113 @@ def decrypt_db_stream(key_file, crypt_path, out_path, cancellation_token=None, p
         return False
 
 
-def decrypt_db(key_file, crypt_path, out_path, cancellation_token=None, progress_callback=None):
+_SQLITE_HEADER = b"SQLite format 3\x00"
+_FINGERPRINT_CHUNK = 1024 * 1024
+
+
+def _decrypt_state_path(out_p: Path) -> Path:
+    return out_p.with_name(f".{out_p.name}.decrypt_state.json")
+
+
+def _backup_fingerprint(key_p: Path, crypt_p: Path) -> str:
+    """
+    Identifies one encrypted backup + key pair cheaply: size, first and last MB, and the key.
+    Every WhatsApp backup has a fresh random header, so a new backup always changes it.
+    """
+    h = hashlib.sha256()
+    size = crypt_p.stat().st_size
+    h.update(str(size).encode())
+    with open(crypt_p, "rb") as f:
+        h.update(f.read(_FINGERPRINT_CHUNK))
+        if size > 2 * _FINGERPRINT_CHUNK:
+            f.seek(-_FINGERPRINT_CHUNK, os.SEEK_END)
+            h.update(f.read())
+    h.update(hashlib.sha256(key_p.read_bytes()).digest())
+    return h.hexdigest()
+
+
+def _is_valid_sqlite(path: Path) -> bool:
+    try:
+        with open(path, "rb") as f:
+            return f.read(16) == _SQLITE_HEADER
+    except OSError:
+        return False
+
+
+def _reusable_decryption(out_p: Path, fingerprint: str) -> bool:
+    """True when out_p is the untouched result of decrypting the backup with this fingerprint."""
+    state_p = _decrypt_state_path(out_p)
+    if not out_p.is_file() or not state_p.is_file():
+        return False
+    try:
+        state = json.loads(state_p.read_text(encoding="utf-8"))
+        st = out_p.stat()
+        return (
+            state.get("fingerprint") == fingerprint
+            and state.get("out_size") == st.st_size
+            and state.get("out_mtime_ns") == st.st_mtime_ns
+            and _is_valid_sqlite(out_p)
+        )
+    except Exception:
+        return False
+
+
+def _record_decryption(out_p: Path, fingerprint: str) -> None:
+    try:
+        st = out_p.stat()
+        _decrypt_state_path(out_p).write_text(
+            json.dumps({"fingerprint": fingerprint, "out_size": st.st_size, "out_mtime_ns": st.st_mtime_ns}),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def decrypt_db(key_file, crypt_path, out_path, cancellation_token=None, progress_callback=None, reuse_unchanged=True):
+    """
+    Decrypts an encrypted WhatsApp database (see _decrypt_db_uncached).
+    When reuse_unchanged is set and the same backup was already decrypted with the same key into
+    an untouched out_path, the existing database is reused: a sync after "nothing new on the
+    phone" no longer spends minutes re-decrypting a multi-GB history.
+    """
+    key_p = Path(key_file).resolve()
+    crypt_p = Path(crypt_path).resolve()
+    out_p = Path(out_path).resolve()
+    if not key_p.is_file():
+        raise FileNotFoundError(f"Key file not found: {key_file}")
+    if not crypt_p.is_file():
+        raise FileNotFoundError(f"Crypt file not found: {crypt_path}")
+
+    fingerprint = None
+    if reuse_unchanged:
+        try:
+            fingerprint = _backup_fingerprint(key_p, crypt_p)
+        except OSError:
+            fingerprint = None
+        if fingerprint and _reusable_decryption(out_p, fingerprint):
+            sys.stdout.write(f"[Decrypt] Backup unchanged since last sync: reusing {out_p.name}\n")
+            if progress_callback:
+                total = crypt_p.stat().st_size
+                try:
+                    progress_callback(total, total)
+                except Exception:
+                    pass
+            return str(out_p)
+
+    # A stale state file must never vouch for a database that is about to be rewritten
+    try:
+        _decrypt_state_path(out_p).unlink()
+    except OSError:
+        pass
+
+    result = _decrypt_db_uncached(key_file, crypt_path, out_path, cancellation_token, progress_callback)
+    cancelled = bool(cancellation_token and cancellation_token.is_set())
+    if fingerprint and not cancelled and _is_valid_sqlite(out_p):
+        _record_decryption(out_p, fingerprint)
+    return result
+
+
+def _decrypt_db_uncached(key_file, crypt_path, out_path, cancellation_token=None, progress_callback=None):
     """
     Decrypts an encrypted msgstore database using streaming zero-RAM decryption
     with automatic fallback to wadecrypt for legacy formats (crypt12/14).

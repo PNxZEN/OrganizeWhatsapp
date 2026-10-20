@@ -16,7 +16,10 @@ const assert = require('assert');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const galleryPath = path.join(ROOT, 'gallery.html');
-const galleryHtml = fs.readFileSync(galleryPath, 'utf8');
+const { loadGallerySources } = require('./gallery_sources');
+// gallery.html plus its linked gallery_assets CSS/JS modules
+const gallerySources = loadGallerySources();
+const galleryHtml = gallerySources.bundle;
 
 console.log('======================================================================');
 console.log('RUNNING RIGOROUS FRONTEND JS TEST SUITE');
@@ -36,11 +39,9 @@ assert(!galleryHtml.includes('\u2014'), 'Banned em-dash found in gallery.html');
 assert(!galleryHtml.includes('\u2013'), 'Banned en-dash found in gallery.html');
 assert(!galleryHtml.includes('\u26a0'), 'Banned warning symbol found in gallery.html');
 
-// Extract main JavaScript block
-const scriptStart = galleryHtml.indexOf('<script>');
-const scriptEnd = galleryHtml.indexOf('</script>', scriptStart);
-assert(scriptStart !== -1 && scriptEnd !== -1, 'Main <script> block not found in gallery.html');
-const mainJsCode = galleryHtml.substring(scriptStart + 8, scriptEnd);
+// Main JavaScript: every gallery_assets/js module referenced by gallery.html, in load order
+assert(gallerySources.scripts.length > 0, 'No gallery_assets/js modules referenced from gallery.html');
+const mainJsCode = gallerySources.js;
 
 // Test syntax compilation
 try {
@@ -571,8 +572,14 @@ eval(exitFuncs.replace('let _exitModalOpen = false;', '/* _exitModalOpen */'));
 let popstateHandler = null;
 const popstateMatch = mainJsCode.indexOf("window.addEventListener('popstate'");
 if (popstateMatch !== -1) {
-    const endPopstate = mainJsCode.indexOf("function navigateLightbox", popstateMatch);
+    // The popstate listener lives in its own module: the snippet runs to the end of that file
+    const navModule = gallerySources.scripts.find(s => s.code.includes("window.addEventListener('popstate'"));
+    const navStart = mainJsCode.indexOf(navModule.code);
+    const endPopstate = navStart + navModule.code.length;
     const popstateSnippet = mainJsCode.substring(popstateMatch, endPopstate);
+    // Shared modal-stack helper used by the popstate handler
+    const topModalFn = mainJsCode.substring(mainJsCode.indexOf('function getTopOpenModal'), mainJsCode.indexOf('let _modalZIndexCounter'));
+    eval(topModalFn.replace('function getTopOpenModal', 'global.getTopOpenModal = function'));
     const fnBody = popstateSnippet.replace("window.addEventListener('popstate',", "popstateHandler = ");
     const cleanFn = fnBody.substring(0, fnBody.lastIndexOf(');'));
     eval(cleanFn);

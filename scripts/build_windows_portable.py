@@ -10,6 +10,7 @@ Contents:
     runtime/          - Python 3.13 Embeddable (with pip + all wheels)
     bin/platform-tools/ - Google ADB binaries (adb.exe + DLLs)
     core/             - Application core package (+ tutorial assets)
+    gallery_assets/   - Gallery frontend CSS/JS modules loaded by gallery.html
     Start-Gallery.bat - Launcher pointing to runtime/python.exe
     wa_media_organizer.py
     gallery.html
@@ -64,7 +65,7 @@ APP_FILES = [
     "requirements.txt",
     "README.md",
 ]
-APP_DIRS = ["core"]
+APP_DIRS = ["core", "gallery_assets"]
 
 
 def sha256_file(path: Path) -> str:

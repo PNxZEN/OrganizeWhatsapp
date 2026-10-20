@@ -1,0 +1,252 @@
+/* Settings modal master-detail layout and slider switch */
+
+/* Settings Modal Master-Detail Layout & Slider Switch */
+.settings-modal-card {
+    width: 780px;
+    max-width: 95vw;
+    height: 570px;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    padding: 0 !important;
+    overflow: hidden;
+}
+
+.settings-modal-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.settings-nav-sidebar {
+    width: 210px;
+    flex-shrink: 0;
+    background: rgba(0, 0, 0, 0.22);
+    border-right: 1px solid var(--border-color);
+    padding: 14px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+}
+
+.settings-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    user-select: none;
+    box-sizing: border-box;
+}
+
+.settings-nav-item svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    fill: currentColor;
+    opacity: 0.75;
+    transition: all 0.18s ease;
+}
+
+.settings-nav-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.settings-nav-item:hover svg {
+    opacity: 1;
+}
+
+.settings-nav-item.active {
+    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.28);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.settings-nav-item.active svg {
+    opacity: 1;
+    fill: var(--accent);
+}
+
+.settings-content-pane {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+}
+
+@media (max-width: 680px) {
+    .settings-modal-card {
+        height: auto;
+        max-height: 92vh;
+    }
+    .settings-modal-layout {
+        flex-direction: column;
+    }
+    .settings-nav-sidebar {
+        width: 100%;
+        flex-direction: row;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        padding: 8px 10px;
+        gap: 6px;
+        overflow-x: auto;
+    }
+    .settings-nav-item {
+        padding: 8px 12px;
+        font-size: 12px;
+        white-space: nowrap;
+        width: auto;
+    }
+}
+
+/* Modern Slider Switch Component */
+.setting-switch-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.setting-switch {
+    position: relative;
+    display: inline-block;
+    width: 46px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.setting-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.setting-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 24px;
+}
+
+.setting-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 2px;
+    bottom: 2px;
+    background-color: #ffffff;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 50%;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.setting-switch input:checked + .setting-slider {
+    background-color: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+}
+
+.setting-switch input:focus-visible + .setting-slider {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.setting-switch input:checked + .setting-slider:before {
+    transform: translateX(22px);
+    background-color: #ffffff;
+}
+
+.setting-switch:hover .setting-slider {
+    background-color: rgba(255, 255, 255, 0.22);
+}
+
+.setting-switch input:checked:hover + .setting-slider {
+    filter: brightness(1.08);
+}
+
+.setting-switch-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 58px;
+    transition: color 0.2s ease;
+}
+
+/* Import older media: copy / move choice and progress details */
+.import-mode-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.import-mode-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 9px 11px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+.import-mode-option:has(input:checked) {
+    border-color: rgba(16, 185, 129, 0.5);
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.import-mode-option input {
+    margin-top: 2px;
+    accent-color: var(--accent);
+}
+
+.import-mode-desc {
+    display: block;
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.import-progress-detail {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.import-progress-file {
+    margin-top: 3px;
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
