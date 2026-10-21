@@ -85,3 +85,6 @@ $RECYCLE.BIN/
 
 # HowToProceed
 HowToProceed.md
+
+# Phone / video tools downloaded by setup (core/platform_tools.py)
+bin/

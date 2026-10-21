@@ -221,12 +221,19 @@ jobs:
             > The ZIP includes embedded Python 3.13, Google ADB, and all dependencies. No installation required.
 
             ### macOS / Linux Quick Start
+            Extract the archive and run the one-time setup (creates a Python virtual environment and installs dependencies):
             ```bash
             tar -xzf WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Unix-Source.tar.gz
             cd WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}
-            ./install.sh        # one-time setup (creates Python venv + installs deps)
-            ./start_gallery.sh  # launch
+            ./install.sh
             ```
+            Then launch it (this is the only command you need from now on):
+            ```bash
+            ./start_gallery.sh
+            ```
+
+            > [!NOTE]
+            > Setup installs ffmpeg with the other dependencies and downloads Google's official ADB (for USB phone sync) if you don't already have it. No Homebrew needed.
 
           files: |
             dist-artifacts/windows-portable/WhatsAppMediaOrganizer-v${{ steps.version.outputs.VERSION }}-Windows-Portable.zip

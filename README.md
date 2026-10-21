@@ -78,26 +78,31 @@ The easiest way. No Python, no setup, no installation required.
 
 ## 3. Quick Start (macOS / Linux)
 
+Download the latest `Unix-Source.tar.gz` from [GitHub Releases](../../releases/latest), then extract it and run the one-time setup (creates a Python virtual environment and installs dependencies):
+
 ```bash
-# 1. Download the latest Unix source archive from GitHub Releases (Releases -> Latest):
 tar -xzf WhatsAppMediaOrganizer-vX.X.X-Unix-Source.tar.gz
 cd WhatsAppMediaOrganizer-vX.X.X
-
-# One-time setup (creates a Python virtual environment + installs dependencies)
 ./install.sh
+```
 
-# Launch
+Then launch it (this is the only command you need from now on):
+
+```bash
 ./start_gallery.sh
 ```
 
-The launcher will:
+> The command blocks contain no `#` comments on purpose: macOS's default shell (zsh) does not treat `#` as a comment when commands are pasted, so a pasted comment fails with errors such as `zsh: number expected`.
+
+Setup will:
 - Check for Python 3.10+ and tell you exactly how to install it if missing
-- Warn you if ADB or ffmpeg are not found, with OS-specific install commands
-- Auto-create/update a `venv` on every run
-- Open the browser automatically
+- Create a `venv` and install the dependencies, including ffmpeg (video thumbnails and previews)
+- Download Google's official Android platform-tools (ADB, for USB phone sync) into `./bin/platform-tools/` if ADB is not already installed. No Homebrew needed.
+
+The launcher only goes online when the dependencies change (the first run, or after an update). A normal launch makes no network requests.
 
 > [!NOTE]
-> ADB is required for USB sync. Install it with `brew install android-platform-tools` (macOS) or `sudo apt install adb` (Linux).
+> On Linux, Google publishes ADB for x86-64 only. On ARM Linux, install it with `sudo apt install adb`.
 
 ---
 
@@ -120,7 +125,7 @@ pip install -r requirements.txt
 python wa_media_organizer.py --serve --auto-open
 ```
 
-**Requirements**: Python 3.10+, ADB on PATH (or bundled in `./bin/platform-tools/`), ffmpeg (optional, for video thumbnails).
+**Requirements**: Python 3.10+, ADB on PATH (or in `./bin/platform-tools/`; `python -m core.platform_tools --setup` downloads it on macOS / Linux), ffmpeg (installed by requirements.txt on macOS / Linux).
 
 ---
 
@@ -380,15 +385,11 @@ Copies installed with Git (a `.git` folder) are not updated in-app: use `git pul
 ### macOS
 - macOS 12 Monterey or newer
 - Python 3.10+: `brew install python@3.13`
-- ADB: `brew install android-platform-tools`
-- ffmpeg (optional): `brew install ffmpeg`
-- Run `./install.sh` to auto-create the venv and install dependencies
+- Run `./install.sh`: it creates the venv, installs the dependencies (including ffmpeg) and downloads ADB from Google. A Homebrew ADB or ffmpeg is used instead if you have one.
 
 ### Linux
 - Python 3.10+: `sudo apt install python3.12` (Ubuntu/Debian) or `sudo dnf install python3.12` (Fedora)
-- ADB: `sudo apt install adb`
-- ffmpeg (optional): `sudo apt install ffmpeg`
-- Run `./install.sh` to auto-create the venv and install dependencies
+- Run `./install.sh`: it creates the venv, installs the dependencies (including ffmpeg) and downloads ADB from Google (x86-64; on ARM use `sudo apt install adb`). An installed ADB or ffmpeg is used instead if you have one.
 
 ### Python Dependencies (requirements.txt)
 ```
@@ -397,6 +398,7 @@ pillow>=10.0.0          # Image processing & thumbnail generation
 pillow_heif>=0.16.0     # HEIC/HEIF image format support (iPhone photos)
 ImageHash>=4.3.1        # Perceptual hash for duplicate detection
 wa-crypt-tools>=0.1.0   # WhatsApp crypt14/crypt15 database format support
+imageio-ffmpeg>=0.5.1   # ffmpeg for macOS / Linux (core/requirements-optional.txt)
 ```
 
 ---

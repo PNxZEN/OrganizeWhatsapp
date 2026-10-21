@@ -62,6 +62,13 @@ def find_ffmpeg_binary(custom_path=None):
     if found:
         return found
 
+    # macOS / Linux: the ffmpeg that the imageio-ffmpeg package (requirements.txt) installs
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        pass
+
     return "ffmpeg"
 
 

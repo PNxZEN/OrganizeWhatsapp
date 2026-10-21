@@ -3,3 +3,5 @@ pillow>=10.0.0
 pillow_heif>=0.16.0
 ImageHash>=4.3.1
 wa-crypt-tools>=0.1.0
+# Optional tools (ffmpeg on macOS / Linux). Kept in core/ so in-app updates carry the file along.
+-r core/requirements-optional.txt

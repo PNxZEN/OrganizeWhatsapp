@@ -108,7 +108,13 @@ jobs:
           APP="$RUNNER_TEMP/user/WhatsAppMediaOrganizer-v$CI_VERSION"
           echo "APP=$APP" >> "$GITHUB_ENV"
           test -x "$APP/install.sh" && test -x "$APP/start_gallery.sh"
-          cd "$APP" && ./install.sh
+          set -o pipefail
+          cd "$APP" && ./install.sh 2>&1 | tee "$RUNNER_TEMP/install.log"
+
+      - name: Phone (ADB) and video (ffmpeg) tools work without Homebrew
+        run: |
+          grep -q "ADB ready" "$RUNNER_TEMP/install.log"
+          cd "$APP" && venv/bin/python "$GITHUB_WORKSPACE/tests/e2e/check_tools.py"
 
       - name: Prepare a test library
         run: |
@@ -165,6 +171,7 @@ jobs:
             ${{ runner.temp }}/shots
             ${{ runner.temp }}/server.log
             ${{ runner.temp }}/second.log
+            ${{ runner.temp }}/install.log
           if-no-files-found: ignore
 
   # ------------------------------------------------------------------ Windows portable ZIP

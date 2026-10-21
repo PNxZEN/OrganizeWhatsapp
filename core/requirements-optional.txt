@@ -1,0 +1,3 @@
+# Optional: the app works without these, so the in-app updater never blocks an update on them.
+# ffmpeg for video thumbnails, previews and video duplicate checks (the Windows ZIP bundles its own).
+imageio-ffmpeg>=0.5.1; sys_platform != "win32"

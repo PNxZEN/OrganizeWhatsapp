@@ -66,35 +66,7 @@ if [ -z "$PYTHON_EXE" ]; then
 fi
 
 # ============================================================
-# 2. Optional: ADB check
-# ============================================================
-if ! command -v adb >/dev/null 2>&1 && [ ! -f "$SCRIPT_DIR/bin/platform-tools/adb" ]; then
-    log_warn "ADB (Android Debug Bridge) not found. USB phone sync will not work."
-    echo ""
-    echo "  To install ADB:"
-    case "$(uname -s)" in
-        Darwin)  echo "    macOS:  brew install android-platform-tools" ;;
-        Linux)   echo "    Linux:  sudo apt install adb  (or: sudo dnf install android-tools)" ;;
-    esac
-    echo ""
-fi
-
-# ============================================================
-# 3. Optional: ffmpeg check
-# ============================================================
-if ! command -v ffmpeg >/dev/null 2>&1 && [ ! -f "$SCRIPT_DIR/bin/ffmpeg" ]; then
-    log_warn "ffmpeg not found. Video thumbnail generation will be unavailable."
-    echo ""
-    echo "  To install ffmpeg:"
-    case "$(uname -s)" in
-        Darwin)  echo "    macOS:  brew install ffmpeg" ;;
-        Linux)   echo "    Linux:  sudo apt install ffmpeg  (or: sudo dnf install ffmpeg)" ;;
-    esac
-    echo ""
-fi
-
-# ============================================================
-# 4. Single-instance check (before anything slow)
+# 2. Single-instance check (before anything slow)
 # ============================================================
 if command -v curl >/dev/null 2>&1; then
     # -f fails on HTTP errors and grep checks it is this app, not another program on port 8000.
@@ -110,7 +82,7 @@ if command -v curl >/dev/null 2>&1; then
 fi
 
 # ============================================================
-# 5. Self-healing venv bootstrap
+# 3. Self-healing venv bootstrap
 #    Dependencies are installed only when the venv is new or requirements.txt changed, so a
 #    normal launch never goes online (pip would otherwise contact PyPI on every start).
 # ============================================================
@@ -121,19 +93,27 @@ if [ ! -f "$VENV_DIR/bin/python" ]; then
     log_ok "Virtual environment created."
 fi
 
+TOOLS_ARG=""
 if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
     REQ_STAMP="$VENV_DIR/.requirements.cksum"
-    REQ_SUM="$(cksum < "$SCRIPT_DIR/requirements.txt")"
+    REQ_SUM="$(cat "$SCRIPT_DIR/requirements.txt" "$SCRIPT_DIR/core/requirements-optional.txt" 2>/dev/null | cksum)"
     if [ ! -f "$REQ_STAMP" ] || [ "$(cat "$REQ_STAMP")" != "$REQ_SUM" ]; then
         log_info "Installing dependencies from requirements.txt ..."
         "$VENV_DIR/bin/pip" install -q --disable-pip-version-check -r "$SCRIPT_DIR/requirements.txt" --no-warn-script-location
         printf '%s' "$REQ_SUM" > "$REQ_STAMP"
         log_ok "Dependencies ready."
+        TOOLS_ARG="--setup"  # already online for pip: also fetch ADB if it is missing
     fi
 fi
 
 # ============================================================
-# 6. Launch gallery server
+# 4. Phone (ADB) and video (ffmpeg) tools
+#    Downloads ADB only together with the dependency install above; otherwise just reports.
+# ============================================================
+"$VENV_DIR/bin/python" -m core.platform_tools $TOOLS_ARG || true
+
+# ============================================================
+# 5. Launch gallery server
 # ============================================================
 log_info "Starting WhatsApp Media Gallery server..."
 "$VENV_DIR/bin/python" "$SCRIPT_DIR/wa_media_organizer.py" --serve --auto-open

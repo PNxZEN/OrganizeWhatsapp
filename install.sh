@@ -82,8 +82,8 @@ if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
     log_info "Installing dependencies from requirements.txt ..."
     "$VENV_DIR/bin/pip" install -q --disable-pip-version-check --upgrade pip
     "$VENV_DIR/bin/pip" install -q --disable-pip-version-check -r "$SCRIPT_DIR/requirements.txt" --no-warn-script-location
-    # start_gallery.sh skips pip while requirements.txt is unchanged
-    cksum < "$SCRIPT_DIR/requirements.txt" > "$VENV_DIR/.requirements.cksum"
+    # start_gallery.sh skips pip while these files are unchanged
+    cat "$SCRIPT_DIR/requirements.txt" "$SCRIPT_DIR/core/requirements-optional.txt" 2>/dev/null | cksum > "$VENV_DIR/.requirements.cksum"
     log_ok "All dependencies installed."
 else
     log_err "requirements.txt not found in $SCRIPT_DIR"
@@ -91,7 +91,13 @@ else
 fi
 
 # ============================================================
-# 4. Done
+# 4. Phone (ADB) and video (ffmpeg) tools
+#    ffmpeg came with the dependencies; ADB is downloaded from Google if it is not installed.
+# ============================================================
+"$VENV_DIR/bin/python" -m core.platform_tools --setup || true
+
+# ============================================================
+# 5. Done
 # ============================================================
 printf "\n${C_GREEN}Setup complete!${C_RESET}\n"
 printf "To start the gallery, run:\n\n"
