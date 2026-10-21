@@ -81,12 +81,30 @@ class SyncSessionManager:
         )
         conn.commit()
 
+    @staticmethod
+    def _enable_wal(conn: sqlite3.Connection, attempts: int = 50):
+        """
+        Switching to WAL needs a moment of exclusive access, and SQLite reports "database is
+        locked" at once (without waiting for the timeout) when another process is doing the same,
+        e.g. two servers starting together. The mode is stored in the file, so a retry is enough.
+        """
+        for attempt in range(attempts):
+            try:
+                conn.execute("PRAGMA journal_mode=WAL;")
+                return
+            except sqlite3.OperationalError as e:
+                if "locked" not in str(e) and "busy" not in str(e):
+                    raise
+                if attempt == attempts - 1:
+                    raise
+                time.sleep(0.05 + 0.01 * attempt)
+
     @contextmanager
     def _get_connection(self):
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(self.db_path), timeout=30.0, check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL;")
+        self._enable_wal(conn)
         conn.execute("PRAGMA synchronous=NORMAL;")
         self._ensure_schema(conn)
         try:

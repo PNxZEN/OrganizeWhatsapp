@@ -301,7 +301,9 @@ const t0 = performance.now();
 const resPigeonhole = computeChatDuplicates(pHashTestChat);
 const t1 = performance.now();
 console.log(`  -> Pigeonhole Multi-Index execution time for ${pHashTestChat.media.length} items: ${(t1 - t0).toFixed(2)}ms`);
-assert(t1 - t0 < 100, `Pigeonhole clustering took too long: ${(t1 - t0).toFixed(2)}ms`);
+// Generous ceiling: ~35 ms on a dev machine, but shared CI runners are several times slower
+// (a macOS runner took 118 ms). It only has to catch a real freeze, not measure speed.
+assert(t1 - t0 < 1000, `Pigeonhole clustering took too long: ${(t1 - t0).toFixed(2)}ms`);
 assert(resPigeonhole.chatDupSet.size >= 20, `Expected at least 20 duplicate pairs, got ${resPigeonhole.chatDupSet.size}`);
 console.log('  -> Passed: Pigeonhole multi-index delivers instant O(1) candidate lookup with zero freeze.');
 
