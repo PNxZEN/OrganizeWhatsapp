@@ -856,7 +856,7 @@ async function confirmAndExecuteCleanPlan() {
     if (btnReconnect) btnReconnect.style.display = 'none';
 
     try {
-        const res = await fetch('/api/clean/execute', {
+        const res = await trackedFetch('phone-cleanup', '/api/clean/execute', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

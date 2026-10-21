@@ -29,6 +29,7 @@
     <link rel="stylesheet" href="gallery_assets/css/tutorial.css">
     <link rel="stylesheet" href="gallery_assets/css/context-menu.css">
     <link rel="stylesheet" href="gallery_assets/css/properties.css">
+    <link rel="stylesheet" href="gallery_assets/css/responsive.css">
 
 </head>
 <body>
@@ -46,7 +47,7 @@
             </button>
         </div>
         <div class="control-right">
-            <button class="control-btn control-btn-sync" id="btnControlSync" onclick="openSyncModal()">
+            <button class="control-btn control-btn-sync" id="btnControlSync" onclick="openSyncModal()" title="Sync media from your phone">
                 <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
                 <span>Sync Phone</span>
             </button>
@@ -58,7 +59,7 @@
                 <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>
                 <span>Setup Guide</span>
             </button>
-            <button class="control-btn control-btn-secondary" id="btnControlKey" onclick="openKeyModal('general')">
+            <button class="control-btn control-btn-secondary" id="btnControlKey" onclick="openKeyModal('general')" title="Backup key, settings, import, Recycle Bin and updates">
                 <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
                 <span>Key &amp; Settings</span>
                 <span class="key-status-indicator" id="keyIndicator"></span>
@@ -83,7 +84,8 @@
         </button>
     </div>
 
-    <!-- SIDEBAR -->
+    <!-- SIDEBAR (a slide-in drawer on narrow windows) -->
+    <div class="sidebar-scrim" onclick="toggleSidebarDrawer(false)"></div>
     <aside>
         <div class="sidebar-header">
             <h1>
@@ -151,11 +153,14 @@
         <div id="galleryViewContainer" style="display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; width: 100%; height: 100%; position: relative;">
             <!-- Header -->
             <div class="main-header">
+            <button type="button" class="sidebar-toggle" onclick="toggleSidebarDrawer()" title="Show chats" aria-label="Show chats">
+                <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+            </button>
             <div class="chat-info">
                 <h2 id="currentChatName">No Chat Selected</h2>
                 <p id="currentChatMeta">Select a chat from the sidebar</p>
             </div>
-            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: nowrap;">
+            <div class="main-header-actions" style="display: flex; gap: 8px; align-items: center; flex-wrap: nowrap;">
                 <!-- Filter Panel Toggle -->
                 <button class="action-btn" id="btnToggleFilters" style="display:none; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: var(--text-primary); padding: 7px 12px; font-size: 12px;" onclick="toggleFilterPanelManual()" title="Toggle Filter Panel">
                     <svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>
@@ -839,7 +844,7 @@
             </a>
             <button class="action-btn action-btn-secondary" id="lbOpenFolder" style="display:none;" onclick="revealInExplorer(filteredMedia[activeIndex].rel_path)">
                 <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.5;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                Show in File Explorer
+                <span data-file-manager-label="Show in {fm}">Show in File Explorer</span>
             </button>
             <button class="action-btn action-btn-secondary" id="lbCloseSecondary">Close</button>
             <button class="action-btn action-btn-secondary" id="lbVideoHelp" style="display: none; margin-left: auto; background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #f87171;">
@@ -1075,6 +1080,14 @@
                                 </div>
                             </div>
                             <div id="importDbBadges" style="display:flex; gap:8px; flex-wrap:wrap; font-size:11px;"></div>
+                            <div id="importDeletedNotice" class="import-notice" style="display:none;"></div>
+                            <div id="importKeyNotice" class="import-notice import-notice-warn" style="display:none;">
+                                <div id="importKeyNoticeText"></div>
+                                <label class="import-key-choice" for="importReplaceKey">
+                                    <input type="checkbox" id="importReplaceKey">
+                                    <span>Replace my current backup key with the one from this folder</span>
+                                </label>
+                            </div>
 
                             <!-- Copy or move the older media -->
                             <div class="import-mode-group" role="radiogroup" aria-label="Import method">
@@ -1744,7 +1757,7 @@
     <div class="modal-overlay" id="modalDuplicateReview" onclick="if (event.target === this) handleDuplicateReviewBack()">
         <div class="modal-card modal-card-xl" style="display: flex; flex-direction: column;">
             <!-- Modal Header -->
-            <div class="modal-header" style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;">
+            <div class="modal-header" style="display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px;">
                 <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
                     <button type="button" class="modal-back-btn" id="btnDupModalBack" onclick="handleDuplicateReviewBack()" title="Back">
                         <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
@@ -1836,6 +1849,9 @@
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <button type="button" class="action-btn action-btn-secondary" id="btnRestoreSelected" style="font-size: 12px; padding: 6px 12px; display: none;" onclick="executeRestoreSelected()">
                             Restore Selected (<span id="restoreSelectedCount">0</span>)
+                        </button>
+                        <button type="button" class="action-btn recycle-btn-danger" id="btnDeleteSelected" style="font-size: 12px; padding: 6px 12px; display: none;" onclick="executeDeleteSelectedRecycled()">
+                            Delete Selected (<span id="deleteSelectedCount">0</span>)
                         </button>
                         <button type="button" class="action-btn action-btn-primary" id="btnRestoreAll" style="font-size: 12px; padding: 6px 14px;" onclick="executeRestoreAll()">
                             Restore All to Chats
@@ -2218,7 +2234,7 @@
         <button type="button" class="context-menu-item" id="ctxActionReveal" onclick="handleCtxReveal()">
             <div class="ctx-item-left">
                 <svg class="ctx-icon" viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>
-                <span>Reveal in File Explorer</span>
+                <span data-file-manager-label="Show in {fm}">Show in File Explorer</span>
             </div>
         </button>
         <div class="context-menu-divider"></div>
@@ -2262,6 +2278,21 @@
                 <span>Clear All Selections</span>
             </div>
             <span class="ctx-shortcut">Esc</span>
+        </button>
+        <div class="context-menu-divider" id="ctxDeleteDivider"></div>
+        <button type="button" class="context-menu-item" id="ctxActionRecycle" onclick="handleCtxRecycle()">
+            <div class="ctx-item-left">
+                <svg class="ctx-icon" viewBox="0 0 24 24"><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z"/></svg>
+                <span id="ctxActionRecycleLabel">Move to Recycle Bin</span>
+            </div>
+            <span class="ctx-shortcut">Del</span>
+        </button>
+        <button type="button" class="context-menu-item danger" id="ctxActionDelete" onclick="handleCtxDeletePermanently()">
+            <div class="ctx-item-left">
+                <svg class="ctx-icon" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zm2.46-7.12l1.41-1.41L12 12.59l2.12-2.12 1.41 1.41L13.41 14l2.12 2.12-1.41 1.41L12 15.41l-2.12 2.12-1.41-1.41L10.59 14l-2.13-2.12zM15.5 4l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                <span id="ctxActionDeleteLabel">Delete Permanently</span>
+            </div>
+            <span class="ctx-shortcut">Shift+Del</span>
         </button>
     </div>
 

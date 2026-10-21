@@ -20,6 +20,12 @@ let _activeChatRequestId = 0;
 let _activeChatAbortCtrl = null;
 
 // Select a Chat
+// On narrow windows the chat list is a drawer over the gallery
+function toggleSidebarDrawer(open) {
+    const want = typeof open === 'boolean' ? open : !document.body.classList.contains('sidebar-open');
+    document.body.classList.toggle('sidebar-open', want);
+}
+
 async function selectChat(chat, pushHistory = true) {
     _activeChatRequestId++;
     const thisRequestId = _activeChatRequestId;
@@ -60,7 +66,10 @@ async function selectChat(chat, pushHistory = true) {
 
     // Update main header
     const displayName = chatNameForDisplay(chat.name) || formatJIDName(chat.jid);
-    document.getElementById('currentChatName').innerText = displayName;
+    const nameEl = document.getElementById('currentChatName');
+    nameEl.innerText = displayName;
+    nameEl.title = displayName;  // long names are shortened to two lines
+    toggleSidebarDrawer(false);
     const subtitle = (chat.jid === '_unmatched') 
         ? `${chat.file_count} files • Unindexed WhatsApp Media` 
         : `${chat.file_count} files • Total storage: ${formatBytes(chat.total_size)}`;

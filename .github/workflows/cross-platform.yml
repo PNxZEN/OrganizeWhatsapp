@@ -1,0 +1,248 @@
+name: Cross-platform tests
+
+# Runs the full test suite on Windows, macOS and Linux, then installs the release package the way a
+# user would (install.sh / start_gallery.sh on macOS and Linux, the portable ZIP on Windows) and
+# drives the running app in a real browser (tests/e2e/release_smoke.cjs).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      windows_portable:
+        description: "Also build and test the Windows portable ZIP (slower: downloads Python, ADB, ffmpeg)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: cross-platform-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"
+  PLAYWRIGHT_VERSION: "1.49.1"
+  CI_VERSION: "9.9.9"
+
+jobs:
+  # ------------------------------------------------------------------ unit + frontend tests
+  tests:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Python tests
+        run: python -m unittest discover tests -v
+
+      - name: Frontend tests
+        working-directory: tests/js
+        run: node run_all_tests.js
+
+  # ------------------------------------------------------------------ macOS / Linux release package
+  unix-release:
+    name: Release package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Show the Python a user would get
+        run: |
+          command -v python3 && python3 --version
+
+      - name: Build the archive exactly like the release workflow
+        run: |
+          VERSION="$CI_VERSION"
+          STAGING="build/unix-staging/WhatsAppMediaOrganizer-v${VERSION}"
+          mkdir -p "$STAGING"
+          chmod +x start_gallery.sh install.sh
+          cp core/version.py /tmp/version.py.bak
+          sed -i.bak "s/^__version__ = .*/__version__ = \"${VERSION}\"/" core/version.py
+          cp -r core gallery_assets wa_media_organizer.py gallery.html requirements.txt README.md "$STAGING/"
+          cp start_gallery.sh install.sh "$STAGING/"
+          cp /tmp/version.py.bak core/version.py
+          find "$STAGING" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+          find "$STAGING" -name "*.bak" -delete
+          printf '{\n  "hex_key": "",\n  "mode": "copy",\n  "port": 8000,\n  "output_dir": "./output",\n  "onboarding_completed": false\n}\n' > "$STAGING/config.json"
+          mkdir -p dist
+          tar -czf "dist/app.tar.gz" -C build/unix-staging "WhatsAppMediaOrganizer-v${VERSION}"
+
+      - name: Extract and install like a user
+        run: |
+          mkdir -p "$RUNNER_TEMP/user"
+          tar -xzf dist/app.tar.gz -C "$RUNNER_TEMP/user"
+          APP="$RUNNER_TEMP/user/WhatsAppMediaOrganizer-v$CI_VERSION"
+          echo "APP=$APP" >> "$GITHUB_ENV"
+          test -x "$APP/install.sh" && test -x "$APP/start_gallery.sh"
+          cd "$APP" && ./install.sh
+
+      - name: Prepare a test library
+        run: |
+          "$APP/venv/bin/python" tests/e2e/make_fixture.py "$APP/output" "$RUNNER_TEMP/older"
+          python3 -c "import json,sys; json.dump({'onboarding_completed': True, 'hex_key': 'a'*64}, open(sys.argv[1], 'w'))" "$APP/config.json"
+
+      - name: Start the app with start_gallery.sh
+        run: |
+          cd "$APP"
+          nohup ./start_gallery.sh > "$RUNNER_TEMP/server.log" 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8000/api/health; then echo; break; fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8000/api/health | grep -q '"app": "wa-media-organizer"'
+
+      - name: A second launch reuses the running app (and never runs pip)
+        run: |
+          cd "$APP"
+          ./start_gallery.sh > "$RUNNER_TEMP/second.log" 2>&1
+          cat "$RUNNER_TEMP/second.log"
+          grep -q "already running" "$RUNNER_TEMP/second.log"
+          if grep -q "Installing" "$RUNNER_TEMP/second.log"; then echo "pip ran on a normal launch"; exit 1; fi
+          test "$(ps -eo args | grep -c '[w]a_media_organizer.py --serve')" = "1"
+
+      - name: Install Playwright
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+          npm init -y > /dev/null
+          npm install --no-save "playwright@$PLAYWRIGHT_VERSION"
+          if [ "$RUNNER_OS" = "Linux" ]; then npx playwright install --with-deps chromium; else npx playwright install chromium; fi
+
+      - name: Browser smoke test
+        env:
+          BASE_URL: http://127.0.0.1:8000
+          OLDER_DIR: ${{ runner.temp }}/older
+          EXPECT_VERSION: ${{ env.CI_VERSION }}
+          SHOTS_DIR: ${{ runner.temp }}/shots
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/pw/node_modules/playwright
+        run: |
+          mkdir -p "$SHOTS_DIR"
+          OUTPUT_DIR="$APP/output" node tests/e2e/release_smoke.cjs
+
+      - name: Stop the app
+        if: always()
+        run: curl -s -X POST http://127.0.0.1:8000/api/shutdown || true
+
+      - name: Upload screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/shots
+            ${{ runner.temp }}/server.log
+            ${{ runner.temp }}/second.log
+          if-no-files-found: ignore
+
+  # ------------------------------------------------------------------ Windows portable ZIP
+  windows-portable:
+    name: Release package (Windows portable)
+    if: github.event_name != 'workflow_dispatch' || inputs.windows_portable
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build the portable ZIP like the release workflow
+        run: python scripts/build_windows_portable.py --version $env:CI_VERSION
+
+      - name: Extract it like a user
+        run: |
+          $zip = Get-ChildItem dist -Filter "*-Windows-Portable.zip" | Select-Object -First 1
+          $dest = Join-Path $env:RUNNER_TEMP "user"
+          Expand-Archive $zip.FullName -DestinationPath $dest
+          $app = (Get-ChildItem $dest -Directory | Select-Object -First 1).FullName
+          if (-not (Test-Path (Join-Path $app "runtime\python.exe"))) { $app = $dest }
+          "APP=$app" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Get-ChildItem $app
+
+      - name: Prepare a test library
+        run: |
+          & "$env:APP\runtime\python.exe" tests\e2e\make_fixture.py "$env:APP\output" "$env:RUNNER_TEMP\older"
+          @{ onboarding_completed = $true; hex_key = ('a' * 64) } | ConvertTo-Json | Set-Content -Encoding utf8 "$env:APP\config.json"
+
+      - name: Start the bundled app
+        run: |
+          Start-Process -FilePath "$env:APP\runtime\python.exe" -ArgumentList "wa_media_organizer.py", "--serve", "--port", "8000" `
+            -WorkingDirectory $env:APP -RedirectStandardOutput "$env:RUNNER_TEMP\server.log" -RedirectStandardError "$env:RUNNER_TEMP\server.err.log"
+          for ($i = 0; $i -lt 60; $i++) {
+            try { $h = Invoke-RestMethod http://127.0.0.1:8000/api/health; if ($h.app -eq "wa-media-organizer") { $h; break } } catch { }
+            Start-Sleep -Seconds 1
+          }
+          if ($h.app -ne "wa-media-organizer") { throw "the app did not start" }
+
+      - name: Start-Gallery.bat reuses the running app
+        run: |
+          cmd /c "cd /d `"$env:APP`" && Start-Gallery.bat" | Out-Null
+          Start-Sleep -Seconds 3
+          $servers = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" | Where-Object { $_.CommandLine -match "wa_media_organizer.py" }
+          $servers | Select-Object ProcessId, CommandLine | Format-List
+          if (@($servers).Count -ne 1) { throw "expected one server, found $(@($servers).Count)" }
+
+      - name: Install Playwright
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\pw" | Out-Null
+          Set-Location "$env:RUNNER_TEMP\pw"
+          npm init -y | Out-Null
+          npm install --no-save "playwright@$env:PLAYWRIGHT_VERSION"
+          npx playwright install chromium
+
+      - name: Browser smoke test
+        env:
+          BASE_URL: http://127.0.0.1:8000
+          OLDER_DIR: ${{ runner.temp }}\older
+          EXPECT_VERSION: ${{ env.CI_VERSION }}
+          SHOTS_DIR: ${{ runner.temp }}\shots
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}\pw\node_modules\playwright
+        run: |
+          New-Item -ItemType Directory -Force $env:SHOTS_DIR | Out-Null
+          $env:OUTPUT_DIR = "$env:APP\output"
+          node tests\e2e\release_smoke.cjs
+
+      - name: Stop the app
+        if: always()
+        run: try { Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/shutdown } catch { }
+
+      - name: Upload screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-portable
+          path: |
+            ${{ runner.temp }}\shots
+            ${{ runner.temp }}\server.log
+            ${{ runner.temp }}\server.err.log
+          if-no-files-found: ignore

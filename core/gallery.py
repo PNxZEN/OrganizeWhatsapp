@@ -670,6 +670,72 @@ def list_recycled_items(output_dir):
         return []
 
 
+def _remove_from_gallery(out_path: Path, clean_paths_set):
+    """Removes media entries from gallery_data.js and media_index.csv; returns what was removed."""
+    # Update gallery_data.js
+    removed_entries = {}
+    removed_csv_rows = {}
+    with gallery_data_lock:
+        data_path = out_path / "gallery_data.js"
+        if data_path.is_file():
+            try:
+                with open(data_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                data = parse_gallery_data_js(content)
+                if data and "chats" in data:
+                    chats = data["chats"]
+                    for chat in chats:
+                        kept_media = []
+                        removed_size = 0
+                        for m in chat.get("media", []):
+                            m_rel = (m.get("rel_path") or "").replace("\\", "/").lstrip("/")
+                            if m_rel in clean_paths_set:
+                                removed_size += m.get("size_bytes") or 0
+                                # Kept in the manifest so a restore can put the item back as it was
+                                removed_entries[m_rel] = {"gallery_entry": m, "chat_jid": chat.get("jid"),
+                                                          "chat_name": chat.get("name")}
+                            else:
+                                kept_media.append(m)
+                        chat["media"] = kept_media
+                        chat["file_count"] = len(kept_media)
+                        chat["total_size"] = max(0, (chat.get("total_size") or 0) - removed_size)
+
+                    sorted_chats = sorted(chats, key=lambda x: x["total_size"], reverse=True)
+                    new_js = f"const GALLERY_DATA = {json.dumps({'chats': sorted_chats})};"
+                    tmp_js = data_path.with_suffix(".tmp")
+                    with open(tmp_js, "w", encoding="utf-8") as f:
+                        f.write(new_js)
+                    os.replace(tmp_js, data_path)
+            except Exception as e:
+                sys.stderr.write(f"[Recycle] Warning: Failed to update gallery_data.js: {e}\n")
+
+        # Update media_index.csv
+        csv_path = out_path / "media_index.csv"
+        if csv_path.is_file():
+            try:
+                rows = []
+                fieldnames = []
+                with open(csv_path, "r", newline="", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    fieldnames = reader.fieldnames or []
+                    for r in reader:
+                        r_rel = (r.get("rel_path") or "").replace("\\", "/").lstrip("/")
+                        if r_rel not in clean_paths_set:
+                            rows.append(r)
+                        else:
+                            removed_csv_rows[r_rel] = {"fields": fieldnames, "row": r}
+                if fieldnames:
+                    tmp_csv = csv_path.with_suffix(".tmp")
+                    with open(tmp_csv, "w", newline="", encoding="utf-8") as f:
+                        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+                        writer.writeheader()
+                        writer.writerows(rows)
+                    os.replace(tmp_csv, csv_path)
+            except Exception as e:
+                sys.stderr.write(f"[Recycle] Warning: Failed to update media_index.csv: {e}\n")
+    return removed_entries, removed_csv_rows
+
+
 def recycle_media_items(output_dir, rel_paths):
     """
     Safely moves duplicate media files into .duplicates_recycle_bin/<rel_path>,
@@ -735,60 +801,22 @@ def recycle_media_items(output_dir, rel_paths):
     except Exception as e:
         sys.stderr.write(f"[Recycle] Warning: Failed to save manifest: {e}\n")
 
-    # Update gallery_data.js
-    with gallery_data_lock:
-        data_path = out_path / "gallery_data.js"
-        if data_path.is_file():
-            try:
-                with open(data_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                data = parse_gallery_data_js(content)
-                if data and "chats" in data:
-                    chats = data["chats"]
-                    for chat in chats:
-                        kept_media = []
-                        removed_size = 0
-                        for m in chat.get("media", []):
-                            m_rel = (m.get("rel_path") or "").replace("\\", "/").lstrip("/")
-                            if m_rel in clean_paths_set:
-                                removed_size += m.get("size_bytes") or 0
-                            else:
-                                kept_media.append(m)
-                        chat["media"] = kept_media
-                        chat["file_count"] = len(kept_media)
-                        chat["total_size"] = max(0, (chat.get("total_size") or 0) - removed_size)
+    removed_entries, removed_csv_rows = _remove_from_gallery(out_path, clean_paths_set)
 
-                    sorted_chats = sorted(chats, key=lambda x: x["total_size"], reverse=True)
-                    new_js = f"const GALLERY_DATA = {json.dumps({'chats': sorted_chats})};"
-                    tmp_js = data_path.with_suffix(".tmp")
-                    with open(tmp_js, "w", encoding="utf-8") as f:
-                        f.write(new_js)
-                    os.replace(tmp_js, data_path)
-            except Exception as e:
-                sys.stderr.write(f"[Recycle] Warning: Failed to update gallery_data.js: {e}\n")
-
-        # Update media_index.csv
-        csv_path = out_path / "media_index.csv"
-        if csv_path.is_file():
-            try:
-                rows = []
-                fieldnames = []
-                with open(csv_path, "r", newline="", encoding="utf-8") as f:
-                    reader = csv.DictReader(f)
-                    fieldnames = reader.fieldnames or []
-                    for r in reader:
-                        r_rel = (r.get("rel_path") or "").replace("\\", "/").lstrip("/")
-                        if r_rel not in clean_paths_set:
-                            rows.append(r)
-                if fieldnames:
-                    tmp_csv = csv_path.with_suffix(".tmp")
-                    with open(tmp_csv, "w", newline="", encoding="utf-8") as f:
-                        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-                        writer.writeheader()
-                        writer.writerows(rows)
-                    os.replace(tmp_csv, csv_path)
-            except Exception as e:
-                sys.stderr.write(f"[Recycle] Warning: Failed to update media_index.csv: {e}\n")
+    if removed_entries or removed_csv_rows:
+        for rel, extra in removed_entries.items():
+            if rel in manifest:
+                manifest[rel].update(extra)
+        for rel, csv_row in removed_csv_rows.items():
+            if rel in manifest:
+                manifest[rel]["csv_row"] = csv_row
+        try:
+            tmp_m = manifest_file.with_suffix(".tmp")
+            with open(tmp_m, "w", encoding="utf-8") as f:
+                json.dump(manifest, f, indent=2)
+            os.replace(tmp_m, manifest_file)
+        except Exception as e:
+            sys.stderr.write(f"[Recycle] Warning: Failed to save manifest: {e}\n")
 
     return {
         "status": "success",
@@ -796,6 +824,73 @@ def recycle_media_items(output_dir, rel_paths):
         "reclaimed_bytes": total_reclaimed,
         "moved": moved,
     }
+
+
+def _restored_entry(out_path: Path, rel: str, record: dict) -> dict:
+    entry = dict(record.get("gallery_entry") or {})
+    if not entry:  # recycled by an older version that did not keep the entry
+        import mimetypes
+
+        f = out_path / rel
+        st = f.stat()
+        entry = {
+            "filename": f.name,
+            "rel_path": rel,
+            "size_bytes": st.st_size,
+            "mime_type": mimetypes.guess_type(f.name)[0] or "application/octet-stream",
+            "received_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(st.st_mtime)),
+        }
+    entry["rel_path"] = rel
+    return entry
+
+
+def _reinsert_restored_media(out_path: Path, records: dict) -> None:
+    """Puts restored files back into gallery_data.js (and media_index.csv) where they came from."""
+    with gallery_data_lock:
+        data_path = out_path / "gallery_data.js"
+        data = {"chats": []}
+        if data_path.is_file():
+            parsed = parse_gallery_data_js(data_path.read_text(encoding="utf-8"))
+            if parsed and isinstance(parsed.get("chats"), list):
+                data = parsed
+        chats = data["chats"]
+        by_jid = {c.get("jid"): c for c in chats if c.get("jid")}
+        by_name = {c.get("name"): c for c in chats if c.get("name")}
+        present = {m.get("rel_path") for c in chats for m in c.get("media", [])}
+
+        for rel, record in records.items():
+            if rel in present or not (out_path / rel).is_file():
+                continue
+            folder = rel.split("/")[0] if "/" in rel else ""
+            chat = by_jid.get(record.get("chat_jid")) or by_name.get(record.get("chat_name"))
+            if chat is None:
+                chat = next((c for c in chats if any((m.get("rel_path") or "").startswith(folder + "/")
+                                                     for m in c.get("media", []))), None) if folder else None
+            if chat is None:
+                name = record.get("chat_name") or folder or "_unmatched"
+                chat = {"jid": record.get("chat_jid") or f"{name.lower().replace(' ', '_')}@restored",
+                        "name": name, "media": [], "file_count": 0, "total_size": 0}
+                chats.append(chat)
+                by_jid[chat["jid"]] = chat
+                by_name[chat["name"]] = chat
+            chat.setdefault("media", []).append(_restored_entry(out_path, rel, record))
+            present.add(rel)
+
+        for chat in chats:
+            media = chat.get("media", [])
+            chat["file_count"] = len(media)
+            chat["total_size"] = sum(m.get("size_bytes") or 0 for m in media)
+        sorted_chats = sorted(chats, key=lambda x: x.get("total_size", 0), reverse=True)
+        tmp_js = data_path.with_suffix(".tmp")
+        tmp_js.write_text(f"const GALLERY_DATA = {json.dumps({'chats': sorted_chats})};", encoding="utf-8")
+        os.replace(tmp_js, data_path)
+
+        csv_path = out_path / "media_index.csv"
+        rows = [r["csv_row"] for r in records.values() if r.get("csv_row")]
+        if rows and csv_path.is_file():
+            with open(csv_path, "a", newline="", encoding="utf-8") as f:
+                for item in rows:
+                    csv.DictWriter(f, fieldnames=item["fields"], extrasaction="ignore").writerow(item["row"])
 
 
 def restore_media_items(output_dir, rel_paths=None, restore_all=False):
@@ -838,8 +933,15 @@ def restore_media_items(output_dir, rel_paths=None, restore_all=False):
             except Exception as e:
                 sys.stderr.write(f"[Restore] Warning: Failed to restore {clean_rel}: {e}\n")
 
+    restored_records = {k.replace("\\", "/").lstrip("/"): manifest.get(k) or {} for k in keys_to_delete}
     for k in keys_to_delete:
         manifest.pop(k, None)
+
+    if restored_records:
+        try:
+            _reinsert_restored_media(out_path, restored_records)
+        except Exception as e:
+            sys.stderr.write(f"[Restore] Warning: Failed to update gallery_data.js: {e}\n")
 
     try:
         tmp_m = manifest_file.with_suffix(".tmp")
@@ -856,12 +958,141 @@ def restore_media_items(output_dir, rel_paths=None, restore_all=False):
     }
 
 
-def empty_recycle_bin(output_dir):
+RECYCLE_BIN_DIRNAME = ".duplicates_recycle_bin"
+# Written by an unreleased build; removed on sight because it listed deleted file names
+_LEGACY_DELETED_LOG = ".deleted_media.json"
+
+
+def deleted_media_index(output_dir) -> dict:
     """
-    Permanently deletes all files quarantined inside .duplicates_recycle_bin and resets manifest.json.
+    rel_path -> size of media waiting in the Recycle Bin. An import must not bring these back.
+    Nothing is remembered about media deleted for good: no names, sizes or fingerprints.
     """
     out_path = Path(output_dir).resolve()
-    recycle_dir = out_path / ".duplicates_recycle_bin"
+    index = {}
+    recycle_dir = out_path / RECYCLE_BIN_DIRNAME
+    if recycle_dir.is_dir():
+        for f in recycle_dir.rglob("*"):
+            try:
+                if f.is_file() and f.name != "manifest.json":
+                    index[f.relative_to(recycle_dir).as_posix()] = f.stat().st_size
+            except (OSError, ValueError):
+                continue
+    return index
+
+
+def _derived_files(out_path: Path, file_rel: str, entry: dict = None):
+    """Thumbnails and video previews the app generated for a media file (they show its content)."""
+    rel = Path(file_rel)
+    candidates = [
+        out_path / ".thumbnails" / f"{file_rel}.thumb.jpg",
+        out_path / ".thumbnails" / rel.parent / f"{rel.name}.jpg",
+        out_path / ".thumbnails" / rel.parent / f"{rel.name}.thumb.jpg",
+        out_path / ".cache" / rel.parent / f"{rel.name}_preview.mp4",
+    ]
+    for key in ("thumb_path", "preview_path"):
+        derived = (entry or {}).get(key)
+        if derived and (derived.startswith(".thumbnails/") or derived.startswith(".cache/")):
+            candidates.append(out_path / derived)
+    return candidates
+
+
+def _remove_empty_parents(path: Path, stop: Path) -> None:
+    try:
+        parent = path.parent
+        while parent != stop and stop in parent.parents and not any(parent.iterdir()):
+            parent.rmdir()
+            parent = parent.parent
+    except OSError:
+        pass
+
+
+def _erase_traces(out_path: Path, items) -> None:
+    """
+    Removes everything that still reveals a deleted media file: generated thumbnails and previews,
+    its rows in the duplicate hash index and in the sync manifest. items: (file_rel, entry) pairs,
+    where file_rel is where the file lived (inside the output folder or the Recycle Bin).
+    """
+    import sqlite3
+
+    path_keys = set()
+    for file_rel, entry in items:
+        for derived in _derived_files(out_path, file_rel, entry):
+            try:
+                if derived.is_file() and is_subpath(derived.resolve(), out_path):
+                    derived.unlink()
+                    _remove_empty_parents(derived, out_path)
+            except OSError:
+                pass
+        abs_path = str((out_path / file_rel).resolve())
+        path_keys.update({file_rel, file_rel.replace("/", "\\"), abs_path,
+                          abs_path.replace("\\", "/"), abs_path.replace("/", "\\")})
+
+    if not path_keys:
+        return
+    keys = list(path_keys)
+    marks = ",".join("?" * len(keys))
+    for db_name, sql in (
+        (".hashes_cache.sqlite3", f"DELETE FROM file_hashes WHERE filepath IN ({marks})"),
+        (".sync_state.sqlite3", f"DELETE FROM sync_manifest WHERE target_path IN ({marks})"),
+    ):
+        db = out_path / db_name
+        if not db.is_file():
+            continue
+        try:
+            conn = sqlite3.connect(str(db), timeout=10.0)
+            try:
+                # secure_delete overwrites the freed space, so the name is not left in the file
+                conn.execute("PRAGMA secure_delete = ON")
+                conn.execute(sql, keys)
+                conn.commit()
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            finally:
+                conn.close()
+        except sqlite3.Error as e:
+            sys.stderr.write(f"[Delete] Warning: could not clean {db_name}: {e}\n")
+
+
+def delete_media_permanently(output_dir, rel_paths):
+    """
+    Deletes media from the gallery for good, skipping the Recycle Bin: the file, its gallery and
+    index entries, and every thumbnail, preview and record that could reveal it.
+    """
+    out_path = Path(output_dir).resolve()
+    deleted, freed = [], 0
+    clean_set = set()
+    for rel in rel_paths or []:
+        clean_rel = str(rel).replace("\\", "/").lstrip("/")
+        target = (out_path / clean_rel).resolve()
+        if not is_subpath(target, out_path) or clean_rel.startswith(RECYCLE_BIN_DIRNAME + "/"):
+            continue
+        if not target.is_file():
+            continue
+        try:
+            size = target.stat().st_size
+            target.unlink()
+            deleted.append(clean_rel)
+            clean_set.add(clean_rel)
+            freed += size
+        except OSError as e:
+            sys.stderr.write(f"[Delete] Warning: Failed to delete {clean_rel}: {e}\n")
+    if not deleted:
+        return {"status": "success", "deleted_count": 0, "freed_bytes": 0, "deleted": []}
+    removed_entries, _ = _remove_from_gallery(out_path, clean_set)
+    _erase_traces(out_path, [(rel, (removed_entries.get(rel) or {}).get("gallery_entry")) for rel in deleted])
+    return {"status": "success", "deleted_count": len(deleted), "freed_bytes": freed, "deleted": deleted}
+
+
+def purge_recycled_items(output_dir, rel_paths=None, purge_all=False):
+    """Deletes items from the Recycle Bin for good (all of them with purge_all) and erases their traces."""
+    out_path = Path(output_dir).resolve()
+    recycle_dir = out_path / RECYCLE_BIN_DIRNAME
+    legacy = out_path / _LEGACY_DELETED_LOG
+    if legacy.is_file():
+        try:
+            legacy.unlink()
+        except OSError:
+            pass
     if not recycle_dir.is_dir():
         return {"status": "success", "success": True, "deleted_count": 0, "freed_bytes": 0}
 
@@ -869,38 +1100,49 @@ def empty_recycle_bin(output_dir):
     manifest = {}
     if manifest_file.is_file():
         try:
-            with open(manifest_file, "r", encoding="utf-8") as f:
-                manifest = json.load(f)
-        except Exception:
+            manifest = json.loads(manifest_file.read_text(encoding="utf-8")) or {}
+        except (OSError, ValueError):
             manifest = {}
 
-    deleted_count = len(manifest)
-    freed_bytes = sum(int(it.get("size_bytes", 0)) for it in manifest.values())
+    if purge_all:
+        wanted = set(deleted_media_index(out_path)) | set(manifest)
+    else:
+        wanted = {str(r).replace("\\", "/").lstrip("/") for r in (rel_paths or [])}
 
-    # Safely purge all contents inside recycle_dir
-    for item in recycle_dir.iterdir():
-        try:
-            if item.is_dir():
-                shutil.rmtree(item, ignore_errors=True)
-            elif item.is_file():
-                item.unlink(missing_ok=True)
-        except Exception as e:
-            sys.stderr.write(f"[RecycleBin] Warning: Failed to delete {item}: {e}\n")
+    deleted_count, freed = 0, 0
+    traces = []
+    for rel in wanted:
+        f = (recycle_dir / rel).resolve()
+        if not is_subpath(f, recycle_dir.resolve()):
+            continue
+        record = manifest.pop(rel, None) or {}
+        if f.is_file():
+            try:
+                freed += f.stat().st_size
+                f.unlink()
+                deleted_count += 1
+                _remove_empty_parents(f, recycle_dir)
+            except OSError as e:
+                sys.stderr.write(f"[RecycleBin] Warning: Failed to delete {rel}: {e}\n")
+                manifest[rel] = record
+                continue
+        # The file was seen at its original place and inside the bin: erase both
+        traces.append((f"{RECYCLE_BIN_DIRNAME}/{rel}", None))
+        traces.append((rel, record.get("gallery_entry")))
+    _erase_traces(out_path, traces)
 
-    # Re-initialize an empty manifest.json
     try:
-        recycle_dir.mkdir(parents=True, exist_ok=True)
-        with open(recycle_dir / "manifest.json", "w", encoding="utf-8") as f:
-            json.dump({}, f, indent=2)
-    except Exception:
+        tmp = manifest_file.with_suffix(".tmp")
+        tmp.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        os.replace(tmp, manifest_file)
+    except OSError:
         pass
+    return {"status": "success", "success": True, "deleted_count": deleted_count, "freed_bytes": freed}
 
-    return {
-        "status": "success",
-        "success": True,
-        "deleted_count": deleted_count,
-        "freed_bytes": freed_bytes,
-    }
+
+def empty_recycle_bin(output_dir):
+    """Permanently deletes everything in the Recycle Bin, with no record of what it was."""
+    return purge_recycled_items(output_dir, purge_all=True)
 
 
 

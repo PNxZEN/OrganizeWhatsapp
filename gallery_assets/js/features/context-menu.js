@@ -5,6 +5,14 @@
 let contextTargetItem = null;
 let contextTargetIndex = -1;
 
+// Media entries do not carry their chat: look it up (the open chat first)
+function chatNameOfMedia(item) {
+    if (item.chat_name) return item.chat_name;
+    const owns = (chat) => chat && Array.isArray(chat.media) && chat.media.some(m => m.rel_path === item.rel_path);
+    const chat = owns(activeChat) ? activeChat : getChatsArray().find(owns);
+    return chat ? (chatNameForDisplay(chat.name) || chat.name) : 'Unknown chat';
+}
+
 function getMediaItemByRelPath(relPath) {
     if (!relPath) return null;
     if (contextTargetItem && contextTargetItem.rel_path === relPath) {
@@ -92,6 +100,14 @@ function openMediaContextMenu(e, item, originalIndex) {
     if (copyHashBtn) {
         copyHashBtn.style.display = item.md5 ? 'flex' : 'none';
     }
+    const recycleLabel = document.getElementById('ctxActionRecycleLabel');
+    const deleteLabel = document.getElementById('ctxActionDeleteLabel');
+    if (recycleLabel) recycleLabel.innerText = count > 1 ? `Move ${count} to Recycle Bin` : 'Move to Recycle Bin';
+    if (deleteLabel) deleteLabel.innerText = count > 1 ? `Delete ${count} Permanently` : 'Delete Permanently';
+    ['ctxDeleteDivider', 'ctxActionRecycle', 'ctxActionDelete'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = isHttpServer ? '' : 'none';
+    });
 
     menu.style.display = 'block';
     menu.setAttribute('aria-hidden', 'false');
@@ -142,6 +158,87 @@ function handleCtxReveal() {
     if (contextTargetItem && contextTargetItem.rel_path) {
         revealInExplorer(contextTargetItem.rel_path);
     }
+}
+
+// ---------------------------------------------------------------- removing media from the gallery
+
+function selectedOrTargetPaths() {
+    if (Array.isArray(selectedFiles) && selectedFiles.length > 0) return [...selectedFiles];
+    return contextTargetItem && contextTargetItem.rel_path ? [contextTargetItem.rel_path] : [];
+}
+
+// Drops removed media from the open chat without reloading it
+function removeMediaFromView(relPaths) {
+    const gone = new Set(relPaths);
+    if (activeChat && Array.isArray(activeChat.media)) {
+        let freed = 0;
+        activeChat.media = activeChat.media.filter(m => {
+            if (gone.has(m.rel_path)) { freed += (m.size_bytes || 0); return false; }
+            return true;
+        });
+        activeChat.file_count = activeChat.media.length;
+        activeChat.total_size = Math.max(0, (activeChat.total_size || 0) - freed);
+        activeChat._dupCache = null;
+        const metaEl = document.getElementById('currentChatMeta');
+        if (metaEl) metaEl.innerText = `${activeChat.file_count} files • Total storage: ${formatBytes(activeChat.total_size)}`;
+    }
+    resetSelectionUI();
+    renderSidebar();
+    filterAndRenderMedia({ preserveScroll: true, keepItemsCount: true });
+}
+
+async function recycleMediaFromGallery(relPaths) {
+    if (!isHttpServer || relPaths.length === 0) return;
+    try {
+        const resp = await fetch('/api/duplicates/recycle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rel_paths: relPaths })
+        });
+        const res = await resp.json();
+        if (!resp.ok || res.status !== 'success') {
+            showToast(res.message || 'Could not move to the Recycle Bin.', 'error');
+            return;
+        }
+        const moved = (res.moved || []).map(m => m.rel_path);
+        removeMediaFromView(moved);
+        updateRecycleBinPill();
+        showToast(`Moved ${moved.length} item(s) to the Recycle Bin.`, 'success', 'Undo',
+            () => restoreRecycledItems({ rel_paths: moved }, 'Putting them back...'));
+    } catch (e) {
+        showToast(`Recycle error: ${e.message}`, 'error');
+    }
+}
+
+async function deleteMediaFromGallery(relPaths) {
+    if (!isHttpServer || relPaths.length === 0) return;
+    if (!confirm(permanentDeleteWarning(relPaths.length))) return;
+    try {
+        const resp = await fetch('/api/media/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rel_paths: relPaths })
+        });
+        const res = await resp.json();
+        if (!resp.ok || res.status !== 'success') {
+            showToast(res.message || 'Delete failed.', 'error');
+            return;
+        }
+        removeMediaFromView(res.deleted || []);
+        showToast(`Permanently deleted ${res.deleted_count} file(s), freed ${formatBytes(res.freed_bytes || 0)}.`, 'success');
+    } catch (e) {
+        showToast(`Delete error: ${e.message}`, 'error');
+    }
+}
+
+function handleCtxRecycle() {
+    closeMediaContextMenu();
+    recycleMediaFromGallery(selectedOrTargetPaths());
+}
+
+function handleCtxDeletePermanently() {
+    closeMediaContextMenu();
+    deleteMediaFromGallery(selectedOrTargetPaths());
 }
 
 function handleCtxProperties() {
@@ -301,7 +398,7 @@ function openMediaPropertiesModal() {
                         </div>
                         <div class="prop-card">
                             <span class="prop-label">Chat Source</span>
-                            <div class="prop-value" title="${escapeHtml(item.chat_jid || '')}">${escapeHtml(item.chat_name || 'Unknown Chat')}</div>
+                            <div class="prop-value" title="${escapeHtml(item.chat_jid || '')}">${escapeHtml(chatNameOfMedia(item))}</div>
                         </div>
                         <div class="prop-card">
                             <span class="prop-label">Sender</span>
@@ -334,7 +431,7 @@ function openMediaPropertiesModal() {
             footerLeft.innerHTML = `
                         <button type="button" class="action-btn action-btn-secondary" onclick="revealInExplorer('${escapeJsAttr(item.rel_path)}')" style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
                             <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>
-                            <span>Reveal in Explorer</span>
+                            <span>Show in ${fileManagerName()}</span>
                         </button>
                     `;
         }
@@ -386,7 +483,7 @@ function openMediaPropertiesModal() {
                             </div>
                             <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
                                 <strong style="color:#4ade80;">${formatBytes(it.size_bytes)}</strong>
-                                <button type="button" onclick="revealInExplorer('${escapeJsAttr(it.rel_path)}')" title="Reveal in Explorer" style="background:none; border:none; color:var(--text-muted); cursor:pointer; padding:2px;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                                <button type="button" onclick="revealInExplorer('${escapeJsAttr(it.rel_path)}')" title="Show in ${fileManagerName()}" style="background:none; border:none; color:var(--text-muted); cursor:pointer; padding:2px;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
                                     <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:currentColor;"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>
                                 </button>
                                 <button type="button" onclick="removeSelectedItemFromProperties('${escapeJsAttr(it.rel_path)}')" title="Remove from selection" style="background:none; border:none; color:#ef4444; cursor:pointer; padding:2px;">
@@ -504,4 +601,8 @@ document.addEventListener('click', (e) => {
     }
 });
 window.addEventListener('resize', closeMediaContextMenu);
-window.addEventListener('scroll', closeMediaContextMenu, true);
+// Close when the user scrolls, not on every scroll event: the app itself scrolls (restoring the
+// position after a refresh, loading more cards), which used to close the menu as soon as it opened.
+['wheel', 'touchmove'].forEach(evt => window.addEventListener(evt, (e) => {
+    if (!e.target.closest || !e.target.closest('#mediaContextMenu')) closeMediaContextMenu();
+}, { passive: true, capture: true }));

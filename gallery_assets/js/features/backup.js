@@ -90,7 +90,7 @@ async function handleBackupSelected() {
     showToast(`Creating ZIP for ${selectedFiles.length} selected files...`);
 
     try {
-        const resp = await fetch('/api/backup-files', {
+        const resp = await trackedFetch('zip-backup', '/api/backup-files', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ files: selectedFiles }),
@@ -156,7 +156,7 @@ async function handleBackupChat() {
     showToast(`Creating ZIP for ${chatName}... Please wait.`);
 
     try {
-        const resp = await fetch('/api/backup-chat', {
+        const resp = await trackedFetch('zip-backup', '/api/backup-chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chat_name: chatName }),

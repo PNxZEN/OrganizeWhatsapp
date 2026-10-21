@@ -98,6 +98,20 @@
     color: var(--accent);
 }
 
+.context-menu-item.danger,
+.context-menu-item.danger .ctx-icon {
+    color: #fca5a5;
+}
+
+.context-menu-item.danger:hover {
+    background: rgba(239, 68, 68, 0.18);
+    color: #fecaca;
+}
+
+.context-menu-item.danger:hover .ctx-icon {
+    color: #f87171;
+}
+
 .context-menu-item .ctx-shortcut {
     font-size: 10px;
     color: var(--text-muted);

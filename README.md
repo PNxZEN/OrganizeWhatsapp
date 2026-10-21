@@ -267,9 +267,11 @@ OrganizeWhatsapp/
 │   ├── decrypt.py                 # WhatsApp AES-256-GCM database decryptor
 │   ├── device_inventory.py        # Fast device storage & account discoverer
 │   ├── import_job.py              # Background importer for historical/external media
+│   ├── instance.py                # Single-instance lock & active session focus
 │   ├── migrator.py                # Media folder structure migrator & index builder
 │   ├── organizer.py               # Single-pass media copier & duplicate hasher
 │   ├── pipeline.py                # Multi-stage backup & sync execution pipeline
+│   ├── reveal.py                  # OS-native file reveal (Explorer / Finder / Files)
 │   ├── server.py                  # Multi-threaded local HTTP server & REST APIs
 │   ├── thumbnail.py               # On-demand image downscaling & video frame extraction
 │   ├── update_helper.py           # Atomic update installer & background process restarter
@@ -279,7 +281,7 @@ OrganizeWhatsapp/
 │       └── tutorial/              # Onboarding guide step images (WebP)
 ├── gallery.html                   # Gallery page shell (markup + module includes)
 ├── gallery_assets/                # Gallery frontend assets (zero external CDN dependencies)
-│   ├── css/                       # Modular stylesheets (base, gallery, update, fonts...)
+│   ├── css/                       # Modular stylesheets (base, gallery, update, responsive...)
 │   ├── fonts/                     # Self-hosted offline Inter font files (WOFF2)
 │   └── js/
 │       ├── core/                  # State, formatting, escaping, modal stack, navigation
@@ -295,8 +297,9 @@ OrganizeWhatsapp/
 │   └── build_windows_portable.py  # Builds the Windows Portable ZIP release
 ├── .github/
 │   └── workflows/
-│       └── release.yml            # GitHub Actions: builds & publishes releases on git tag
-├── tests/                         # Automated test suite (246 unit & integration tests + 6 JS test suites)
+│       ├── release.yml            # GitHub Actions: builds & publishes releases on git tag
+│       └── cross-platform.yml     # GitHub Actions: multi-OS CI testing matrix
+├── tests/                         # Automated test suite (230 unit & integration tests + 8 JS test suites)
 ├── output/                        # Organized media destination (gitignored)
 └── Databases/                     # Encrypted & decrypted databases (gitignored)
 ```
@@ -327,7 +330,7 @@ Copy `config.json.example` to `config.json` to customize settings. The app creat
 | `hex_key` | `""` | Your WhatsApp 64-digit hex encryption key. Set by the app UI; do not share this. |
 | `mode` | `"copy"` | Media transfer mode: `copy` (keep original on phone) or `move`. |
 | `port` | `8000` | Local HTTP server port. Change if 8000 is in use. |
-| `idle_timeout` | `45` | Minutes before auto-shutdown after all browser tabs close. Set `0` to disable. |
+| `idle_timeout` | `45` | Closing the last browser tab closes the app a few seconds later. If the browser disappears without closing its tabs (crash, sleep), the app closes after this many minutes without any open tab. Running imports, ZIP backups, phone cleanups and restores always finish first; a phone sync is paused and resumes next time. Set `0` to keep the app running until you press Exit. |
 | `output_dir` | `"./output"` | Where organized media and thumbnails are stored. Can be an external drive path. |
 | `media_dir` | `"./output"` | Source directory the gallery reads from. Normally matches `output_dir`. |
 | `db_dir` | `"./Databases"` | Where WhatsApp database files are pulled and decrypted. |
@@ -355,6 +358,9 @@ Copies installed with Git (a `.git` folder) are not updated in-app: use `git pul
 - **Offline by Default**: The app makes no outgoing network calls on its own. Decryption, thumbnail rendering, duplicate hashing, and even the interface font are 100% local (Inter is bundled; nothing is loaded from Google Fonts or any CDN). The only exception is the update check described below, and it happens only when you ask for it.
 - **Updates Are Opt-In**: Settings > About & Updates shows the installed version. The app contacts GitHub only when you press **Check for updates**, or if you turn on **Check for updates automatically** (off by default, at most once a day). A check is one anonymous request to github.com carrying no account, phone, chat, or media information and no version number (GitHub sees your IP address, like any web request). Downloads are verified with SHA-256 before installing, only application code is replaced (never your `config.json`, keys, databases, or media), and the previous version is restored automatically if the new one does not start.
 - **Key Safety**: Your 64-digit key is stored only in your local `config.json`. It is never transmitted over the internet. The USB transfer path (`/paste-key`) is only reachable over the physical USB cable.
+- **Your Data Stays Consistent**: Only one gallery server runs per output folder; launching the app again opens the running one. Several browser tabs can be open at once and stay in step (recycling, restoring, importing or changing settings in one tab updates the others). Closing the browser never cuts off an import, ZIP backup, phone cleanup or restore: the app finishes it first.
+- **Deleting Means Deleted**: Deleting media for good (from the Recycle Bin, or straight from the gallery) removes the file together with its thumbnails, video previews and its entries in the gallery, duplicate index and sync records. The app keeps no list of deleted files. As a consequence, if a deleted file is still on your phone, the next sync downloads it again.
+- **Imports Never Resurrect or Overwrite**: Importing an older output folder skips media waiting in your Recycle Bin, ignores the older folder's own recycle bin, and keeps your current backup key unless you explicitly choose to replace it with a different one found in that folder.
 - **Git Ignore**: All media, databases, contact maps, keys, and personal configs are strictly git-ignored and will never be committed to any repository.
 
 ---

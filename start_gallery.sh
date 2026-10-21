@@ -94,7 +94,25 @@ if ! command -v ffmpeg >/dev/null 2>&1 && [ ! -f "$SCRIPT_DIR/bin/ffmpeg" ]; the
 fi
 
 # ============================================================
-# 4. Self-healing venv bootstrap
+# 4. Single-instance check (before anything slow)
+# ============================================================
+if command -v curl >/dev/null 2>&1; then
+    # -f fails on HTTP errors and grep checks it is this app, not another program on port 8000.
+    # (A gallery on another port or folder is found by the app itself: see core/instance.py.)
+    if curl -s -f -m 1 http://127.0.0.1:8000/api/health 2>/dev/null | grep -q "wa-media-organizer"; then
+        log_info "Gallery server already running. Opening browser..."
+        case "$(uname -s)" in
+            Darwin) open "http://127.0.0.1:8000/gallery.html" ;;
+            Linux)  xdg-open "http://127.0.0.1:8000/gallery.html" 2>/dev/null || true ;;
+        esac
+        exit 0
+    fi
+fi
+
+# ============================================================
+# 5. Self-healing venv bootstrap
+#    Dependencies are installed only when the venv is new or requirements.txt changed, so a
+#    normal launch never goes online (pip would otherwise contact PyPI on every start).
 # ============================================================
 VENV_DIR="$SCRIPT_DIR/venv"
 if [ ! -f "$VENV_DIR/bin/python" ]; then
@@ -104,22 +122,13 @@ if [ ! -f "$VENV_DIR/bin/python" ]; then
 fi
 
 if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
-    log_info "Installing/verifying dependencies from requirements.txt ..."
-    "$VENV_DIR/bin/pip" install -q -r "$SCRIPT_DIR/requirements.txt" --no-warn-script-location
-    log_ok "Dependencies ready."
-fi
-
-# ============================================================
-# 5. Single-instance check
-# ============================================================
-if command -v curl >/dev/null 2>&1; then
-    if curl -s -m 1 http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
-        log_info "Gallery server already running. Opening browser..."
-        case "$(uname -s)" in
-            Darwin) open "http://127.0.0.1:8000/gallery.html" ;;
-            Linux)  xdg-open "http://127.0.0.1:8000/gallery.html" 2>/dev/null || true ;;
-        esac
-        exit 0
+    REQ_STAMP="$VENV_DIR/.requirements.cksum"
+    REQ_SUM="$(cksum < "$SCRIPT_DIR/requirements.txt")"
+    if [ ! -f "$REQ_STAMP" ] || [ "$(cat "$REQ_STAMP")" != "$REQ_SUM" ]; then
+        log_info "Installing dependencies from requirements.txt ..."
+        "$VENV_DIR/bin/pip" install -q --disable-pip-version-check -r "$SCRIPT_DIR/requirements.txt" --no-warn-script-location
+        printf '%s' "$REQ_SUM" > "$REQ_STAMP"
+        log_ok "Dependencies ready."
     fi
 fi
 

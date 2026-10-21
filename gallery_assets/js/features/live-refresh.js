@@ -125,6 +125,37 @@ async function refreshActiveChatLive() {
     }
 }
 
+// Brings this tab in line with changes made in another tab or browser (recycle, restore, import,
+// settings). Unlike refreshActiveChatLive it also removes media that disappeared, so a tab never
+// offers files that no longer exist.
+async function applyExternalLibraryChange() {
+    if (!isHttpServer) return;
+    reloadChatsList(true);
+    if (typeof checkConfigStatus === 'function') checkConfigStatus();
+    if (typeof updateRecycleBinPill === 'function') updateRecycleBinPill();
+    if (!activeChat) return;
+    const requested = activeChat;
+    try {
+        const resp = await fetch('/api/chats/' + encodeURIComponent(requested.jid) + '/media');
+        if (!resp.ok || activeChat !== requested) return;
+        const data = await resp.json();
+        if (activeChat !== requested) return;
+        const fresh = data.media || [];
+        const before = new Set((activeChat.media || []).map(m => m.rel_path));
+        if (before.size === fresh.length && fresh.every(m => before.has(m.rel_path))) return;
+        activeChat.media = fresh;
+        activeChat.file_count = fresh.length;
+        if (data.total_size !== undefined) activeChat.total_size = data.total_size;
+        activeChat._dupCache = null;
+        window._pendingNewMedia = null;
+        populateSenders(activeChat.media, true);
+        setDateRangeLimits(activeChat.media);
+        filterAndRenderMedia({ preserveScroll: true, keepItemsCount: true });
+    } catch (e) {
+        console.warn('Could not refresh after a change in another tab:', e);
+    }
+}
+
 let _lastChatsListReloadTime = 0;
 async function reloadChatsList(force = false) {
     if (!isHttpServer) return;

@@ -32,7 +32,8 @@ class ImportJobManager:
             return self._state.get("state") == JOB_RUNNING
 
     def start(self, source_dir: str, target_dir: str, mode: str = IMPORT_MODE_COPY,
-              import_key: bool = True, on_finished: Optional[Callable[[Dict[str, Any]], None]] = None) -> bool:
+              import_key: bool = True, on_finished: Optional[Callable[[Dict[str, Any]], None]] = None,
+              replace_key: bool = False) -> bool:
         """Starts an import. Returns False if one is already running."""
         with self._lock:
             if self._state.get("state") == JOB_RUNNING:
@@ -49,7 +50,7 @@ class ImportJobManager:
                 "error": "",
             }
             self._thread = threading.Thread(
-                target=self._run, args=(source_dir, target_dir, mode, import_key, on_finished), daemon=True
+                target=self._run, args=(source_dir, target_dir, mode, import_key, on_finished, replace_key), daemon=True
             )
             self._thread.start()
         return True
@@ -60,12 +61,12 @@ class ImportJobManager:
             progress.update(update)
             self._state["progress"] = progress
 
-    def _run(self, source_dir, target_dir, mode, import_key, on_finished) -> None:
+    def _run(self, source_dir, target_dir, mode, import_key, on_finished, replace_key=False) -> None:
         try:
-            result = self._runner(
-                source_dir, target_dir, progress_callback=self._on_progress,
-                import_key=import_key, mode=mode, cancel_event=self._cancel,
-            )
+            kwargs = dict(progress_callback=self._on_progress, import_key=import_key, mode=mode, cancel_event=self._cancel)
+            if replace_key:
+                kwargs["replace_key"] = True
+            result = self._runner(source_dir, target_dir, **kwargs)
             status = result.get("status")
             final = JOB_DONE if status == "success" else JOB_CANCELLED if status == "cancelled" else JOB_ERROR
             error = result.get("message", "") if final == JOB_ERROR else ""

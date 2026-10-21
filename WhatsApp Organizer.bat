@@ -6,7 +6,7 @@ cd /d "%~dp0"
 set "PATH=%~dp0venv\Scripts;C:\Python313;C:\Python313\Scripts;%SystemRoot%\system32;%SystemRoot%;%PATH%"
 
 :: If server is already running, avoid duplicate processes and simply open browser
-curl.exe -s -m 1 http://127.0.0.1:8000/api/health >nul 2>&1
+curl.exe -s -f -m 1 http://127.0.0.1:8000/api/health 2>nul | findstr /c:"wa-media-organizer" >nul 2>&1
 if %errorlevel% equ 0 (
     start "" "http://127.0.0.1:8000/gallery.html"
     exit /b 0

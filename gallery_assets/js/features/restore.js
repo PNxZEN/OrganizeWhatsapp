@@ -263,7 +263,7 @@ async function executeRestoreChatTransfer() {
     }
 
     try {
-        const res = await fetch('/api/restore/chat', {
+        const res = await trackedFetch('restore', '/api/restore/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chat_jid: activeChat.jid })

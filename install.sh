@@ -80,8 +80,10 @@ fi
 # ============================================================
 if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
     log_info "Installing dependencies from requirements.txt ..."
-    "$VENV_DIR/bin/pip" install -q --upgrade pip
-    "$VENV_DIR/bin/pip" install -q -r "$SCRIPT_DIR/requirements.txt" --no-warn-script-location
+    "$VENV_DIR/bin/pip" install -q --disable-pip-version-check --upgrade pip
+    "$VENV_DIR/bin/pip" install -q --disable-pip-version-check -r "$SCRIPT_DIR/requirements.txt" --no-warn-script-location
+    # start_gallery.sh skips pip while requirements.txt is unchanged
+    cksum < "$SCRIPT_DIR/requirements.txt" > "$VENV_DIR/.requirements.cksum"
     log_ok "All dependencies installed."
 else
     log_err "requirements.txt not found in $SCRIPT_DIR"

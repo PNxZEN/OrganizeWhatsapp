@@ -128,9 +128,6 @@ async function loadRecycleBinContent() {
                 pillCount.innerText = items.length;
                 pillCount.style.display = items.length > 0 ? 'inline-flex' : 'none';
             }
-            if (btnOpen) {
-                btnOpen.classList.toggle('has-items', items.length > 0);
-            }
 
             if (totalSizeEl) {
                 totalSizeEl.innerText = `${items.length} file(s) quarantined (${formatBytes(data.total_bytes || 0)})`;
@@ -174,21 +171,22 @@ async function loadRecycleBinContent() {
                 const chatFolder = item.original_chat || '';
                 html += `
                             <div class="recycle-bin-item">
-                                <input type="checkbox" class="recycle-bin-item-cb" data-rel-path="${escapeHtml(item.rel_path)}" ${_recycleSelectedPaths.has(item.rel_path) ? 'checked' : ''} onchange="toggleRecycleItemSelection(this)" title="Select for restore" aria-label="Select ${escapeHtml(item.filename)}">
-                                <img src="${escapeHtml(thumbSrc)}" class="recycle-thumb" alt="${escapeHtml(item.filename)}" onerror="this.style.display='none'">
-                                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;">
-                                    <div style="font-size:13px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                                        ${escapeHtml(item.filename)}
-                                    </div>
-                                    <div style="font-size:11px;color:var(--text-muted);display:flex;gap:10px;flex-wrap:wrap;">
-                                        <span>Chat: ${escapeHtml(chatFolder)}</span>
-                                        <span>Size: <b style="color:var(--text-primary);">${formatBytes(item.size_bytes || 0)}</b></span>
-                                        <span>Reason: ${escapeHtml(item.reason || 'quality')}</span>
+                                <input type="checkbox" class="recycle-bin-item-cb" data-rel-path="${escapeHtml(item.rel_path)}" ${_recycleSelectedPaths.has(item.rel_path) ? 'checked' : ''} onchange="toggleRecycleItemSelection(this)" title="Select" aria-label="Select ${escapeHtml(item.filename)}">
+                                <div class="recycle-thumb recycle-thumb-placeholder" data-kind="${/\.(mp4|3gp|mkv|mov|webm|avi)$/i.test(item.filename || '') ? 'video' : 'file'}">
+                                    <img src="${escapeHtml(thumbSrc)}" alt="" loading="lazy" onerror="this.remove()">
+                                </div>
+                                <div class="recycle-item-main">
+                                    <div class="recycle-item-name" title="${escapeHtml(item.filename)}">${escapeHtml(item.filename)}</div>
+                                    <div class="recycle-item-meta">
+                                        <span title="${escapeHtml(chatFolder)}">Chat: ${escapeHtml(chatFolder)}</span>
+                                        <span>Size: <b>${formatBytes(item.size_bytes || 0)}</b></span>
+                                        <span class="recycle-item-reason">Reason: ${escapeHtml(item.reason || 'quality')}</span>
                                     </div>
                                 </div>
-                                <button type="button" class="action-btn action-btn-secondary" style="font-size:11px;padding:5px 12px;color:#4ade80;border-color:rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);" onclick="executeRestoreItem('${escapeJsAttr(item.rel_path)}')">
-                                    Restore
-                                </button>
+                                <div class="recycle-item-actions">
+                                    <button type="button" class="recycle-btn-restore" onclick="executeRestoreItem('${escapeJsAttr(item.rel_path)}')" title="Put it back in its chat">Restore</button>
+                                    <button type="button" class="recycle-btn-danger" onclick="executeDeleteRecycledItem('${escapeJsAttr(item.rel_path)}')" title="Delete this file permanently">Delete</button>
+                                </div>
                             </div>
                         `;
             });
@@ -208,6 +206,10 @@ const _recycleSelectedPaths = new Set();
 function updateRecycleSelectionUI() {
     const btn = document.getElementById('btnRestoreSelected');
     const countEl = document.getElementById('restoreSelectedCount');
+    const btnDelete = document.getElementById('btnDeleteSelected');
+    const deleteCountEl = document.getElementById('deleteSelectedCount');
+    if (btnDelete) btnDelete.style.display = _recycleSelectedPaths.size > 0 ? 'inline-flex' : 'none';
+    if (deleteCountEl) deleteCountEl.innerText = _recycleSelectedPaths.size;
     const selectAll = document.getElementById('recycleSelectAll');
     const boxes = Array.from(document.querySelectorAll('.recycle-bin-item-cb'));
     const count = _recycleSelectedPaths.size;
@@ -305,9 +307,48 @@ async function executeRestoreAll() {
     await restoreRecycledItems({ all: true }, 'Restoring all items to original folders...');
 }
 
+// The consequences of deleting for good, in plain words (shared with the gallery's Delete Permanently)
+function permanentDeleteWarning(count) {
+    const one = count === 1;
+    return `Delete ${one ? 'this file' : `these ${count} files`} permanently?\n\n`
+        + `${one ? 'It is' : 'They are'} removed from this computer together with ${one ? 'its' : 'their'} thumbnails and every record of ${one ? 'it' : 'them'}. This cannot be undone.\n\n`
+        + `If ${one ? 'it is' : 'they are'} still on your phone, the next sync will download ${one ? 'it' : 'them'} again.`;
+}
+
+async function purgeRecycledItems(relPaths) {
+    if (!isHttpServer || relPaths.length === 0) return;
+    if (!confirm(permanentDeleteWarning(relPaths.length))) return;
+    try {
+        const resp = await fetch('/api/duplicates/purge-items', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rel_paths: relPaths })
+        });
+        const res = await resp.json();
+        if (resp.ok && res.status === 'success') {
+            showToast(`Permanently deleted ${res.deleted_count} file(s), freed ${formatBytes(res.freed_bytes || 0)}.`, 'success');
+            relPaths.forEach(p => _recycleSelectedPaths.delete(p));
+            loadRecycleBinContent();
+            updateRecycleBinPill();
+        } else {
+            showToast(res.message || 'Delete failed.', 'error');
+        }
+    } catch (e) {
+        showToast(`Delete error: ${e.message}`, 'error');
+    }
+}
+
+async function executeDeleteRecycledItem(relPath) {
+    await purgeRecycledItems([relPath]);
+}
+
+async function executeDeleteSelectedRecycled() {
+    await purgeRecycledItems(Array.from(_recycleSelectedPaths));
+}
+
 async function executeEmptyRecycleBin() {
     if (!isHttpServer) return;
-    if (!confirm('Permanently delete and empty all items in the Recycle Bin? This action cannot be undone.')) return;
+    if (!confirm('Empty the Recycle Bin?\n\nEverything in it is deleted from this computer together with thumbnails and every record of it. This cannot be undone.\n\nFiles that are still on your phone will be downloaded again by the next sync.')) return;
     showToast('Emptying Recycle Bin...');
     try {
         const resp = await fetch('/api/duplicates/empty-recycle-bin', {
@@ -346,9 +387,6 @@ async function updateRecycleBinPill() {
             if (pill) {
                 pill.innerText = count;
                 pill.style.display = count > 0 ? 'inline-flex' : 'none';
-            }
-            if (btnOpen) {
-                btnOpen.classList.toggle('has-items', count > 0);
             }
             if (tabCount) {
                 tabCount.innerText = count;

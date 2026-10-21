@@ -4,12 +4,19 @@
 // Initialize App (Fast Hybrid Loader)
 window.addEventListener('DOMContentLoaded', async () => {
     checkDeviceStatus();
-    _devicePollTimer = setInterval(checkDeviceStatus, 5000);
+    // Hidden tabs check the phone rarely: one visible tab is enough to keep the status fresh
+    let _lastDevicePoll = 0;
+    _devicePollTimer = setInterval(() => {
+        if (document.hidden && Date.now() - _lastDevicePoll < 60000) return;
+        _lastDevicePoll = Date.now();
+        checkDeviceStatus();
+    }, 5000);
     checkConfigStatus();
 
     startHeartbeat();
     startSyncPolling();
     loadVersionInfo();
+    applyFileManagerLabels();
 
     // Set up sidebar search listener
     const sidebarSearch = document.getElementById('sidebarSearch');

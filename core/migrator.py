@@ -40,13 +40,16 @@ KNOWN_MEDIA_EXTENSIONS = {
 # Directories and files to strictly skip during media discovery
 IGNORED_DIRS = {
     ".git", "__pycache__", ".gemini", ".cache", ".thumbnails", ".part",
-    "node_modules", ".temp", ".tempmediaStorage", "gallery_assets"
+    "node_modules", ".temp", ".tempmediaStorage", "gallery_assets",
+    # Media the user deleted in the older library must not come back as a "chat"
+    ".duplicates_recycle_bin",
+    ".update",
 }
 IGNORED_FILES = {
     "gallery.html", "index.html", ".hashes_cache.sqlite3", ".hashes_cache.sqlite3-wal",
     ".hashes_cache.sqlite3-shm", ".hashes_cache.json", ".sync_state.sqlite3",
     ".sync_state.sqlite3-wal", ".sync_state.sqlite3-shm", ".sync_session.sqlite3",
-    "gallery_data.js", "config.json"
+    "gallery_data.js", "config.json", ".deleted_media.json", ".gallery_server.json"
 }
 
 
@@ -258,22 +261,50 @@ def validate_paths(source_dir: str, target_dir: str) -> Tuple[bool, str, Optiona
     if not src_path.is_dir():
         return False, f"Source path is not a directory: {src_path}", None, None
 
-    if src_path == tgt_path:
-        return False, "Source folder cannot be the same as the current output folder", None, None
+    if src_path == tgt_path or _same_folder(src_path, tgt_path):
+        return False, "This is the gallery's own output folder: the older folder cannot be the same as the current output folder.", None, None
 
-    try:
-        if tgt_path.is_relative_to(src_path):
-            return False, "Target output folder is inside the source folder", None, None
-        if src_path.is_relative_to(tgt_path):
-            return False, "Source folder is inside the target output folder", None, None
-    except AttributeError:
-        # Fallback for Python < 3.9
-        src_str = str(src_path)
-        tgt_str = str(tgt_path)
-        if os.path.commonpath([src_str, tgt_str]) in (src_str, tgt_str):
-            return False, "Source and target folders cannot be nested inside each other", None, None
+    # Compare the real folders, not their spelling: a mapped drive, network path, junction or
+    # symlink can name the same folder in a different way.
+    if any(_same_folder(src_path, parent) for parent in tgt_path.parents) or tgt_path.is_relative_to(src_path):
+        return False, "The current output folder is inside the selected folder. Choose the older output folder itself.", None, None
+    if any(_same_folder(tgt_path, parent) for parent in src_path.parents) or src_path.is_relative_to(tgt_path):
+        return False, "The selected folder is inside the current output folder. Choose an older output folder instead.", None, None
 
     return True, "", src_path, tgt_path
+
+
+def _same_folder(a: Path, b: Path) -> bool:
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+KEY_NONE = "none"            # the older folder has no backup key
+KEY_NEW = "new"              # it has one and the app has none yet: it will be used
+KEY_SAME = "same"            # it is the key the app already uses
+KEY_DIFFERENT = "different"  # it differs: only replaced when the user explicitly asks
+
+
+def classify_backup_key(found_key: Optional[str]) -> str:
+    if not found_key:
+        return KEY_NONE
+    from core.config import load_config
+
+    current = str(load_config().get("hex_key") or "").strip().lower()
+    if not current:
+        return KEY_NEW
+    return KEY_SAME if current == found_key.strip().lower() else KEY_DIFFERENT
+
+
+def _target_deleted_index(tgt_path: Path) -> Dict[str, int]:
+    from core.gallery import deleted_media_index
+
+    try:
+        return deleted_media_index(tgt_path)
+    except Exception:
+        return {}
 
 
 def discover_source_media(source_dir: Path) -> List[Tuple[Path, str, int]]:
@@ -459,6 +490,8 @@ def analyze_import_folder(source_dir: str, target_dir: str) -> Dict[str, Any]:
     collision_count = 0
     new_files_count = 0
     bytes_to_import = 0
+    previously_deleted_count = 0
+    deleted_index = _target_deleted_index(tgt_path)
 
     # Collect chats inferred from folders or gallery_data.js
     chat_names = set()
@@ -469,6 +502,9 @@ def analyze_import_folder(source_dir: str, target_dir: str) -> Dict[str, Any]:
             chat_names.add(parts[0])
 
         target_file = tgt_path / rel_path
+        if not target_file.exists() and deleted_index.get(rel_path) == sz:
+            previously_deleted_count += 1  # the user deleted it from this gallery: do not bring it back
+            continue
         if target_file.is_file():
             try:
                 if target_file.stat().st_size == sz:
@@ -502,10 +538,23 @@ def analyze_import_folder(source_dir: str, target_dir: str) -> Dict[str, Any]:
         "has_sync_db": has_sync_db,
         "has_key": bool(found_key),
         "detected_key_masked": detected_key_masked,
+        "key_status": classify_backup_key(found_key),
+        "previously_deleted_count": previously_deleted_count,
     }
 
 
 def _merge_gallery_data(source_dir: Path, target_dir: Path, copied_files_map: Dict[str, str]) -> int:
+    """
+    Holds the gallery lock for the whole read-modify-write, so a recycle or a preview update
+    made while the import merges is not overwritten with the older copy it read.
+    """
+    from core.gallery import gallery_data_lock
+
+    with gallery_data_lock:
+        return _merge_gallery_data_locked(source_dir, target_dir, copied_files_map)
+
+
+def _merge_gallery_data_locked(source_dir: Path, target_dir: Path, copied_files_map: Dict[str, str]) -> int:
     """
     Merges chats and media items from source gallery_data.js into target gallery_data.js.
     copied_files_map maps original_rel_path -> final_rel_path (handles any collision renaming).
@@ -560,7 +609,11 @@ def _merge_gallery_data(source_dir: Path, target_dir: Path, copied_files_map: Di
                     if orig_rel in copied_files_map:
                         m_copy["rel_path"] = copied_files_map[orig_rel]
                         m_copy["filename"] = os.path.basename(copied_files_map[orig_rel])
+                    if not _present(target_dir, m_copy.get("rel_path", "")):
+                        continue  # not transferred (cancelled, failed, or deleted by the user)
                     remapped_media.append(m_copy)
+                if not remapped_media:
+                    continue
                 new_chat["media"] = remapped_media
                 new_chat["file_count"] = len(remapped_media)
                 new_chat["total_size"] = sum(m.get("size_bytes", 0) for m in remapped_media)
@@ -584,7 +637,7 @@ def _merge_gallery_data(source_dir: Path, target_dir: Path, copied_files_map: Di
                     final_fn = os.path.basename(final_rel)
                     sig = (final_fn, m.get("size_bytes"))
 
-                    if sig not in existing_sigs and final_rel not in existing_rels:
+                    if sig not in existing_sigs and final_rel not in existing_rels and _present(target_dir, final_rel):
                         m_copy = dict(m)
                         m_copy["rel_path"] = final_rel
                         m_copy["filename"] = final_fn
@@ -666,6 +719,10 @@ def _merge_gallery_data(source_dir: Path, target_dir: Path, copied_files_map: Di
         _memory_cache["data"] = None
 
     return added_media_count
+
+
+def _present(target_dir: Path, rel: str) -> bool:
+    return bool(rel) and (target_dir / rel).is_file()
 
 
 def _merge_hash_databases(source_dir: Path, target_dir: Path, copied_files_map: Dict[str, str]) -> int:
@@ -918,6 +975,7 @@ def execute_import_folder(
     import_key: bool = True,
     mode: str = IMPORT_MODE_COPY,
     cancel_event=None,
+    replace_key: bool = False,
 ) -> Dict[str, Any]:
     """
     Safely migrates media from an older output folder into the target output folder.
@@ -929,7 +987,9 @@ def execute_import_folder(
     - Reports byte-accurate progress (phase, percent, files, bytes, speed, ETA)
     - Honors cancel_event; already transferred files are still merged into the gallery
     - Merges gallery_data.js, .hashes_cache.sqlite3 and .sync_state.sqlite3
-    - Optionally imports WhatsApp backup key if found
+    - Optionally imports WhatsApp backup key if found. A key that differs from the one the app
+      already uses is only installed when replace_key is True (the user confirmed it).
+    - Never brings back media the user deleted from the current gallery (recycle bin or purged)
     """
     if mode not in (IMPORT_MODE_COPY, IMPORT_MODE_MOVE):
         return {"status": "error", "message": f"Unknown import mode: {mode}"}
@@ -957,9 +1017,11 @@ def execute_import_folder(
     # Step 0: Optionally import encryption backup key from source
     imported_key = False
     masked_key = ""
+    key_status = KEY_NONE
     if import_key:
         found_key = extract_key_from_folder(str(src_path))
-        if found_key:
+        key_status = classify_backup_key(found_key)
+        if key_status == KEY_NEW or (key_status == KEY_DIFFERENT and replace_key):
             try:
                 from core.config import save_config, mask_key
                 from core.decrypt import create_key_file
@@ -977,8 +1039,13 @@ def execute_import_folder(
     copied_files_map: Dict[str, str] = {}  # orig_rel -> final_rel
     plan: List[Tuple[Path, Path, str, int]] = []
     skipped_count = 0
+    previously_deleted_count = 0
+    deleted_index = _target_deleted_index(tgt_path)
     for src_file, rel_path, sz in media_items:
         target_file = tgt_path / rel_path
+        if not target_file.exists() and deleted_index.get(rel_path) == sz:
+            previously_deleted_count += 1  # deleted from this gallery by the user: never bring it back
+            continue
         if target_file.is_file():
             try:
                 if target_file.stat().st_size == sz:
@@ -1097,5 +1164,8 @@ def execute_import_folder(
         "total_source_files": total_files,
         "imported_key": imported_key,
         "masked_key": masked_key,
+        "key_status": key_status,
+        "key_kept": key_status == KEY_DIFFERENT and not imported_key,
+        "previously_deleted_count": previously_deleted_count,
         "elapsed_seconds": round(time.time() - start_time, 2),
     }

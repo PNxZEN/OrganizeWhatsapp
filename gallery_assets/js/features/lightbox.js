@@ -254,7 +254,16 @@ function setupLightbox() {
             }
         }
 
-        // 4. Copy Selected Media Paths (Ctrl+C / Cmd+C)
+        // 4. Delete moves the selection to the Recycle Bin; Shift+Delete deletes it for good
+        if (e.key === 'Delete' && !isUserTyping() && !isModalOrLightboxOpen() && currentViewMode === 'gallery'
+            && selectedFiles && selectedFiles.length > 0) {
+            e.preventDefault();
+            if (e.shiftKey) deleteMediaFromGallery([...selectedFiles]);
+            else recycleMediaFromGallery([...selectedFiles]);
+            return;
+        }
+
+        // 5. Copy Selected Media Paths (Ctrl+C / Cmd+C)
         const isCtrlC = (e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C' || e.code === 'KeyC');
         if (isCtrlC && !isUserTyping() && !isModalOrLightboxOpen()) {
             if (currentViewMode === 'gallery') {

@@ -40,7 +40,14 @@ from core.clean_planner import (
 )
 from core.config import find_ffmpeg_binary, is_ffmpeg_available, load_config, mask_key, save_config
 from core.decrypt import create_key_file, validate_hex_key
-from core.gallery import empty_recycle_bin, list_recycled_items, recycle_media_items, restore_media_items
+from core.gallery import (
+    delete_media_permanently,
+    empty_recycle_bin,
+    list_recycled_items,
+    purge_recycled_items,
+    recycle_media_items,
+    restore_media_items,
+)
 
 _latest_received_key: Optional[str] = None
 _active_backup_cancel = threading.Event()
@@ -551,6 +558,8 @@ from core.activity import MaintenanceActive, activity
 from core.updater import UpdateError, UpdateManager, app_root as _app_root, env_overrides as _updater_env_overrides
 from core.update_helper import recover_interrupted_update
 from core.version import GITHUB_REPO, __version__
+from core import instance as _instance
+from core.reveal import reveal_in_file_manager
 
 # Background "Import Older Media" job (one at a time; polled by the gallery for progress)
 _import_job = ImportJobManager()
@@ -566,6 +575,78 @@ _active_tabs: Dict[str, float] = {}
 _tab_lock = threading.Lock()
 _tab_shutdown_timer: Optional[threading.Timer] = None
 _has_had_browser_tab = False
+
+
+_last_tab_seen = {"at": 0.0}
+# Bumped whenever the library or settings change outside a sync (recycle, restore, import,
+# settings). Every tab sees it in its heartbeat and refreshes, so open tabs never show stale media.
+_library_version = {"n": 0}
+
+
+def _bump_library_version():
+    _library_version["n"] += 1
+
+_TAB_CLOSE_GRACE_SECS = 3.5
+_SHUTDOWN_RETRY_SECS = 5.0
+_IDLE_WATCH_INTERVAL_SECS = 30.0
+_shutdown_wait_notice = {"text": ""}
+
+
+def _auto_shutdown_blockers():
+    """
+    Work that must finish before the app may close by itself. A phone sync is not listed: it is
+    paused safely and resumes next time. Imports, ZIP backups, phone cleanups and restores
+    cannot be resumed half-way, so the app waits for them.
+    """
+    busy = set(activity.running())
+    if _import_job.is_running():
+        busy.add("import of older media")
+    return sorted(busy)
+
+
+def _schedule_auto_shutdown(server, reason, delay):
+    global _tab_shutdown_timer
+    if _tab_shutdown_timer and _tab_shutdown_timer.is_alive():
+        _tab_shutdown_timer.cancel()
+    _tab_shutdown_timer = threading.Timer(delay, _try_auto_shutdown, args=[server, reason])
+    _tab_shutdown_timer.daemon = True
+    _tab_shutdown_timer.start()
+
+
+def _try_auto_shutdown(server, reason):
+    """Closes the app when no tab is open and nothing unresumable is running; otherwise waits."""
+    if float(_server_runtime.get("idle_timeout") or 0) <= 0:
+        return  # automatic shutdown is disabled (--idle-timeout 0, e.g. live mode)
+    with _tab_lock:
+        now = time.time()
+        if any((now - ts) < 25.0 for ts in _active_tabs.values()):
+            return  # a tab came back (reload, new tab)
+    blockers = _auto_shutdown_blockers()
+    if blockers:
+        text = ", ".join(blockers)
+        if _shutdown_wait_notice["text"] != text:
+            _shutdown_wait_notice["text"] = text
+            print(f"\n[Server] {reason}. Waiting for {text} to finish before closing...")
+        _schedule_auto_shutdown(server, reason, _SHUTDOWN_RETRY_SECS)
+        return
+    _shutdown_wait_notice["text"] = ""
+    print(f"\n[Server] {reason}. Performing clean shutdown...")
+    _perform_clean_shutdown(server, reason=reason)
+
+
+def _idle_watchdog(server):
+    """
+    Covers tabs that vanish without saying goodbye (browser crash, laptop sleep, killed browser):
+    after idle_timeout minutes without any heartbeat, the app closes the same safe way.
+    """
+    while True:
+        time.sleep(_IDLE_WATCH_INTERVAL_SECS)
+        minutes = float(_server_runtime.get("idle_timeout") or 0)
+        if minutes <= 0 or not _has_had_browser_tab:
+            continue
+        if time.time() - _last_tab_seen["at"] >= minutes * 60:
+            _try_auto_shutdown(server, f"No open browser tab for {minutes:g} minutes")
+            return
 
 
 def _perform_clean_shutdown(server=None, reason="Server shutdown"):
@@ -1143,7 +1224,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
 
         # /api/health or /api/ping
         if path in ("/api/health", "/api/ping"):
-            self._send_json(200, {"status": "ok", "version": __version__})
+            # "app" and "instance" let launchers check it is really this app answering
+            self._send_json(200, {"status": "ok", "app": _instance.APP_MARKER, "version": __version__,
+                                  "instance": _instance.INSTANCE_ID})
             return
 
         # /api/version (what is installed, how it was installed, and the outcome of the last update)
@@ -1263,6 +1346,8 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "selected_account_phone": cfg.get("selected_account_phone", ""),
                     "selected_app_type": cfg.get("selected_app_type", ""),
                     "selected_account_label": cfg.get("selected_account_label", ""),
+                    # Shared by every tab and browser (None until first chosen)
+                    "duplicate_detection": cfg.get("duplicate_detection"),
                 },
             )
             return
@@ -1507,22 +1592,8 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 return
 
             if target_path.exists():
-                os_type = platform.system()
                 try:
-                    if os_type == "Windows":
-                        norm = os.path.normpath(str(target_path))
-                        # Windows Explorer requires /select,"<path>" as a raw command string.
-                        # Passing a list causes Python's list2cmdline to quote the entire "/select,<path>" token
-                        # when paths contain spaces, which breaks Explorer's switch parser and drops file selection.
-                        if target_path.is_file():
-                            subprocess.Popen(f'explorer /select,"{norm}"')
-                        else:
-                            subprocess.Popen(f'explorer "{norm}"')
-                    elif os_type == "Darwin":
-                        subprocess.Popen(["open", "-R", str(target_path)])
-                    else:
-                        parent = target_path.parent if target_path.is_file() else target_path
-                        subprocess.Popen(["xdg-open", str(parent)])
+                    reveal_in_file_manager(target_path)
                     self.send_response(200)
                     self.end_headers()
                     self.wfile.write(b"OK")
@@ -1671,6 +1742,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(400, {"status": "error", "message": "rel_paths list is required"})
                 return
             res = recycle_media_items(str(self.output_dir), rel_paths)
+            _bump_library_version()
             self._send_json(200, res)
             return
 
@@ -1680,12 +1752,41 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             rel_paths = body.get("rel_paths", [])
             restore_all = body.get("all", False)
             res = restore_media_items(str(self.output_dir), rel_paths, restore_all=restore_all)
+            _bump_library_version()
+            self._send_json(200, res)
+            return
+
+        # /api/duplicates/purge-items (permanently deletes selected Recycle Bin items)
+        if path == "/api/duplicates/purge-items":
+            body = self._read_json_body() or {}
+            rel_paths = body.get("rel_paths", [])
+            if not isinstance(rel_paths, list) or not rel_paths:
+                self._send_json(400, {"status": "error", "message": "rel_paths list is required"})
+                return
+            res = purge_recycled_items(str(self.output_dir), rel_paths)
+            _bump_library_version()
+            self._send_json(200, res)
+            return
+
+        # /api/media/delete (permanently deletes gallery media, skipping the Recycle Bin)
+        if path == "/api/media/delete":
+            body = self._read_json_body() or {}
+            rel_paths = body.get("rel_paths", [])
+            if not isinstance(rel_paths, list) or not rel_paths:
+                self._send_json(400, {"status": "error", "message": "rel_paths list is required"})
+                return
+            if sync_status.get("active") or _import_job.is_running():
+                self._send_json(409, {"status": "busy", "message": "Wait for the sync or import to finish before deleting media."})
+                return
+            res = delete_media_permanently(str(self.output_dir), rel_paths)
+            _bump_library_version()
             self._send_json(200, res)
             return
 
         # /api/duplicates/empty-recycle-bin (permanently purges quarantined items)
         if path in ("/api/duplicates/empty-recycle-bin", "/api/duplicates/purge"):
             res = empty_recycle_bin(str(self.output_dir))
+            _bump_library_version()
             self._send_json(200, res)
             return
 
@@ -1753,10 +1854,12 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             def _on_import_finished(_snapshot):
                 # Bump sync version so open galleries reload the merged chats
                 sync_status["version"] = sync_status.get("version", 0) + 1
+                _bump_library_version()
 
             started = _import_job.start(
                 source_path, str(self.output_dir), mode=mode,
                 import_key=bool(body.get("import_key", True)), on_finished=_on_import_finished,
+                replace_key=body.get("replace_key") is True,
             )
             if not started:
                 self._send_json(409, {"status": "busy", "message": "An import is already running."})
@@ -1841,6 +1944,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             config_payload = dict(body)
             config_payload.pop("skip_db_pull", None)
             save_config(config_payload)
+            _bump_library_version()
             self._send_json(
                 200,
                 {
@@ -2359,6 +2463,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 with _tab_lock:
                     _has_had_browser_tab = True
                     _active_tabs[tab_id] = time.time()
+                    _last_tab_seen["at"] = _active_tabs[tab_id]
                     now = time.time()
                     stale = [t for t, ts in _active_tabs.items() if (now - ts) > 30.0]
                     for t in stale:
@@ -2371,6 +2476,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "active_tabs": len(_active_tabs),
                 "version": __version__,
                 "maintenance": activity.maintenance_message(),
+                "data_version": _library_version["n"],
             })
             return
 
@@ -2387,23 +2493,10 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 for t in stale:
                     del _active_tabs[t]
 
-                # If no tabs remain, schedule clean shutdown with a grace period of 3.5s
+                # If no tabs remain, shut down after a short grace period (a reload re-registers
+                # the tab within it). Running work is never cut off: see _try_auto_shutdown.
                 if len(_active_tabs) == 0:
-                    if _tab_shutdown_timer and _tab_shutdown_timer.is_alive():
-                        _tab_shutdown_timer.cancel()
-
-                    def _grace_shutdown(srv):
-                        with _tab_lock:
-                            now_t = time.time()
-                            fresh = [t for t, ts in _active_tabs.items() if (now_t - ts) < 25.0]
-                            if fresh:
-                                return
-                        print("\n[Server] All browser tabs closed. Performing clean shutdown...")
-                        _perform_clean_shutdown(srv, reason="All browser tabs closed")
-
-                    _tab_shutdown_timer = threading.Timer(3.5, _grace_shutdown, args=[self.server])
-                    _tab_shutdown_timer.daemon = True
-                    _tab_shutdown_timer.start()
+                    _schedule_auto_shutdown(self.server, "All browser tabs closed", _TAB_CLOSE_GRACE_SECS)
 
             self._send_json(200, {"status": "tab_closed", "remaining_tabs": len(_active_tabs)})
             return
@@ -2476,6 +2569,17 @@ def start_gallery_server(
     out_path = Path(output_dir).resolve()
     out_path.mkdir(parents=True, exist_ok=True)
 
+    # One server per output folder: a second launch opens the running one instead
+    running = _instance.find_running_instance(out_path)
+    if running:
+        url = f"http://127.0.0.1:{running['port']}/gallery.html"
+        print(f"[Server] The gallery for {out_path} is already running at {url}")
+        if auto_open:
+            import webbrowser
+
+            webbrowser.open(url)
+        return None
+
     # An update that was cut short (crash, power loss) is rolled back before anything is served
     try:
         if recover_interrupted_update(_app_root()):
@@ -2509,6 +2613,22 @@ def start_gallery_server(
 
     httpd = ThreadingHTTPServer(server_address, BoundHandler)
     _server_runtime.update(output_dir=str(out_path), port=bound_port, idle_timeout=idle_timeout, allow_lan=allow_lan)
+    threading.Thread(target=_idle_watchdog, args=(httpd,), daemon=True, name="idle-watchdog").start()
+    _instance.claim(out_path, bound_port, host)
+
+    def _yield_if_duplicate():
+        time.sleep(1.5)
+        other = _instance.lost_claim(out_path)
+        if other:
+            print(f"[Server] Another gallery server started for this folder at the same time; "
+                  f"using it (port {other['port']}) and closing this one.")
+            if auto_open:
+                import webbrowser
+
+                webbrowser.open(f"http://127.0.0.1:{other['port']}/gallery.html")
+            httpd.shutdown()
+
+    threading.Thread(target=_yield_if_duplicate, daemon=True, name="instance-check").start()
 
     print("\n" + "=" * 60)
     print("STARTING LOCAL GALLERY SERVER")
@@ -2538,5 +2658,6 @@ def start_gallery_server(
         print("\n[Server] Shutting down.")
     finally:
         httpd.server_close()
+        _instance.release(out_path)
 
     return httpd

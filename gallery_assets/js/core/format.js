@@ -2,13 +2,29 @@
  * Classic script: shares global scope with the other gallery modules (see gallery_assets/README.md). */
 
 // Formatter utilities
+// The system file manager's own name, for "Show in ..." labels (the browser runs on the same computer)
+function fileManagerName() {
+    const p = String((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || '').toLowerCase();
+    if (p.includes('mac')) return 'Finder';
+    if (p.includes('win')) return 'File Explorer';
+    return 'Files';
+}
+
+function applyFileManagerLabels() {
+    document.querySelectorAll('[data-file-manager-label]').forEach(el => {
+        el.textContent = el.getAttribute('data-file-manager-label').replace('{fm}', fileManagerName());
+    });
+}
+
 async function revealInExplorer(relPath) {
     try {
         const res = await fetch(`/api/open-folder?rel_path=${encodeURIComponent(relPath)}`);
         if (!res.ok) {
             console.error("Failed to open folder, status:", res.status);
             if (typeof showToast === 'function') {
-                showToast('File not found in folder', 'warning');
+                showToast(res.status === 404
+                    ? 'This file is no longer in its folder.'
+                    : `Could not open ${fileManagerName()} on this computer.`, 'warning');
             }
         }
     } catch (e) {

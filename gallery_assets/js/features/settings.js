@@ -17,6 +17,14 @@ async function checkConfigStatus() {
                     setTimeout(() => openTutorialModal(), 500);
                 }
             }
+            // Duplicate detection is an app setting shared by every tab and browser
+            if (typeof cfg.duplicate_detection === 'boolean') {
+                if (cfg.duplicate_detection !== isDuplicateDetectionEnabled()) {
+                    setDuplicateDetectionEnabled(cfg.duplicate_detection, false);
+                }
+            } else if (_hasLocalDuplicateSetting()) {
+                saveDuplicateDetectionSetting(isDuplicateDetectionEnabled());  // carry over the old per-browser choice
+            }
             const ind = document.getElementById('keyIndicator');
             if (ind) {
                 if (cfg.hex_key_set) {
@@ -42,12 +50,33 @@ function isDuplicateDetectionEnabled() {
     return true;
 }
 
-function setDuplicateDetectionEnabled(enabled) {
+function _hasLocalDuplicateSetting() {
+    try { return localStorage.getItem('wa_setting_duplicate_detection') !== null; } catch (e) { return false; }
+}
+
+function saveDuplicateDetectionSetting(enabled) {
+    if (!isHttpServer) return;
+    fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ duplicate_detection: !!enabled })
+    }).catch(() => {});
+}
+
+// localStorage keeps the page fast to start (and works over file://); the server copy makes the
+// choice the same in every tab and browser.
+function setDuplicateDetectionEnabled(enabled, persist = true) {
     try {
         localStorage.setItem('wa_setting_duplicate_detection', enabled ? 'true' : 'false');
     } catch (e) {}
+    if (persist) saveDuplicateDetectionSetting(enabled);
     applyDuplicateDetectionSetting();
 }
+
+// Another tab of this browser changed it
+window.addEventListener('storage', (e) => {
+    if (e.key === 'wa_setting_duplicate_detection') applyDuplicateDetectionSetting();
+});
 
 function applyDuplicateDetectionSetting() {
     const enabled = isDuplicateDetectionEnabled();
@@ -123,6 +152,8 @@ function switchSettingsTab(tab) {
         if (viewRecycle) viewRecycle.style.display = 'flex';
     } else if (tab === 'import') {
         if (tabImport) tabImport.classList.add('active');
+        const pathInput = document.getElementById('importFolderPathInput');
+        if (pathInput) pathInput.placeholder = importPathPlaceholder();
         if (viewImport) viewImport.style.display = 'flex';
         onImportPathChanged();
         resumeImportJobView();
@@ -226,6 +257,14 @@ function onImportModeChanged() {
     btnStart.innerText = files > 0 ? `${verb} ${files.toLocaleString()} Files (${formatBytes(d.bytes_to_import || 0)})` : 'Merge Databases & Media';
 }
 
+// Example path in the system's own style
+function importPathPlaceholder() {
+    const name = fileManagerName();
+    if (name === 'File Explorer') return 'e.g. D:\\Backups\\WhatsAppMediaOrganizer\\output';
+    if (name === 'Finder') return 'e.g. /Users/you/Backups/WhatsAppMediaOrganizer/output';
+    return 'e.g. /home/you/Backups/WhatsAppMediaOrganizer/output';
+}
+
 async function triggerAnalyzeImportFolder() {
     const input = document.getElementById('importFolderPathInput');
     const path = (input ? input.value : '').trim();
@@ -281,6 +320,28 @@ async function triggerAnalyzeImportFolder() {
                 badgesHTML += `<span class="badge-tag" style="background:rgba(168,85,247,0.15);color:#d8b4fe;">✓ Sync Manifest</span>`;
             }
             badgesEl.innerHTML = badgesHTML;
+        }
+
+        const deletedNotice = document.getElementById('importDeletedNotice');
+        if (deletedNotice) {
+            const n = d.previously_deleted_count || 0;
+            deletedNotice.style.display = n ? 'block' : 'none';
+            deletedNotice.innerText = n
+                ? (n === 1
+                    ? "1 file in your Recycle Bin will be left out, so it doesn't come back."
+                    : `${n.toLocaleString()} files in your Recycle Bin will be left out, so they don't come back.`)
+                : '';
+        }
+        const keyNotice = document.getElementById('importKeyNotice');
+        const replaceKey = document.getElementById('importReplaceKey');
+        if (replaceKey) replaceKey.checked = false;
+        if (keyNotice) {
+            const different = d.key_status === 'different';
+            keyNotice.style.display = different ? 'block' : 'none';
+            const text = document.getElementById('importKeyNoticeText');
+            if (text && different) {
+                text.innerText = `This folder has a different WhatsApp backup key (${d.detected_key_masked}). It may belong to another phone or account, so your current key is kept unless you choose otherwise.`;
+            }
         }
 
         const moveDesc = document.getElementById('importMoveDesc');
@@ -396,6 +457,15 @@ function showImportResult(job) {
             `<strong>${(d.merged_hashes || 0).toLocaleString()}</strong> hash cache records merged into the duplicate index.`,
             `<strong>${(d.merged_manifest_items || 0).toLocaleString()}</strong> sync manifest items registered to prevent re-pulling.`,
         ];
+        if (d.previously_deleted_count) {
+            const n = d.previously_deleted_count;
+            lines.push(`<strong>${n.toLocaleString()}</strong> ${n === 1 ? 'file' : 'files'} in your Recycle Bin ${n === 1 ? 'was' : 'were'} left out.`);
+        }
+        if (d.imported_key) {
+            lines.push(`The WhatsApp backup key from the older folder is now used (${escapeHtml(d.masked_key)}).`);
+        } else if (d.key_kept) {
+            lines.push('The older folder had a different backup key. Your current key was kept.');
+        }
         if (d.failed_count) {
             const first = (d.failed || [])[0];
             lines.push(`<span style="color:#fca5a5;"><strong>${d.failed_count}</strong> file(s) could not be ${moved ? 'moved' : 'copied'}${first ? ` (e.g. ${escapeHtml(first.file)}: ${escapeHtml(first.error)})` : ''}. Run the import again to retry them.</span>`);
@@ -426,6 +496,7 @@ function pollImportJob() {
             _importPollTimer = setTimeout(tick, 2000);
             return;
         }
+        setBusyOperation('import', job.state === 'running');
         if (job.state === 'running') {
             renderImportProgress(job);
             _importPollTimer = setTimeout(tick, 500);
@@ -476,7 +547,11 @@ async function startFolderImport() {
         const res = await fetch('/api/import/execute', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source_path: path, mode })
+            body: JSON.stringify({
+                source_path: path,
+                mode,
+                replace_key: !!(document.getElementById('importReplaceKey') || {}).checked
+            })
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok || body.status !== 'started') {

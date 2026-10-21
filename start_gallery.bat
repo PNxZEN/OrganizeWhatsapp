@@ -22,7 +22,7 @@ if not exist "%~dp0config.json" (
 :: ============================================================
 :: Single-instance check: if server already running, open browser
 :: ============================================================
-curl.exe -s -m 1 http://127.0.0.1:8000/api/health >nul 2>&1
+curl.exe -s -f -m 1 http://127.0.0.1:8000/api/health 2>nul | findstr /c:"wa-media-organizer" >nul 2>&1
 if %errorlevel% equ 0 (
     if "!IS_FIRST_LAUNCH!"=="1" (
         start "" "http://127.0.0.1:8000/gallery.html?onboarding=1"

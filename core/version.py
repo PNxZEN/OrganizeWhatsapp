@@ -8,7 +8,7 @@ scripts/build_windows_portable.py), so it can never drift from the published rel
 import re
 from typing import Optional, Tuple
 
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 
 GITHUB_REPO = "PNxZEN/OrganizeWhatsapp"
 
