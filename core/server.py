@@ -9,6 +9,7 @@ import platform
 import re
 import shutil
 import socket
+import socketserver
 import subprocess
 import sys
 import threading
@@ -2554,6 +2555,20 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         self._send_json(404, {"status": "error", "message": "Endpoint not found"})
 
 
+class LocalHTTPServer(ThreadingHTTPServer):
+    """
+    HTTPServer.server_bind looks up the computer's full DNS name (socket.getfqdn) for a value this
+    app never uses. On some Macs and networks that lookup waits ~30 s for a DNS timeout, which
+    delayed every start of the app; skipping it makes the server answer at once.
+    """
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = host
+        self.server_port = port
+
+
 def start_gallery_server(
     output_dir,
     port=8000,
@@ -2611,7 +2626,7 @@ def start_gallery_server(
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(out_path), **kwargs)
 
-    httpd = ThreadingHTTPServer(server_address, BoundHandler)
+    httpd = LocalHTTPServer(server_address, BoundHandler)
     _server_runtime.update(output_dir=str(out_path), port=bound_port, idle_timeout=idle_timeout, allow_lan=allow_lan)
     threading.Thread(target=_idle_watchdog, args=(httpd,), daemon=True, name="idle-watchdog").start()
     _instance.claim(out_path, bound_port, host)

@@ -377,20 +377,20 @@ class TestPhase3APIs(unittest.TestCase):
             urllib.request.urlopen(missing_url)
         self.assertEqual(ctx.exception.code, 404)
 
-        # 4. Existing file -> 200 and triggers explorer /select
+        # 4. Existing file -> 200 and the file is shown in the system file manager.
+        #    (How each OS selects the file is covered by tests/test_reveal.py; patching here also keeps
+        #    the test from opening real Explorer/Finder windows on the machine running it.)
         target_rel = "Alice_Smith/2024-05/IMG-20240501-WA0001.jpg"
         ok_url = f"http://127.0.0.1:{self.port}/api/open-folder?rel_path={urllib.parse.quote(target_rel)}"
-        with mock.patch("subprocess.Popen") as mock_popen:
+        with mock.patch.object(srv, "reveal_in_file_manager") as mock_reveal:
             req = urllib.request.Request(ok_url)
             with urllib.request.urlopen(req) as resp:
                 self.assertEqual(resp.status, 200)
                 self.assertEqual(resp.read(), b"OK")
-            self.assertTrue(mock_popen.called)
-            called_cmd = mock_popen.call_args[0][0]
-            if platform.system() == "Windows":
-                self.assertIsInstance(called_cmd, str)
-                self.assertTrue(called_cmd.startswith("explorer /select,\""))
-                self.assertTrue(called_cmd.endswith(".jpg\""))
+            mock_reveal.assert_called_once()
+            shown = Path(mock_reveal.call_args[0][0])
+            self.assertTrue(shown.is_file())
+            self.assertEqual(shown.resolve(), (self.output_dir / target_rel).resolve())
 
     def test_10_api_chats_live_cache_update(self):
         """Verify update_gallery_data_live updates in-memory cache and /api/chats reflects new storage immediately."""

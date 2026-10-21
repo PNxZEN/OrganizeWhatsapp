@@ -44,20 +44,27 @@ class TestSingleInstance(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def start(self, out, port):
+        log = open(self.tmp / f"server-{port}.log", "w", encoding="utf-8")
         p = subprocess.Popen([sys.executable, "-c", SERVE.format(root=str(ROOT), out=str(out), port=port)],
-                             cwd=str(self.tmp), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                             cwd=str(self.tmp), stdout=log, stderr=subprocess.STDOUT, text=True)
+        p.log_path = log.name
+        log.close()
         self.procs.append(p)
         return p
 
-    def health(self, port, timeout=20):
+    def output(self, p):
+        return Path(p.log_path).read_text(encoding="utf-8", errors="replace")
+
+    def health(self, port, timeout=60):
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=1) as r:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=2) as r:
                     return json.loads(r.read())
             except Exception:
                 time.sleep(0.2)
-        self.fail(f"no server on port {port}")
+        details = "; ".join(f"pid {p.pid} exit={p.poll()} output={self.output(p)[-800:]!r}" for p in self.procs)
+        self.fail(f"no server on port {port} after {timeout}s ({details})")
 
     def test_01_health_identifies_the_app(self):
         out = self.tmp / "out"
@@ -75,7 +82,8 @@ class TestSingleInstance(unittest.TestCase):
         first = self.start(out, first_port)
         first_id = self.health(first_port)["instance"]
         second = self.start(out, free_port())
-        stdout, _ = second.communicate(timeout=30)
+        second.wait(timeout=60)
+        stdout = self.output(second)
         self.assertIn("already running", stdout)
         self.assertIn("RESULT deferred", stdout)
         self.assertIsNone(first.poll(), "the first server keeps running")

@@ -35,7 +35,13 @@ FAKE_APP_MAIN = textwrap.dedent('''
         def log_message(self, *a):
             pass
 
-    HTTPServer(("127.0.0.1", port), H).serve_forever()
+    class Quick(HTTPServer):
+        def server_bind(self):  # skip socket.getfqdn: it can stall ~30 s on macOS runners
+            import socketserver
+            socketserver.TCPServer.server_bind(self)
+            self.server_name, self.server_port = self.server_address[:2]
+
+    Quick(("127.0.0.1", port), H).serve_forever()
 ''')
 
 
@@ -88,6 +94,16 @@ def build_archive(version, files=None, top=None, mutate=None):
         if mutate:
             mutate(tar, top)
     return buf.getvalue()
+
+
+class QuickHTTPServer(ThreadingHTTPServer):
+    """A test server that skips socket.getfqdn (it can stall ~30 s per process on macOS runners)."""
+
+    def server_bind(self):
+        import socketserver
+
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 class FakeGitHub:
@@ -143,7 +159,7 @@ class FakeGitHub:
                 except OSError:
                     pass
 
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.httpd = QuickHTTPServer(("127.0.0.1", 0), Handler)
         self.base = f"http://127.0.0.1:{self.httpd.server_address[1]}"
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 

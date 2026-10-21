@@ -196,8 +196,10 @@ class TestWindowsFolderPicker(unittest.TestCase):
             def __call__(self, *args):
                 return self.result(*args) if callable(self.result) else self.result
 
+        picked = str(Path(tempfile.gettempdir()).resolve())  # one spelling of the folder on every OS
+
         def fill_path(pidl, buf):
-            buf.value = str(Path(tempfile.gettempdir()))
+            buf.value = picked
             return 1
 
         dll = types.SimpleNamespace(
@@ -211,7 +213,7 @@ class TestWindowsFolderPicker(unittest.TestCase):
         self.assertEqual(dll.shell32.SHBrowseForFolderW.restype, ctypes.c_void_p)
         self.assertEqual(dll.shell32.SHGetPathFromIDListW.argtypes[0], ctypes.c_void_p)
         self.assertEqual(dll.ole32.CoTaskMemFree.argtypes, [ctypes.c_void_p])
-        self.assertEqual((status, path), (PICK_SELECTED, str(Path(tempfile.gettempdir()).resolve())))
+        self.assertEqual((status, path), (PICK_SELECTED, picked))
 
         dll.shell32.SHBrowseForFolderW.result = None
         with mock.patch.object(ctypes, "windll", dll, create=True):

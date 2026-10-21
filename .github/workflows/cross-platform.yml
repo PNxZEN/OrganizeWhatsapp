@@ -29,6 +29,7 @@ jobs:
   tests:
     name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -45,6 +46,14 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Shell scripts are executable in git
+        if: runner.os == 'Linux'
+        run: |
+          # Copying files on Windows drops this flag; without it "./install.sh" fails after cloning.
+          # Fix with: git update-index --chmod=+x install.sh start_gallery.sh
+          bad=$(git ls-files -s '*.sh' | awk '$1 != "100755" {print $4}')
+          if [ -n "$bad" ]; then echo "Not executable in git: $bad"; exit 1; fi
+
       - name: Install dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt
 
@@ -59,6 +68,7 @@ jobs:
   unix-release:
     name: Release package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -162,6 +172,7 @@ jobs:
     name: Release package (Windows portable)
     if: github.event_name != 'workflow_dispatch' || inputs.windows_portable
     runs-on: windows-latest
+    timeout-minutes: 30
     defaults:
       run:
         shell: pwsh
@@ -205,9 +216,14 @@ jobs:
           if ($h.app -ne "wa-media-organizer") { throw "the app did not start" }
 
       - name: Start-Gallery.bat reuses the running app
+        timeout-minutes: 3
         run: |
-          cmd /c "cd /d `"$env:APP`" && Start-Gallery.bat" | Out-Null
-          Start-Sleep -Seconds 3
+          # No output pipe: anything the batch file starts (the browser) would inherit it and keep
+          # this step waiting forever. Run it as a user would and give it 60 s to finish.
+          $bat = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "Start-Gallery.bat" `
+            -WorkingDirectory $env:APP -WindowStyle Hidden -PassThru
+          if (-not $bat.WaitForExit(60000)) { throw "Start-Gallery.bat did not finish within 60 s" }
+          Start-Sleep -Seconds 5
           $servers = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" | Where-Object { $_.CommandLine -match "wa_media_organizer.py" }
           $servers | Select-Object ProcessId, CommandLine | Format-List
           if (@($servers).Count -ne 1) { throw "expected one server, found $(@($servers).Count)" }

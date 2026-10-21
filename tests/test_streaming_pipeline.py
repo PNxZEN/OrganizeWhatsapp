@@ -18,7 +18,8 @@ from core.sync_session import SyncSessionManager
 
 class TestStreamingMediaRouter(unittest.TestCase):
     def setUp(self):
-        self.test_dir = tempfile.mkdtemp(prefix="wa_test_streaming_")
+        # resolve(): the temp folder has other spellings (macOS /var -> /private/var, Windows 8.3 names)
+        self.test_dir = str(Path(tempfile.mkdtemp(prefix="wa_test_streaming_")).resolve())
         self.output_dir = os.path.join(self.test_dir, "output")
         os.makedirs(self.output_dir, exist_ok=True)
 

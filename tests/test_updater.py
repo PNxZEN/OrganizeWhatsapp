@@ -473,7 +473,7 @@ class EndToEndBase(UpdaterTestBase):
         self.wait_result(expect_status)
         return port
 
-    def wait_health(self, port, version, timeout=20):
+    def wait_health(self, port, version, timeout=60):
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
@@ -485,7 +485,9 @@ class EndToEndBase(UpdaterTestBase):
             except Exception:
                 pass
             time.sleep(0.2)
-        self.fail(f"no healthy server with version {version} on port {port}")
+        log = self.root / ".update" / "server.log"
+        tail = log.read_text(errors="replace")[-800:] if log.exists() else "(no server.log)"
+        self.fail(f"no healthy server with version {version} on port {port} after {timeout}s; server.log: {tail!r}")
 
     def wait_result(self, expect_status, timeout=60):
         path = self.root / ".update" / "last_result.json"
