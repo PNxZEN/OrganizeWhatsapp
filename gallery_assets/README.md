@@ -22,8 +22,9 @@ stylesheets and scripts in this folder. There is no build step: the files are se
 | Folder | Contents |
 | --- | --- |
 | `js/core/` | Shared state, formatting, escaping, toasts and modal stack, tab lifecycle, shutdown, saved app state, history navigation |
-| `js/features/` | One file per UI feature: sidebar, chat selection, filters, grid, lightbox, sync, device, tutorial, settings, reclaim studio, restore, backups, duplicates, recycle bin, live sync |
+| `js/features/` | One file per UI feature: sidebar, chat selection, filters, grid, lightbox, sync, device, tutorial, settings, about & updates, reclaim studio, restore, backups, duplicates, recycle bin, live sync |
 | `css/` | One stylesheet per UI area, in cascade order |
+| `fonts/` | The bundled Inter font (OFL). The page must never load fonts, scripts or images from an outside server (enforced by `tests/test_offline_privacy.py`) |
 
 ## Rendering untrusted text
 

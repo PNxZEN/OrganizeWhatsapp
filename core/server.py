@@ -547,6 +547,10 @@ from core.migrator import (
     validate_paths,
 )
 from core.import_job import ImportJobManager
+from core.activity import MaintenanceActive, activity
+from core.updater import UpdateError, UpdateManager, app_root as _app_root, env_overrides as _updater_env_overrides
+from core.update_helper import recover_interrupted_update
+from core.version import GITHUB_REPO, __version__
 
 # Background "Import Older Media" job (one at a time; polled by the gallery for progress)
 _import_job = ImportJobManager()
@@ -626,6 +630,45 @@ sync_status = {
     "error": None,
     "can_resume": False,
 }
+
+
+def _updater_busy_probe():
+    """What currently prevents an update from being installed (besides tracked short operations)."""
+    busy = []
+    if sync_status.get("active"):
+        busy.append("phone sync")
+    if _import_job.is_running():
+        busy.append("import of older media")
+    return busy
+
+
+_update_manager = UpdateManager(busy_probe=_updater_busy_probe, **_updater_env_overrides())
+# Options of the running server, so an update can restart it the same way
+_server_runtime = {"output_dir": "./output", "port": 8000, "idle_timeout": 0, "allow_lan": False}
+_UPDATING_MESSAGE = "The app is installing an update. Please wait a moment."
+
+
+_AUTO_CHECK_INTERVAL_SECS = 24 * 3600
+
+
+def _auto_update_check_enabled() -> bool:
+    return bool(load_config().get("auto_check_updates", False))
+
+
+def _auto_update_check_due() -> bool:
+    """True only when the user opted in to automatic checks AND the last check is over a day old."""
+    cfg = load_config()
+    if not cfg.get("auto_check_updates", False):
+        return False
+    try:
+        last = float(cfg.get("last_update_check") or 0)
+    except (TypeError, ValueError):
+        last = 0.0
+    return time.time() - last >= _AUTO_CHECK_INTERVAL_SECS
+
+
+def _is_updating() -> bool:
+    return activity.maintenance_message() is not None
 
 # Restore any paused session on server startup
 def _restore_paused_session():
@@ -885,6 +928,11 @@ def find_open_port(preferred_port=8000, max_attempts=10, host="127.0.0.1"):
     """
     for p in range(preferred_port, preferred_port + max_attempts):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if os.name != "nt":
+                # Connections of a server that just exited linger in TIME_WAIT; the real listener
+                # (HTTPServer) reuses the port, so the probe must too or a restart lands on port+1.
+                # (Not on Windows, where SO_REUSEADDR would let a second server share a live port.)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 s.bind((host, p))
                 return p
@@ -952,6 +1000,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         ".json": "application/json",
         ".svg": "image/svg+xml",
         ".webp": "image/webp",
+        ".woff2": "font/woff2",
     }
 
     def __init__(self, *args, directory=None, **kwargs):
@@ -1004,6 +1053,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "/api/heartbeat",
                     "/api/tab-closed",
                     "/api/import/status",
+                    "/api/update/status",
                 )
             ):
                 return
@@ -1093,7 +1143,24 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
 
         # /api/health or /api/ping
         if path in ("/api/health", "/api/ping"):
-            self._send_json(200, {"status": "ok"})
+            self._send_json(200, {"status": "ok", "version": __version__})
+            return
+
+        # /api/version (what is installed, how it was installed, and the outcome of the last update)
+        if path == "/api/version":
+            self._send_json(200, {
+                "version": __version__,
+                "repo": GITHUB_REPO,
+                "install": _update_manager.install_info(),
+                "auto_check_updates": _auto_update_check_enabled(),
+                "auto_check_due": _auto_update_check_due(),
+                "last_update": _update_manager.consume_last_result() if "consume" in urllib.parse.parse_qs(parsed_url.query) else None,
+            })
+            return
+
+        # /api/update/status (progress of a download/installation; polled by the UI)
+        if path == "/api/update/status":
+            self._send_json(200, _update_manager.status())
             return
 
         # /api/sync-status
@@ -1662,6 +1729,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(400, {"status": "error", "message": "source_path is required"})
                 return
 
+            if _is_updating():
+                self._send_json(409, {"status": "updating", "message": _UPDATING_MESSAGE})
+                return
             mode = body.get("mode", IMPORT_MODE_COPY)
             if mode not in (IMPORT_MODE_COPY, IMPORT_MODE_MOVE):
                 self._send_json(400, {"status": "error", "message": f"Unknown import mode: {mode}"})
@@ -1881,6 +1951,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
 
         # /api/sync (trigger background synchronization)
         if path == "/api/sync":
+            if _is_updating():
+                self._send_json(409, {"status": "updating", "message": _UPDATING_MESSAGE})
+                return
             if sync_status["active"]:
                 self._send_json(
                     409,
@@ -2024,17 +2097,20 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 return
 
             try:
-                _active_clean_cancel.clear()
-                res = execute_clean_plan(
-                    plan_id,
-                    str(self.output_dir),
-                    cancel_event=_active_clean_cancel,
-                    exclude_jids=body.get("exclude_jids"),
-                )
+                with activity.track("phone storage cleanup"):
+                    _active_clean_cancel.clear()
+                    res = execute_clean_plan(
+                        plan_id,
+                        str(self.output_dir),
+                        cancel_event=_active_clean_cancel,
+                        exclude_jids=body.get("exclude_jids"),
+                    )
                 resp = dict(res)
                 resp["status"] = "success" if res.get("success") else "error"
                 resp["result"] = res
                 self._send_json(200, resp)
+            except MaintenanceActive:
+                self._send_json(409, {"success": False, "status": "updating", "error": _UPDATING_MESSAGE, "message": _UPDATING_MESSAGE})
             except Exception as e:
                 self._send_json(500, {"success": False, "status": "error", "error": f"Execution failed: {e}", "message": f"Execution failed: {e}"})
             return
@@ -2071,8 +2147,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 return
 
             try:
-                _active_restore_cancel.clear()
-                res = restore_chat_to_phone(chat_jid, str(self.output_dir), cancel_event=_active_restore_cancel)
+                with activity.track("restore to phone"):
+                    _active_restore_cancel.clear()
+                    res = restore_chat_to_phone(chat_jid, str(self.output_dir), cancel_event=_active_restore_cancel)
                 resp = dict(res)
                 resp["status"] = "success" if res.get("success") else "error"
                 resp["result"] = res
@@ -2080,6 +2157,8 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     self._send_json(200, resp)
                 else:
                     self._send_json(400, resp)
+            except MaintenanceActive:
+                self._send_json(409, {"success": False, "status": "updating", "error": _UPDATING_MESSAGE, "message": _UPDATING_MESSAGE})
             except Exception as e:
                 self._send_json(500, {"success": False, "status": "error", "error": f"Restore failed: {e}", "message": f"Restore failed: {e}"})
             return
@@ -2119,6 +2198,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
 
         # /api/sync/resume or /api/resume-sync
         if path in ("/api/sync/resume", "/api/resume-sync"):
+            if _is_updating():
+                self._send_json(409, {"status": "updating", "message": _UPDATING_MESSAGE})
+                return
             if sync_status["active"]:
                 self._send_json(409, {"status": "busy", "message": "Synchronization is already active."})
                 return
@@ -2205,9 +2287,14 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(400, {"status": "error", "message": "Missing chat_name parameter"})
                 return
 
-            _active_backup_cancel.clear()
             chat_name = body["chat_name"]
-            success, zip_path, count = zip_chat(chat_name, str(self.output_dir), verify=True, cancel_event=_active_backup_cancel)
+            try:
+                with activity.track("ZIP backup"):
+                    _active_backup_cancel.clear()
+                    success, zip_path, count = zip_chat(chat_name, str(self.output_dir), verify=True, cancel_event=_active_backup_cancel)
+            except MaintenanceActive:
+                self._send_json(409, {"status": "updating", "message": _UPDATING_MESSAGE})
+                return
             if success:
                 fname = os.path.basename(zip_path)
                 self._send_json(
@@ -2232,9 +2319,14 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(400, {"status": "error", "message": "Missing files list"})
                 return
 
-            _active_backup_cancel.clear()
             files = body["files"]
-            success, zip_path, count = zip_file_list(files, str(self.output_dir), verify=True, cancel_event=_active_backup_cancel)
+            try:
+                with activity.track("ZIP backup"):
+                    _active_backup_cancel.clear()
+                    success, zip_path, count = zip_file_list(files, str(self.output_dir), verify=True, cancel_event=_active_backup_cancel)
+            except MaintenanceActive:
+                self._send_json(409, {"status": "updating", "message": _UPDATING_MESSAGE})
+                return
             if success:
                 fname = os.path.basename(zip_path)
                 self._send_json(
@@ -2274,7 +2366,12 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     if _tab_shutdown_timer and _tab_shutdown_timer.is_alive():
                         _tab_shutdown_timer.cancel()
                         _tab_shutdown_timer = None
-            self._send_json(200, {"status": "ok", "active_tabs": len(_active_tabs)})
+            self._send_json(200, {
+                "status": "ok",
+                "active_tabs": len(_active_tabs),
+                "version": __version__,
+                "maintenance": activity.maintenance_message(),
+            })
             return
 
         # /api/tab-closed (beacon sent when a browser tab unloads/closes)
@@ -2311,6 +2408,50 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(200, {"status": "tab_closed", "remaining_tabs": len(_active_tabs)})
             return
 
+        # /api/update/check | download | apply | cancel
+        if path.startswith("/api/update/"):
+            body = self._read_json_body() or {}
+            action = path[len("/api/update/"):]
+            try:
+                if action == "settings":
+                    if not isinstance(body.get("auto_check"), bool):
+                        self._send_json(400, {"status": "error", "message": "auto_check must be true or false"})
+                        return
+                    save_config({"auto_check_updates": body["auto_check"]})
+                    self._send_json(200, {"status": "success", "auto_check_updates": body["auto_check"]})
+                elif action == "check":
+                    if body.get("auto") and not _auto_update_check_due():
+                        # Privacy: the app never goes online on its own unless the user turned this on
+                        self._send_json(200, {"status": "skipped"})
+                        return
+                    result = _update_manager.check(force=bool(body.get("force")))
+                    save_config({"last_update_check": time.time()})
+                    self._send_json(200, {"status": "success", **result})
+                elif action == "download":
+                    self._send_json(202, {"status": "started", **_update_manager.start_download()})
+                elif action == "apply":
+                    server = self.server
+                    result = _update_manager.apply(
+                        lambda: _perform_clean_shutdown(server, reason="Installing an update"),
+                        port=server.server_address[1],
+                        output_dir=str(self.output_dir),
+                        idle_timeout=_server_runtime["idle_timeout"],
+                        allow_lan=_server_runtime["allow_lan"],
+                    )
+                    self._send_json(202, {"status": "restarting", **result})
+                elif action == "cancel":
+                    self._send_json(200, {"status": "cancelled", **_update_manager.cancel()})
+                else:
+                    self._send_json(404, {"status": "error", "message": "Endpoint not found"})
+            except UpdateError as e:
+                http_status = 409 if e.code in ("busy", "not_ready") else 400 if e.code in (
+                    "unsupported_install", "up_to_date", "no_package") else 502
+                payload = {"status": "error", "code": e.code, "message": e.message}
+                if e.code == "busy":
+                    payload["busy"] = _update_manager.current_busy()
+                self._send_json(http_status, payload)
+            return
+
         # /api/shutdown (graceful server shutdown)
         if path == "/api/shutdown":
             _perform_clean_shutdown(self.server, reason="Manual exit from UI")
@@ -2334,6 +2475,14 @@ def start_gallery_server(
     """
     out_path = Path(output_dir).resolve()
     out_path.mkdir(parents=True, exist_ok=True)
+
+    # An update that was cut short (crash, power loss) is rolled back before anything is served
+    try:
+        if recover_interrupted_update(_app_root()):
+            print("[Updater] A previous update was interrupted; the earlier version was restored.")
+        _update_manager.cleanup_stale()
+    except Exception as e:
+        print(f"[Updater] Warning: could not check for an interrupted update: {e}")
 
     # Auto-synthesize gallery.html and its CSS/JS modules in output directory if missing or outdated
     install_gallery_frontend(out_path)
@@ -2359,6 +2508,7 @@ def start_gallery_server(
             super().__init__(*args, directory=str(out_path), **kwargs)
 
     httpd = ThreadingHTTPServer(server_address, BoundHandler)
+    _server_runtime.update(output_dir=str(out_path), port=bound_port, idle_timeout=idle_timeout, allow_lan=allow_lan)
 
     print("\n" + "=" * 60)
     print("STARTING LOCAL GALLERY SERVER")

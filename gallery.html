@@ -5,11 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WhatsApp Offline Media Gallery</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2310b981'><path d='M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.896-11.891 3.181.001 6.167 1.24 8.413 3.488 2.248 2.248 3.483 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.993-.001-3.951-.5-5.688-1.448l-6.308 1.654z'/></svg>">
-    <!-- Google Fonts Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Inter is bundled in gallery_assets/fonts so the page never contacts an outside server -->
     <!-- Gallery styles (order matters: later files override earlier ones) -->
+    <link rel="stylesheet" href="gallery_assets/css/fonts.css">
     <link rel="stylesheet" href="gallery_assets/css/base.css">
     <link rel="stylesheet" href="gallery_assets/css/sidebar.css">
     <link rel="stylesheet" href="gallery_assets/css/header.css">
@@ -22,6 +20,7 @@
     <link rel="stylesheet" href="gallery_assets/css/control-center.css">
     <link rel="stylesheet" href="gallery_assets/css/modals.css">
     <link rel="stylesheet" href="gallery_assets/css/settings.css">
+    <link rel="stylesheet" href="gallery_assets/css/update.css">
     <link rel="stylesheet" href="gallery_assets/css/duplicates-review.css">
     <link rel="stylesheet" href="gallery_assets/css/reclaim-studio.css">
     <link rel="stylesheet" href="gallery_assets/css/duplicates-cards.css">
@@ -90,6 +89,7 @@
             <h1>
                 <svg class="icon" viewBox="0 0 24 24" style="width:24px;height:24px;"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.896-11.891 3.181.001 6.167 1.24 8.413 3.488 2.248 2.248 3.483 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.993-.001-3.951-.5-5.688-1.448l-6.308 1.654zm6.59-4.846c1.62.963 3.223 1.472 4.881 1.473 5.485.002 9.948-4.461 9.95-9.95.002-2.66-1.033-5.159-2.908-7.038C16.7 1.762 14.202.727 11.536.727c-5.488 0-9.952 4.461-9.955 9.95-.001 1.724.461 3.407 1.34 4.896l-.999 3.65 3.735-.979zm12.355-6.685c-.328-.164-1.942-.958-2.242-1.069-.3-.109-.519-.164-.738.164-.219.328-.848 1.069-1.039 1.288-.19.22-.382.246-.71.082-.328-.164-1.386-.511-2.64-1.63-1.01-.9-1.69-2.013-1.89-2.342-.2-.328-.022-.507.142-.671.148-.148.328-.383.493-.574.164-.19.219-.328.328-.547.11-.219.055-.411-.027-.574-.082-.164-.738-1.777-1.012-2.441-.269-.648-.544-.56-.738-.57-.19-.01-.41-.012-.629-.012s-.574.082-.875.411c-.3.328-1.147 1.12-1.147 2.73s1.175 3.167 1.339 3.386c.164.22 2.313 3.532 5.603 4.954.783.337 1.393.539 1.869.69.787.25 1.5.214 2.064.13.629-.094 1.942-.793 2.215-1.559.273-.766.273-1.422.191-1.559-.082-.137-.3-.22-.628-.383z"/></svg>
                 WA Media Library
+                <button type="button" class="app-version-badge" id="appVersionBadge" onclick="openKeyModal('about')" title="About &amp; updates" style="display:none;"></button>
             </h1>
             <p>Select a chat to view and backup media</p>
         </div>
@@ -936,6 +936,11 @@
                         </div>
                         <span id="recycleBinCountPill" class="badge-tag" style="display:none; font-size:11px; padding:1px 6px; border-radius:10px; background:rgba(239,68,68,0.2); color:#fca5a5;">0</span>
                     </button>
+                    <button type="button" class="settings-nav-item" id="tabSettingsAbout" onclick="switchSettingsTab('about')" style="display:none;">
+                        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                        <span>About &amp; Updates</span>
+                        <span class="update-dot" id="aboutUpdateDot"></span>
+                    </button>
                 </div>
 
                 <!-- Right Content Pane -->
@@ -1119,6 +1124,49 @@
                     </div>
 
                     <!-- Tab 3: Storage & Recycle Bin Body -->
+                    <!-- Tab 4: About & Updates -->
+                    <div id="settingsViewAbout" class="modal-body" style="display:none; padding: 24px; flex-direction: column; gap: 16px;">
+                        <div class="about-card">
+                            <div class="about-head">
+                                <div>
+                                    <div class="about-title">WhatsApp Offline Media Gallery</div>
+                                    <div class="about-sub" id="aboutInstallLine"></div>
+                                </div>
+                                <span class="about-version-pill" id="aboutVersionPill">v-</span>
+                            </div>
+                        </div>
+                        <div class="about-card" id="updateCard">
+                            <div class="update-status-row">
+                                <div class="update-status-icon" id="updateStatusIcon"></div>
+                                <div style="min-width:0;">
+                                    <div class="update-status-title" id="updateStatusTitle">Software update</div>
+                                    <div class="update-status-sub" id="updateStatusSub"></div>
+                                </div>
+                            </div>
+                            <div class="update-notes" id="updateNotesBox" style="display:none;"></div>
+                            <div class="update-progress-wrap" id="updateProgressWrap" style="display:none;">
+                                <div class="update-progress-track"><div class="update-progress-bar" id="updateProgressBar"></div></div>
+                                <div class="update-progress-detail" id="updateProgressDetail"></div>
+                            </div>
+                            <div class="update-error" id="updateError" style="display:none;"></div>
+                            <div class="update-actions">
+                                <button type="button" class="action-btn action-btn-secondary" id="btnUpdateCheck" onclick="checkForUpdates(true)">Check for updates</button>
+                                <button type="button" class="action-btn action-btn-primary" id="btnUpdateDownload" onclick="startUpdateDownload()" style="display:none;">Download update</button>
+                                <button type="button" class="action-btn action-btn-primary" id="btnUpdateInstall" onclick="installUpdate()" style="display:none;">Restart &amp; install</button>
+                                <button type="button" class="action-btn action-btn-secondary" id="btnUpdateCancel" onclick="cancelUpdate()" style="display:none;">Cancel</button>
+                                <a class="update-link" id="updateReleaseLink" href="#" target="_blank" rel="noopener noreferrer" style="display:none;">View release on GitHub</a>
+                            </div>
+                            <label class="update-auto-row" for="settingAutoCheckUpdates">
+                                <input type="checkbox" id="settingAutoCheckUpdates" onchange="onAutoUpdateToggle(this.checked)">
+                                <span>
+                                    <span class="update-auto-title">Check for updates automatically</span>
+                                    <span class="update-auto-desc">Off by default. When on, the app asks GitHub for the latest version once a day when it opens. It never downloads or installs anything without your click.</span>
+                                </span>
+                            </label>
+                            <p class="update-fineprint"><strong>Your privacy:</strong> this app works fully offline and only goes online when you press &ldquo;Check for updates&rdquo; (or if you turn on automatic checks above). A check is one anonymous request to github.com that carries no account, phone, chat or media information, only your IP address like any web request. Downloads are verified before they are installed. Your settings, backup key, databases and media are never touched, and the previous version is restored automatically if the new one fails to start.</p>
+                        </div>
+                    </div>
+
                     <div id="settingsViewRecycle" class="modal-body" style="display:none; padding: 24px; flex-direction: column; gap: 16px;">
                         <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 28px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px;">
                             <div style="width: 52px; height: 52px; border-radius: 26px; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.25); display: flex; align-items: center; justify-content: center;">
@@ -2220,6 +2268,19 @@
     <!-- TOAST CONTAINER -->
     <div id="toastContainer"></div>
 
+    <!-- Blocks the page while an update is installed and the app restarts -->
+    <div class="update-overlay" id="updateOverlay" role="alertdialog" aria-modal="true" aria-labelledby="updateOverlayTitle" aria-describedby="updateOverlayText">
+        <div class="update-overlay-card">
+            <div class="update-overlay-spinner"></div>
+            <div class="update-overlay-title" id="updateOverlayTitle">Installing update&hellip;</div>
+            <div class="update-overlay-text" id="updateOverlayText">The app is restarting. This page will reload by itself. Please don&rsquo;t close it.</div>
+            <div class="update-overlay-actions">
+                <button type="button" class="action-btn action-btn-primary" onclick="location.reload()">Reload now</button>
+                <button type="button" class="action-btn action-btn-secondary" onclick="resumeRestartWatch()">Keep waiting</button>
+            </div>
+        </div>
+    </div>
+
     <!-- GALLERY DATA -->
     <script src="gallery_data.js"></script>
 
@@ -2234,6 +2295,7 @@
     <script src="gallery_assets/js/features/device.js"></script>
     <script src="gallery_assets/js/features/tutorial.js"></script>
     <script src="gallery_assets/js/features/settings.js"></script>
+    <script src="gallery_assets/js/features/update.js"></script>
     <script src="gallery_assets/js/features/sync.js"></script>
     <script src="gallery_assets/js/features/live-refresh.js"></script>
     <script src="gallery_assets/js/core/shutdown.js"></script>

@@ -100,18 +100,25 @@ function switchSettingsTab(tab) {
     const tabKey = document.getElementById('tabSettingsKey');
     const tabImport = document.getElementById('tabSettingsImport');
     const tabRecycle = document.getElementById('tabSettingsRecycle');
+    const tabAbout = document.getElementById('tabSettingsAbout');
+    const viewAbout = document.getElementById('settingsViewAbout');
     const viewGeneral = document.getElementById('settingsViewGeneral');
     const viewKey = document.getElementById('settingsViewKey');
     const viewImport = document.getElementById('settingsViewImport');
     const viewRecycle = document.getElementById('settingsViewRecycle');
 
-    [tabGeneral, tabKey, tabImport, tabRecycle].forEach(t => t && t.classList.remove('active'));
+    [tabGeneral, tabKey, tabImport, tabRecycle, tabAbout].forEach(t => t && t.classList.remove('active'));
+    if (viewAbout) viewAbout.style.display = 'none';
     if (viewGeneral) viewGeneral.style.display = 'none';
     if (viewKey) viewKey.style.display = 'none';
     if (viewImport) viewImport.style.display = 'none';
     if (viewRecycle) viewRecycle.style.display = 'none';
 
-    if (tab === 'recycle') {
+    if (tab === 'about') {
+        if (tabAbout) tabAbout.classList.add('active');
+        if (viewAbout) viewAbout.style.display = 'flex';
+        onAboutTabShown();
+    } else if (tab === 'recycle') {
         if (tabRecycle) tabRecycle.classList.add('active');
         if (viewRecycle) viewRecycle.style.display = 'flex';
     } else if (tab === 'import') {

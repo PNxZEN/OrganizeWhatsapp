@@ -15,11 +15,13 @@ function startHeartbeat() {
     const sendPing = async () => {
         if (isServerShuttingDown || !isHttpServer) return;
         try {
-            await fetch('/api/heartbeat', {
+            const res = await fetch('/api/heartbeat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tab_id: BROWSER_TAB_ID })
             });
+            // The server reports when it is installing an update, so every open tab can show the restart overlay
+            if (res.ok && typeof onHeartbeatInfo === 'function') onHeartbeatInfo(await res.json());
         } catch (e) {}
     };
     sendPing();

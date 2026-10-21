@@ -9,6 +9,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     startHeartbeat();
     startSyncPolling();
+    loadVersionInfo();
 
     // Set up sidebar search listener
     const sidebarSearch = document.getElementById('sidebarSearch');

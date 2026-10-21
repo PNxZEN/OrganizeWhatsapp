@@ -28,6 +28,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -393,6 +394,14 @@ def dct(x, type=2, n=None, axis=-1, norm=None, overwrite_x=False):
         else:
             print(f"  [WARN] {dname}/ not found, skipping")
 
+    # Stamp the release version so the in-app "About & Updates" page always matches the tag
+    version_py = BUILD_DIR / "core" / "version.py"
+    if version_py.exists():
+        stamped = re.sub(r'^__version__ = .*$', f'__version__ = "{version}"',
+                         version_py.read_text(encoding="utf-8"), flags=re.M)
+        version_py.write_text(stamped, encoding="utf-8")
+        print(f"  [STAMP] core/version.py -> {version}")
+
     # Copy the launcher as Start-Gallery.bat
     bat_src = APP_ROOT / "start_gallery.bat"
     if bat_src.exists():
@@ -488,7 +497,7 @@ def dct(x, type=2, n=None, axis=-1, norm=None, overwrite_x=False):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build Windows Portable ZIP")
-    parser.add_argument("--version", default="1.1.0", help="Release version string (e.g. 1.1.0)")
+    parser.add_argument("--version", default="1.2.1", help="Release version string (e.g. 1.2.1)")
     parser.add_argument("--dry-run", action="store_true", help="Print plan without downloading or building")
     args = parser.parse_args()
     build(args.version, dry_run=args.dry_run)

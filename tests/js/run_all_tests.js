@@ -16,7 +16,8 @@ const suites = [
     { name: 'Settings Layout, Slider Switch & Import Flow', file: 'test_settings_and_import.js' },
     { name: 'Gallery Browsing, Category Filters & Lightbox', file: 'test_gallery_interaction.js' },
     { name: 'Duplicate Detection Engine & Large Dataset Invariants', file: 'test_frontend_engine.js' },
-    { name: 'Phone Storage Reclaim Lifecycle & Safety Engine', file: 'test_phone_storage_reclaim.js' }
+    { name: 'Phone Storage Reclaim Lifecycle & Safety Engine', file: 'test_phone_storage_reclaim.js' },
+    { name: 'About & Updates (safe notes, opt-in privacy, restart overlay)', file: 'test_update_ui.js' }
 ];
 
 console.log('======================================================================');

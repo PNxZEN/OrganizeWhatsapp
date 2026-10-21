@@ -29,6 +29,9 @@ encrypted_backup.key
 # Use config.json.example as the public template
 config.json
 
+# In-app updater working folder (downloads, staging, backups of the previous version)
+.update/
+
 # SQLite Databases & temporary journal/WAL files
 *.db
 *.db-shm

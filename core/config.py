@@ -106,6 +106,8 @@ def load_config(config_path=DEFAULT_CONFIG_FILE):
         "media_dir": DEFAULT_MEDIA_DIR,
         "db_dir": DEFAULT_DB_DIR,
         "allow_lan": False,
+        "auto_check_updates": False,
+        "last_update_check": 0,
         "onboarding_completed": False,
         "selected_account_path": "",
         "selected_account_id": "",

@@ -33,9 +33,10 @@
 8. [Why the 64-Digit Key?](#8-why-the-64-digit-key)
 9. [Project Structure](#9-project-structure)
 10. [Configuration Reference](#10-configuration-reference)
-11. [Privacy & Security](#11-privacy--security)
-12. [Requirements](#12-requirements)
-13. [License](#13-license)
+11. [In-App Updates & Versioning](#11-in-app-updates--versioning)
+12. [Privacy & Security](#12-privacy--security)
+13. [Requirements](#13-requirements)
+14. [License](#14-license)
 
 ---
 
@@ -186,13 +187,13 @@ The app will:
 
 ### Step 5: Reclaim Phone Storage
 
-Once your media is safely backed up and verified on your PC:
+You can reclaim phone storage directly from the app or manually inside WhatsApp:
 
-1. Open WhatsApp on your phone → **Settings → Storage and Data → Manage Storage**
-2. Tap the chats you have backed up
-3. Select all media → tap **Delete**
+- **Built-in Phone Storage Reclaim Studio**: Open the Reclaim tab to analyze phone storage. Choose between **Safe** (keeps recent media), **Balanced**, or **Aggressive** cleaning profiles. The strict **Archive Safety Invariant** guarantees that zero unbacked-up files are ever deleted from your phone.
+- **Media Restore**: Accidental deletions can be pushed back to your phone at any time via the restore manager.
+- **Manual WhatsApp Deletion**: Open WhatsApp on phone → **Settings → Storage and Data → Manage Storage** → select chats and tap **Delete**.
 
-Your phone storage is instantly reclaimed. Your memories remain safely preserved on your PC.
+Your phone storage is instantly reclaimed while your memories remain safely preserved on your PC.
 
 ---
 
@@ -211,6 +212,9 @@ Alternatively: Phone **Settings → Developer Options → toggle the master swit
 | Feature | Description |
 | :--- | :--- |
 | **Zero-install Windows Portable** | Download a ZIP, extract, double-click — no Python required |
+| **In-App Updater** | Opt-in updates with download verification, atomic swap, and automatic rollback on failure |
+| **Phone Storage Reclaim Studio** | Intelligently free up phone storage with Safe/Balanced/Aggressive profiles and Archive Safety guarantee |
+| **Recycle Bin & Phone Restore** | Soft-delete duplicates into a Recycle Bin; push archived media back to phone over USB |
 | **Direct Wired USB Sync** | Streams media at 30–60 MB/s over USB 3.0/2.0 via ADB — no Wi-Fi, no cloud |
 | **AES-256-GCM Decryption** | Decrypts WhatsApp databases locally with your 64-digit key |
 | **1-Tap USB Key Transfer** | Securely sends your key from phone to PC over the physical wire, zero internet |
@@ -225,6 +229,7 @@ Alternatively: Phone **Settings → Developer Options → toggle the master swit
 | **Multi-Account & Dual Apps** | Auto-detects native WhatsApp sub-accounts (`accounts/*`), Samsung Dual Messenger, and Dual Apps |
 | **WhatsApp Business Support** | Seamless support for WhatsApp Business (`com.whatsapp.w4b`) with UI account switcher |
 | **One-Click ADB Disable** | Turns off USB debugging from the desktop UI before you unplug |
+| **100% Bundled Offline Fonts** | Self-hosted Inter font family — zero external CDN or Google Fonts requests |
 | **100% Offline & Private** | Zero telemetry, zero cloud, strict localhost binding |
 | **Cross-Tab Sync** | Closing any tab shuts down the server and notifies all other tabs simultaneously |
 
@@ -255,20 +260,30 @@ By providing the 64-digit hex key, the app decrypts the database locally using A
 ```text
 OrganizeWhatsapp/
 ├── core/                          # Modular backend engine
+│   ├── activity.py                # Activity coordinator & operation concurrency lock
 │   ├── adb.py                     # ADB binary socket streaming & device control
 │   ├── config.py                  # Configuration loader, path helpers, binary finders
+│   ├── database.py                # SQLite query engine for msgstore & media indexes
 │   ├── decrypt.py                 # WhatsApp AES-256-GCM database decryptor
+│   ├── device_inventory.py        # Fast device storage & account discoverer
+│   ├── import_job.py              # Background importer for historical/external media
+│   ├── migrator.py                # Media folder structure migrator & index builder
 │   ├── organizer.py               # Single-pass media copier & duplicate hasher
+│   ├── pipeline.py                # Multi-stage backup & sync execution pipeline
 │   ├── server.py                  # Multi-threaded local HTTP server & REST APIs
 │   ├── thumbnail.py               # On-demand image downscaling & video frame extraction
+│   ├── update_helper.py           # Atomic update installer & background process restarter
+│   ├── updater.py                 # GitHub releases updater with SHA-256 validation
+│   ├── version.py                 # Version truth & semver comparator
 │   └── assets/
 │       └── tutorial/              # Onboarding guide step images (WebP)
 ├── gallery.html                   # Gallery page shell (markup + module includes)
-├── gallery_assets/                # Gallery frontend modules (see gallery_assets/README.md)
-│   ├── css/                       # Stylesheets, one per UI area
+├── gallery_assets/                # Gallery frontend assets (zero external CDN dependencies)
+│   ├── css/                       # Modular stylesheets (base, gallery, update, fonts...)
+│   ├── fonts/                     # Self-hosted offline Inter font files (WOFF2)
 │   └── js/
 │       ├── core/                  # State, formatting, escaping, modal stack, navigation
-│       ├── features/              # Sidebar, grid, lightbox, sync, reclaim, duplicates...
+│       ├── features/              # Sidebar, grid, lightbox, sync, reclaim, updater...
 │       └── app.js                 # Bootstrap (loads last)
 ├── wa_media_organizer.py          # Main CLI entrypoint
 ├── start_gallery.bat              # Windows launcher (portable runtime + dev venv)
@@ -281,7 +296,7 @@ OrganizeWhatsapp/
 ├── .github/
 │   └── workflows/
 │       └── release.yml            # GitHub Actions: builds & publishes releases on git tag
-├── tests/                         # Automated unit test suite (77 tests)
+├── tests/                         # Automated test suite (246 unit & integration tests + 6 JS test suites)
 ├── output/                        # Organized media destination (gitignored)
 └── Databases/                     # Encrypted & decrypted databases (gitignored)
 ```
@@ -302,6 +317,7 @@ Copy `config.json.example` to `config.json` to customize settings. The app creat
   "media_dir": "./output",
   "db_dir": "./Databases",
   "allow_lan": false,
+  "auto_check_updates": false,
   "onboarding_completed": false
 }
 ```
@@ -316,20 +332,34 @@ Copy `config.json.example` to `config.json` to customize settings. The app creat
 | `media_dir` | `"./output"` | Source directory the gallery reads from. Normally matches `output_dir`. |
 | `db_dir` | `"./Databases"` | Where WhatsApp database files are pulled and decrypted. |
 | `allow_lan` | `false` | Set `true` to allow access from other devices on your local network. **Use with caution** — this exposes your media to your LAN. |
+| `auto_check_updates` | `false` | Opt-in. When `true` the app asks GitHub for the latest version once a day when it opens (Settings > About & Updates). It never downloads or installs anything by itself. |
 | `onboarding_completed` | `false` | Set automatically to `true` after completing the setup guide. Reset to `false` to replay the guide. |
 
 ---
 
-## 11. Privacy & Security
+## 11. In-App Updates & Versioning
+
+Open **Settings > About & Updates** (or click the version badge next to the title):
+
+1. **Check for updates** shows the latest release and its notes.
+2. **Download update** downloads and verifies it. Nothing is installed yet.
+3. **Restart & install** swaps the application files and restarts the app. It is refused while a phone sync, an import of older media, a phone cleanup, a restore, or a ZIP backup is running, and every open browser tab shows a "Installing update" screen until the new version is up. A copy of the previous version is kept in the `.update` folder for manual recovery.
+
+Copies installed with Git (a `.git` folder) are not updated in-app: use `git pull`. A release that needs new Python packages (rare) must be downloaded manually from the release page.
+
+---
+
+## 12. Privacy & Security
 
 - **Strict Localhost Binding**: The server binds to `127.0.0.1` by default. No device on your Wi-Fi or LAN can access your data unless you explicitly set `allow_lan: true`.
-- **Zero Cloud Communication**: No outgoing network calls. Decryption, thumbnail rendering, and duplicate hashing are 100% local.
+- **Offline by Default**: The app makes no outgoing network calls on its own. Decryption, thumbnail rendering, duplicate hashing, and even the interface font are 100% local (Inter is bundled; nothing is loaded from Google Fonts or any CDN). The only exception is the update check described below, and it happens only when you ask for it.
+- **Updates Are Opt-In**: Settings > About & Updates shows the installed version. The app contacts GitHub only when you press **Check for updates**, or if you turn on **Check for updates automatically** (off by default, at most once a day). A check is one anonymous request to github.com carrying no account, phone, chat, or media information and no version number (GitHub sees your IP address, like any web request). Downloads are verified with SHA-256 before installing, only application code is replaced (never your `config.json`, keys, databases, or media), and the previous version is restored automatically if the new one does not start.
 - **Key Safety**: Your 64-digit key is stored only in your local `config.json`. It is never transmitted over the internet. The USB transfer path (`/paste-key`) is only reachable over the physical USB cable.
 - **Git Ignore**: All media, databases, contact maps, keys, and personal configs are strictly git-ignored and will never be committed to any repository.
 
 ---
 
-## 12. Requirements
+## 13. Requirements
 
 ### Windows Portable (Recommended)
 - **Nothing** — Python, ADB, and all dependencies are bundled in the ZIP.
@@ -365,6 +395,6 @@ wa-crypt-tools>=0.1.0   # WhatsApp crypt14/crypt15 database format support
 
 ---
 
-## 13. License
+## 14. License
 
 MIT License. Free and open source for personal data preservation and storage management.

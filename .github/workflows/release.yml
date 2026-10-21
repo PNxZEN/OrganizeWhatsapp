@@ -113,6 +113,10 @@ jobs:
           STAGING="build/unix-staging/WhatsAppMediaOrganizer-v${VERSION}"
           mkdir -p "$STAGING"
 
+          # Stamp the release version so the in-app "About & Updates" page always matches the tag
+          sed -i "s/^__version__ = .*/__version__ = \"${VERSION}\"/" core/version.py
+          grep -q "^__version__ = \"${VERSION}\"" core/version.py
+
           # Copy source files
           cp -r core gallery_assets wa_media_organizer.py gallery.html requirements.txt README.md "$STAGING/"
           cp start_gallery.sh install.sh "$STAGING/"
