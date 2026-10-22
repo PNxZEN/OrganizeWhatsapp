@@ -102,6 +102,7 @@ function buildWaGuideView(ctx) {
         view.showFinish = backingUp;
         view.showManual = !!ctx.showManual || !!g.fallback;
         const heading = g.phase === 'locked' ? 'Waiting for you'
+            : paused && g.pause_reason === 'disconnected' ? 'Phone disconnected'
             : paused ? 'Paused'
             : backingUp ? 'WhatsApp is making the backup'
             : failed ? 'WhatsApp could not make the backup'
@@ -138,6 +139,7 @@ function buildWaGuideView(ctx) {
                         ${g.notice ? `<div class="wag-warn">${esc(g.notice)}</div>` : ''}
                         ${g.storage_warning && !lowStorage && !backingUp ? `<div class="wag-warn">${esc(g.storage_warning)}</div>` : ''}
                         ${paused && g.pause_reason === 'away' ? `<div class="wag-row"><button type="button" class="action-btn action-btn-primary wag-btn" onclick="waGuideContinue()">Continue</button></div>` : ''}
+                        ${paused && g.pause_reason === 'call' ? `<div class="wag-row"><button type="button" class="wag-link" onclick="waGuideContinue()">Not on a call? Continue anyway</button></div>` : ''}
                         ${lowStorage ? `<div class="wag-row"><button type="button" class="action-btn action-btn-secondary wag-btn" onclick="waGuideAllowLowStorage()">Continue anyway</button></div>` : ''}
                         ${failed ? `
                             <div class="wag-text">Make room on the phone (for example, delete large videos or unused apps), then try again. Your key is already saved.</div>

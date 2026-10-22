@@ -314,7 +314,8 @@ def classify(nodes: List[Node], foreground: str = "") -> Screen:
            for n in nodes):
         return Screen("screen_lock")
     in_whatsapp = re.match(r"com\.whatsapp(\.w4b)?/", foreground or "")
-    if in_whatsapp and re.search(r"(?i)voip|\.calling\.", foreground):
+    if in_whatsapp and re.search(r"(?i)voip|callscreen|incall", foreground) and not re.search(
+            r"(?i)log|history|info|link|contact|picker|settings", foreground):
         return Screen("wa_call")  # a WhatsApp call: never tap or reopen anything during it
     if not wa_nodes and in_whatsapp and all(n.package == "com.android.systemui" for n in nodes if n.package):
         return Screen("shade")    # the notification shade / quick settings pulled down over WhatsApp
@@ -528,7 +529,7 @@ def covering_window(text: str, x: int, y: int, packages=WA_PACKAGES) -> str:
 
 
 # One adb round trip per loop instead of four (each costs ~0.1-0.5 s on a phone)
-SNAPSHOT_CMD = ("echo @@lock; dumpsys window | grep -iE 'keyguard|lockscreen'; "
+SNAPSHOT_CMD = ("echo @@lock; dumpsys window | grep -iE 'keyguard|lockscreen|mCurrentFocus'; "
                 "echo @@power; dumpsys power | grep -E 'mWakefulness=|Display Power|mLastUserActivityTime'; "
                 "echo @@call; dumpsys telephony.registry | grep mCallState; "
                 "echo @@top; dumpsys activity activities | grep -E 'ResumedActivity'; echo @@end")
@@ -556,7 +557,27 @@ def parse_snapshot(text: str) -> Optional[dict]:
     return {"lock": parse_lock_state(sec.get("lock", ""), sec.get("power", "")),
             "activity": parse_user_activity(sec.get("power", "")),
             "in_call": parse_in_call(sec.get("call", "")),
-            "foreground": parse_foreground(sec.get("top", ""))}
+            "foreground": parse_foreground(sec.get("top", "")),
+            "focus": parse_focus(sec.get("lock", ""))}
+
+
+def parse_focus(text: str) -> str:
+    """The window that gets key input (`mCurrentFocus=Window{hash u0 TITLE}`), or "" if not reported."""
+    m = re.search(r"mCurrentFocus=Window\{\w+ u\d+ ([^}]*)\}", text or "")
+    return m.group(1).strip() if m else ""
+
+
+SHADE_FOCUS = re.compile(r"NotificationShade|^StatusBar$|NotificationPanel", re.I)
+
+
+def focus_blocks(focus: str, packages=WA_PACKAGES) -> bool:
+    """A window in front of WhatsApp takes the input: the notification shade, or another app's window."""
+    if not focus:
+        return False
+    if SHADE_FOCUS.search(focus):
+        return True
+    m = re.match(r"([\w.]+)/", focus)
+    return bool(m) and m.group(1) not in packages
 
 
 def parse_backup_stats(text: str):
@@ -578,9 +599,24 @@ class AdbPhone:
         self.base = [adb] + (["-s", serial] if serial else [])
         self.serial = serial
 
+    LOST = re.compile(r"device '.*' not found|no devices/emulators found|device offline|device unauthorized|"
+                      r"device still authorizing|no device", re.I)
+
     def _run(self, *args, timeout=20):
-        res = subprocess.run(self.base + list(args), capture_output=True, timeout=timeout)
-        return res.returncode, res.stdout.decode("utf-8", errors="replace") + res.stderr.decode("utf-8", errors="replace")
+        """(exit code, output). A slow or vanished phone is an answer like any other, never an exception."""
+        try:
+            res = subprocess.run(self.base + list(args), capture_output=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return 1, "adb: timed out"
+        except OSError as e:
+            self.disconnected = True
+            return 1, f"adb: {e}"
+        out = res.stdout.decode("utf-8", errors="replace") + res.stderr.decode("utf-8", errors="replace")
+        self.disconnected = res.returncode != 0 and bool(self.LOST.search(out))
+        return res.returncode, out
+
+    def connection_lost(self) -> bool:
+        return getattr(self, "disconnected", False)
 
     def dump(self) -> str:
         _, out = self._run("exec-out", "uiautomator", "dump", "/dev/tty")
@@ -607,7 +643,8 @@ class AdbPhone:
     def pre_touch(self, x: int, y: int, check_cover: bool) -> Optional[dict]:
         """Right before a tap: last touch, foreground app and (near the top) what covers (x, y)."""
         cmd = ("echo @@power; dumpsys power | grep -m1 mLastUserActivityTime; "
-               "echo @@top; dumpsys activity activities | grep -E 'ResumedActivity'; ")
+               "echo @@top; dumpsys activity activities | grep -E 'ResumedActivity'; "
+               "echo @@focus; dumpsys window displays | grep -m1 mCurrentFocus; ")
         if check_cover:
             cmd += "echo @@win; " + WINDOWS_GREP + "; "
         _, out = self._run("shell", cmd + "echo @@end", timeout=15)
@@ -615,6 +652,7 @@ class AdbPhone:
         if "end" not in sec:
             return None
         return {"activity": parse_user_activity(sec.get("power", "")), "foreground": parse_foreground(sec.get("top", "")),
+                "focus": parse_focus(sec.get("focus", "")),
                 "cover": covering_window(sec.get("win", ""), x, y) if check_cover else ""}
 
     def user_activity(self) -> Optional[int]:
@@ -780,6 +818,8 @@ class WaGuide:
         self._seen_whatsapp = False    # WhatsApp was on screen since the guide opened it
         self._away = False             # paused: the phone shows another app
         self._paused_for = None        # "call"
+        self._call_ignored = False     # "Continue anyway" while the phone still reports a call
+        self._lost_since = None        # the phone disconnected (cable out) at this time
         self._continue = False
 
     def status(self) -> dict:
@@ -787,7 +827,8 @@ class WaGuide:
             self._last_poll = self._clock()
             st = dict(self._state)
         st["steps"] = self._steps(st)
-        st["pause_reason"] = (self._paused_for or ("away" if self._away else "")) if st["phase"] == "paused" else ""
+        st["pause_reason"] = (("disconnected" if self._lost_since else self._paused_for or ("away" if self._away else ""))
+                              if st["phase"] == "paused" else "")
         st["slide"] = (11 if st["phase"] == "backing_up" else None if st["phase"] in ("locked", "backup_failed")
                        else st.get("slide_hint") if st.get("slide_hint") is not None else SCREEN_SLIDE.get(st["screen"]))
         return st
@@ -850,6 +891,12 @@ class WaGuide:
         """"Continue" after the phone went to another app: bring WhatsApp back where it was."""
         if not self._state.get("active"):
             raise ValueError("the guide is not running; start it again")
+        if self._paused_for == "call":
+            # The phone still reports a call (some phones keep doing so after it ended): carry on
+            self._call_ignored = True
+            self._paused_for = None
+            self._set(phase="running", instruction="Carrying on…")
+            return
         self._continue = True
         self._set(instruction="Opening WhatsApp again…")
 
@@ -950,9 +997,23 @@ class WaGuide:
             if self._timed_out():
                 return
             st = self._state
-            watching = st["mode"] == "auto" and not (st["created"] and not self._retry)
+            making_backup = st["created"] and not self._retry
+            watching = st["mode"] == "auto" and not making_backup
             snap = self._snapshot(phone, watching)
-            if snap["lock"] in ("asleep", "locked"):  # locked half-way: wait, then carry on
+            if self._call(phone, "connection_lost", False):
+                # Cable out, phone restarted, USB debugging switched off: wait, keep the progress
+                self._lost_since = self._lost_since or self._clock()
+                self._set(phase="paused", instruction="The phone is not connected. Plug the USB cable back in "
+                                                      "(and allow USB debugging if the phone asks); the app carries on where it was.")
+                self._sleep(1.0)
+                continue
+            if self._lost_since:
+                self._lost_since = None
+                self._expect_activity = True  # the phone's "last touched" time may have started over
+                self._set(phase="running")
+            # Locked half-way: wait, then carry on. Not while WhatsApp makes the backup: that goes on
+            # with the screen off, and the backup file can be checked on a locked phone
+            if snap["lock"] in ("asleep", "locked") and not making_backup:
                 if not self._wait_unlocked(phone):
                     return
                 self._set(phase="running")
@@ -960,15 +1021,18 @@ class WaGuide:
             now = self._clock()
             if watching:
                 self._track_touches(snap["activity"], now)
-                if snap["in_call"]:
-                    self._paused_for = "call"
-                    self._set(phase="paused", instruction="Paused during your phone call. The app continues when the call ends.")
+                if not snap["in_call"]:
+                    self._call_ignored = False
+                elif not self._call_ignored:
+                    self._pause_for_call()
                     self._sleep(1.0)
                     continue
             foreground = snap["foreground"] if snap["foreground"] is not None else phone.foreground()
             self._foreground = foreground
             nodes = parse_layout(phone.dump())
             screen = classify(nodes, foreground)
+            if snap.get("focus") and SHADE_FOCUS.search(snap["focus"]) and screen.name != "screen_lock":
+                screen = Screen("shade")  # the shade is open even if the layout read still showed WhatsApp
             acted = self._handle(phone, screen, nodes, now)
             if acted:
                 self._expect_activity = True
@@ -991,6 +1055,10 @@ class WaGuide:
             return fn(*args)
         except Exception:
             return default
+
+    def _pause_for_call(self):
+        self._paused_for = "call"
+        self._set(phase="paused", instruction="Paused during your phone call. The app continues when the call ends.")
 
     def _snapshot(self, phone, watching) -> dict:
         """Lock state, last touch, call state and foreground app: one adb call when the phone object can."""
@@ -1030,8 +1098,9 @@ class WaGuide:
         st = self._state
         name = screen.name
         auto = st["mode"] == "auto"
-        if name not in INTERRUPTION_SCREENS and name != "other_app":
-            if name not in ("unreadable", "screen_lock"):
+        if (name not in INTERRUPTION_SCREENS and name != "other_app") or (name == "wa_call" and self._call_ignored):
+            # ("Continue anyway" on a WhatsApp call screen: treated as any other WhatsApp screen)
+            if name not in ("unreadable", "screen_lock", "wa_call"):
                 self._seen_whatsapp = True
             self._shade_since = None
             self._paused_for = None
@@ -1061,6 +1130,9 @@ class WaGuide:
             return "relaunch"
         if not self._seen_whatsapp:
             return None  # WhatsApp is still opening: the usual relaunch after a few seconds
+        if auto and not self._call_ignored and self._call(phone, "in_call", False):
+            self._pause_for_call()  # the call screen came up (the round started just before it rang)
+            return "wait"
         if self._continue:
             self._continue = False
             phone.launch(self.package)  # resumes WhatsApp on the screen it was left on
@@ -1088,13 +1160,19 @@ class WaGuide:
         info = self._call(phone, "pre_touch", None, point[0], point[1], near_top)
         if info is None:
             info = {"activity": self._call(phone, "user_activity", None), "foreground": phone.foreground(),
+                    "focus": self._call(phone, "focus", ""),
                     "cover": self._call(phone, "covered_at", "", *point) if near_top else ""}
+        if self._call(phone, "connection_lost", False):
+            return "Waiting for the phone\u2026"  # unplugged meanwhile: the next round says so
         act = info.get("activity")
         if act is not None and self._activity_base is not None and act != self._activity_base:
             self._activity_base, self._last_foreign_touch = act, now
             return WAITING_FOR_USER
         if info.get("foreground") and self._foreground and info["foreground"] != self._foreground:
             return "Reading the phone\u2019s screen again\u2026"  # a call screen or another app came up
+        if focus_blocks(info.get("focus") or ""):
+            # The shade, or another app's window over WhatsApp, would get the tap
+            return "Waiting: something on the phone is in front of WhatsApp\u2026"
         cover = info.get("cover") or ""
         if not cover:
             self._covered_since = None

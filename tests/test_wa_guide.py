@@ -1067,6 +1067,21 @@ class BusyPhone(FakePhone):
         self.bad = []                # inputs under a banner / during a call / while touched / at stale places
         self.collapsed = 0
         self.launches = 0
+        self.lost = False            # the USB cable is out
+        self.hidden_shade = False    # the shade is open, but the layout read still shows WhatsApp
+
+    def connection_lost(self):
+        return self.lost
+
+    def focus(self):
+        return "NotificationShade" if self.hidden_shade else "com.whatsapp/com.whatsapp.Whatever"
+
+    def snapshot(self):
+        """Like AdbPhone.snapshot: everything the guide checks each round, in one call."""
+        if self.lost:
+            return None
+        return {"lock": self.lock_state(), "activity": self.user_activity(), "in_call": self.calling,
+                "foreground": self.foreground(), "focus": self.focus()}
 
     def _fire(self):
         hook = self.when.pop(self.current, None)
@@ -1127,6 +1142,7 @@ class BusyPhone(FakePhone):
 
     def collapse_panels(self):
         self.collapsed += 1
+        self.hidden_shade = False
         if self.current == "shade":
             self.current = self.left_on
 
@@ -1139,6 +1155,10 @@ class BusyPhone(FakePhone):
         return self.open_fresh(package)
 
     def _check(self, kind, y):
+        if self.lost:
+            self.bad.append((kind, "while disconnected", self.current))
+        if self.hidden_shade:
+            self.bad.append((kind, "into the shade", self.current))
         if self.calling or self.wa_call or self.current in ("other", "shade"):
             self.bad.append((kind, "not in WhatsApp", self.current))
         if self.banner > 0 and y < 400:
@@ -1302,6 +1322,78 @@ class InterruptionTests(unittest.TestCase):
         guide.stop()
         self.assertEqual((phone.collapsed, phone.taps), (0, []))
 
+    def test_61_unplugged_cable_pauses_and_carries_on_when_back(self):
+        phone = BusyPhone(e2e_on=False, when={"chats": lambda p: setattr(p, "lost", True)})
+        guide = make_guide(phone)
+        guide.start("auto")
+        st = wait(guide, lambda s: s["phase"] == "paused")
+        self.assertEqual(st["pause_reason"], "disconnected")
+        self.assertIn("USB cable", st["instruction"])
+        self.assertEqual(st["screen"], "chat_settings", "progress kept (the Chats screen was read before the cable came out)")
+        time.sleep(0.2)
+        phone.lost = False
+        wait(guide, lambda s: s["phase"] == "done")
+        guide.stop()
+        self.assertEqual((phone.bad, phone.events.count("open")), ([], 1))
+
+    def test_62_a_lock_while_whatsapp_makes_the_backup_does_not_ask_to_unlock(self):
+        class LocksDuringBackup(BusyPhone):
+            def dump(self):
+                if self.locked and self.after_backup:  # WhatsApp finishes the backup with the screen off
+                    self.after_backup, self.backup = None, (self.clock, 48 * 1024 ** 2)
+                return super().dump()
+
+        phone = LocksDuringBackup(e2e_on=False, unlock_after=10 ** 6, when={20: lambda p: setattr(p, "lock_at", "backup")})
+        guide = make_guide(phone)
+        guide.start("auto")
+        phases = set()
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            st = guide.status()
+            phases.add(st["phase"])
+            if st["phase"] == "done":
+                break
+            time.sleep(0.005)
+        guide.stop()
+        self.assertEqual(st["phase"], "done", st)
+        self.assertTrue(phone.locked, "the phone stayed locked")
+        self.assertNotIn("locked", phases)
+        self.assertNotIn("wake", phone.events)
+        self.assertIn("made the encrypted backup", st["message"])
+
+    def test_63_a_call_state_that_never_clears_can_be_overridden(self):
+        phone = BusyPhone(e2e_on=False, when={"chats": lambda p: setattr(p, "calling", True)})
+        guide = make_guide(phone)
+        guide.start("auto")
+        wait(guide, lambda s: s["pause_reason"] == "call")
+        guide.resume()  # "Not on a call? Continue anyway"
+        st = wait(guide, lambda s: s["phase"] == "done")
+        guide.stop()
+        self.assertEqual(st["phase"], "done")
+        phone.bad = [b for b in phone.bad if b[1] != "not in WhatsApp"]  # the fake still "calls"
+        self.assertEqual(phone.bad, [])
+
+    def test_64_a_shade_the_layout_read_misses_is_still_closed_first(self):
+        phone = BusyPhone(e2e_on=False, when={"chats": lambda p: setattr(p, "hidden_shade", True)})
+        self.finish(phone)
+        self.assertEqual(phone.collapsed, 1)
+
+    def test_65_call_history_is_not_a_call(self):
+        nodes = parse_layout(to_xml(HOME))
+        self.assertEqual(classify(nodes, "com.whatsapp/com.whatsapp.voipcalling.VoipActivityV2").name, "wa_call")
+        self.assertEqual(classify(nodes, "com.whatsapp/com.whatsapp.calling.callscreen.CallScreenActivity").name, "wa_call")
+        for page in ("com.whatsapp/com.whatsapp.calling.callhistory.CallLogActivity",
+                     "com.whatsapp/com.whatsapp.calling.calllink.CallLinkActivity",
+                     "com.whatsapp/com.whatsapp.calling.CallInfoActivity"):
+            self.assertNotEqual(classify(nodes, page).name, "wa_call", page)
+        self.assertTrue(wa_guide.focus_blocks("NotificationShade"))
+        self.assertTrue(wa_guide.focus_blocks("com.android.systemui/com.android.systemui.usb.UsbPermissionActivity"))
+        self.assertFalse(wa_guide.focus_blocks("com.whatsapp/com.whatsapp.HomeActivity"))
+        self.assertFalse(wa_guide.focus_blocks("PopupWindow:9c1f"), "WhatsApp's own ⋮ menu")
+        self.assertFalse(wa_guide.focus_blocks(""))
+        self.assertEqual(wa_guide.parse_focus("  mCurrentFocus=Window{8a u0 NotificationShade}"), "NotificationShade")
+        self.assertEqual(wa_guide.parse_focus("  mCurrentFocus=null"), "")
+
     def test_60_parsing(self):
         windows = """
   Window #12 Window{a1 u0 NotificationShade}:
@@ -1456,10 +1548,27 @@ class SlowScreenTests(unittest.TestCase):
 
 
 class AdbPhoneCommandTests(unittest.TestCase):
+    def test_42_slow_or_unplugged_phone_never_crashes_the_guide(self):
+        from unittest import mock
+        phone = wa_guide.AdbPhone("adb", "SER")
+        with mock.patch.object(wa_guide.subprocess, "run", side_effect=wa_guide.subprocess.TimeoutExpired("adb", 20)):
+            self.assertEqual(phone.dump(), "")
+            self.assertIsNone(phone.snapshot())
+        self.assertFalse(phone.connection_lost(), "slow is not unplugged")
+        gone = mock.Mock(returncode=1, stdout=b"", stderr=b"adb: device 'SER' not found")
+        with mock.patch.object(wa_guide.subprocess, "run", return_value=gone):
+            self.assertIsNone(phone.snapshot())
+        self.assertTrue(phone.connection_lost())
+        back = mock.Mock(returncode=0, stdout=b"@@end\n", stderr=b"")
+        with mock.patch.object(wa_guide.subprocess, "run", return_value=back):
+            phone.snapshot()
+        self.assertFalse(phone.connection_lost())
+
     def test_41_one_adb_call_per_round_and_per_tap(self):
         from unittest import mock
         calls = []
         snapshot_out = ("@@lock\n  mDreamingLockscreen=false\n    isKeyguardShowing=false\n"
+                        "  mCurrentFocus=Window{9f u0 com.whatsapp/com.whatsapp.home.ui.HomeActivity}\n"
                         "@@power\n  mWakefulness=Awake\n  mLastUserActivityTime=4242 (1s ago)\n"
                         "@@call\n  mCallState=0\n  mCallState=0\n"
                         "@@top\n  topResumedActivity=ActivityRecord{1 u0 com.whatsapp/.home.ui.HomeActivity t3}\n@@end\n")
@@ -1483,7 +1592,8 @@ class AdbPhoneCommandTests(unittest.TestCase):
             near_top = phone.pre_touch(1020, 200, True)
             lower = phone.pre_touch(540, 1500, False)
         self.assertEqual(snap, {"lock": "unlocked", "activity": 4242, "in_call": False,
-                                "foreground": "com.whatsapp/.home.ui.HomeActivity"})
+                                "foreground": "com.whatsapp/.home.ui.HomeActivity",
+                                "focus": "com.whatsapp/com.whatsapp.home.ui.HomeActivity"})
         self.assertEqual((near_top["activity"], near_top["cover"]), (4243, "NotificationShade"))
         self.assertEqual(lower["cover"], "", "no window list for spots below the banner area")
         self.assertEqual(len(calls), 3, "one adb call each")

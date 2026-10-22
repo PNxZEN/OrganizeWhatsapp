@@ -102,7 +102,9 @@ v = view({ guide: { active: true, phase: 'paused', pause_reason: 'away', mode: '
 assert.ok(v.state === 'running' && v.html.includes('Paused') && v.html.includes('waGuideContinue()'));
 assert.ok(v.html.includes('wag-step-done'), 'the steps done so far stay ticked');
 v = view({ guide: { active: true, phase: 'paused', pause_reason: 'call', mode: 'auto', instruction: 'Paused during your phone call.', steps } });
-assert.ok(v.html.includes('phone call') && !v.html.includes('waGuideContinue()'), 'no Continue during a call');
+assert.ok(v.html.includes('phone call') && v.html.includes('Continue anyway'), 'a stuck call state can be overridden');
+v = view({ guide: { active: true, phase: 'paused', pause_reason: 'disconnected', mode: 'auto', instruction: 'The phone is not connected.', steps } });
+assert.ok(v.html.includes('Phone disconnected') && !v.html.includes('waGuideContinue()'));
 v = view({ guide: { active: false, phase: 'paused', pause_reason: 'away', steps } });
 assert.strictEqual(v.state, 'running');
 console.log('  -> Passed: paused for another app or a call');
