@@ -1033,6 +1033,304 @@ class ApiTests(unittest.TestCase):
         self.assertEqual((code, st["phase"]), (200, "done"))
         self.assertNotIn(KEY, json.dumps(st))
         self.assertEqual(self.call("POST", "/api/wa-guide/nope")[0], 404)
+        self.assertEqual(self.call("POST", "/api/wa-guide/continue")[0], 400, "Continue needs a running guide")
+
+
+class BusyPhone(FakePhone):
+    """
+    A phone that gets interrupted while the guide taps: notification banners, the notification
+    shade, the user's own touches, another app, phone calls. `when[screen]` runs once, the first
+    time that screen is shown. Records any tap or swipe that landed where it should not.
+    """
+
+    OTHER = [{"id": "com.google.android.youtube:id/player", "class": "View", "bounds": "[0,0][1080,2412]",
+              "package": "com.google.android.youtube"}]
+    SHADE = [{"id": "com.android.systemui:id/notification_panel", "class": "View", "bounds": "[0,0][1080,2412]",
+              "package": "com.android.systemui"},
+             {"id": "com.android.systemui:id/quick_settings_panel", "class": "View", "bounds": "[0,0][1080,800]",
+              "package": "com.android.systemui"}]
+
+    def __init__(self, when=None, **kw):
+        super().__init__(**kw)
+        self.when = dict(when or {})
+        self.activity = 5000
+        self.touching = 0            # the user's finger is on the phone for this many more reads
+        self.banner = 0              # a notification banner over the top of the screen for this many checks
+        self.calling = False
+        self.left_on = None          # the WhatsApp screen behind another app / the shade
+        self.wa_call = False
+        self.menu_moves = 0          # the ⋮ menu is still sliding in for this many reads
+        self.menu_shift = 0
+        self.bad = []                # inputs under a banner / during a call / while touched / at stale places
+        self.collapsed = 0
+        self.launches = 0
+
+    def _fire(self):
+        hook = self.when.pop(self.current, None)
+        if hook:
+            hook(self)
+
+    def leave_for(self, where):
+        self.left_on, self.current = self.current, where
+
+    def layout(self):
+        if self.current == "other":
+            return self.OTHER
+        if self.current == "shade":
+            return self.SHADE
+        items = super().layout()
+        if self.current == "menu" and self.menu_shift:
+            items = copy.deepcopy(items)
+            for i in items:
+                l, t, r, b = wa_guide._bounds(i["bounds"])
+                i["bounds"] = f"[{l},{t + self.menu_shift}][{r},{b + self.menu_shift}]"
+        return items
+
+    def foreground(self):
+        if self.wa_call:
+            return "com.whatsapp/com.whatsapp.calling.callscreen.VoipActivityV2"
+        if self.current == "other":
+            return "com.google.android.youtube/.HomeActivity"
+        if self.current == "shade":
+            saved, self.current = self.current, self.left_on
+            try:
+                return super().foreground()  # the shade does not change the app underneath
+            finally:
+                self.current = saved
+        return super().foreground()
+
+    def dump(self):
+        self._fire()
+        if self.current == "menu" and self.menu_moves > 0:
+            self.menu_moves -= 1
+            self.menu_shift += 40
+        return super().dump()
+
+    # what the guide checks before touching
+    def user_activity(self):
+        if self.touching > 0:
+            self.touching -= 1
+            self.activity += 1
+        return self.activity
+
+    def in_call(self):
+        return self.calling
+
+    def covered_at(self, x, y):
+        if self.banner > 0 and y < 400:
+            self.banner -= 1
+            return "NotificationShade"
+        return ""
+
+    def collapse_panels(self):
+        self.collapsed += 1
+        if self.current == "shade":
+            self.current = self.left_on
+
+    def launch(self, package):
+        self.launches += 1
+        self.activity += 1
+        if self.left_on is not None and self.current in ("other", "shade"):
+            self.current, self.left_on = self.left_on, None
+            return True
+        return self.open_fresh(package)
+
+    def _check(self, kind, y):
+        if self.calling or self.wa_call or self.current in ("other", "shade"):
+            self.bad.append((kind, "not in WhatsApp", self.current))
+        if self.banner > 0 and y < 400:
+            self.bad.append((kind, "under the banner", self.current))
+        if self.touching > 0:
+            self.bad.append((kind, "while the user touches", self.current))
+
+    def tap(self, x, y):
+        self._check("tap", y)
+        self.activity += 1
+        if self.current == "menu":
+            items = self.layout()
+            title = next((i for i in items if i.get("text") and self._inside(i, x, y)
+                          or (i.get("clickable") and self._inside(i, x, y) and any(
+                              t.get("text") == "Settings" and self._contains(i, t) for t in items))), None)
+            if not title:
+                self.bad.append(("tap", "stale place in the menu", (x, y)))
+        return super().tap(x, y)
+
+    def swipe(self, *a):
+        self._check("swipe", a[1])
+        self.activity += 1
+        return super().swipe(*a)
+
+    def back(self):
+        self.activity += 1
+        return super().back()
+
+    def open_fresh(self, package):
+        self.activity += 1
+        return super().open_fresh(package)
+
+
+class InterruptionTests(unittest.TestCase):
+    """Notifications, the user's own hands, calls and other apps never make the guide tap the wrong thing."""
+
+    def setUp(self):
+        from unittest import mock
+        patches = [mock.patch.object(wa_guide, "COVER_WAIT_SECS", 0.4), mock.patch.object(wa_guide, "SHADE_WAIT_SECS", 0.05),
+                   mock.patch.object(wa_guide, "USER_QUIET_SECS", 0.05), mock.patch.object(wa_guide, "USER_QUIET_RELAUNCH_SECS", 0.1)]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def finish(self, phone, **kw):
+        st, saved, seen = run_guide(phone, **kw)
+        self.assertEqual(st["phase"], "done", st)
+        self.assertEqual(saved, [KEY])
+        self.assertEqual(phone.bad, [])
+        return st, seen
+
+    def test_50_waits_for_a_notification_banner_over_settings(self):
+        # ⋮ sits at the top, right where a banner drops in
+        phone = BusyPhone(e2e_on=False, when={"home": lambda p: setattr(p, "banner", 4)})
+        self.finish(phone)
+        self.assertEqual(phone.banner, 0, "the guide checked the spot until the banner went")
+
+    def test_51_a_banner_that_stays_hands_over_instead_of_tapping_it(self):
+        phone = BusyPhone(e2e_on=False, when={"home": lambda p: setattr(p, "banner", 10 ** 6)})
+        st, _, _ = run_guide(phone, until=("never",), timeout=1.5)
+        self.assertEqual(phone.bad, [])
+        self.assertEqual(st["mode"], "guide")
+        self.assertIn("covers WhatsApp", st["notice"])
+        self.assertNotIn("menu", phone.shown, "⋮ was not tapped through the banner")
+
+    def test_52_closes_the_notification_shade_and_carries_on(self):
+        phone = BusyPhone(e2e_on=False, when={"chats": lambda p: p.leave_for("shade")})
+        self.finish(phone)
+        self.assertEqual(phone.collapsed, 1)
+        self.assertEqual(phone.events.count("open"), 1, "WhatsApp was not reopened from the start")
+
+    def test_53_waits_while_the_user_touches_the_phone(self):
+        phone = BusyPhone(e2e_on=False, when={2: lambda p: setattr(p, "touching", 25),
+                                             "backup": lambda p: setattr(p, "touching", 25)})
+        self.finish(phone)
+        self.assertEqual(phone.touching, 0)
+
+    def test_54_another_app_pauses_until_whatsapp_is_back(self):
+        phone = BusyPhone(e2e_on=False, when={"chats": lambda p: p.leave_for("other")})
+        guide = make_guide(phone)
+        guide.start("auto")
+        st = wait(guide, lambda s: s["phase"] == "paused")
+        self.assertEqual(st["pause_reason"], "away")
+        self.assertIn("another app", st["instruction"])
+        self.assertEqual(st["screen"], "settings", "progress kept: still at the Chats step")
+        time.sleep(0.3)
+        self.assertEqual(phone.current, "other", "the user is never pulled out of the other app")
+        self.assertEqual(phone.events.count("open"), 1)
+        phone.current, phone.left_on = phone.left_on, None  # the user goes back to WhatsApp
+        st = wait(guide, lambda s: s["phase"] == "done")
+        guide.stop()
+        self.assertEqual(phone.bad, [])
+        self.assertEqual(phone.launches, 0)
+
+    def test_55_continue_brings_whatsapp_back_where_it_was(self):
+        phone = BusyPhone(e2e_on=False, when={"backup": lambda p: p.leave_for("other")})
+        guide = make_guide(phone)
+        guide.start("auto")
+        wait(guide, lambda s: s["phase"] == "paused")
+        guide.resume()
+        st = wait(guide, lambda s: s["phase"] == "done")
+        guide.stop()
+        self.assertEqual((phone.launches, phone.events.count("open")), (1, 1), "resumed in place, not reopened")
+        self.assertEqual(phone.bad, [])
+        self.assertEqual(st["masked_key"], KEY[:4] + "…" + KEY[-4:])
+
+    def test_56_phone_call_pauses_and_the_guide_returns_after_it(self):
+        def ring(p):
+            p.calling = True
+            p.leave_for("other")  # the call screen
+
+        phone = BusyPhone(e2e_on=False, when={"chats": ring})
+        guide = make_guide(phone)
+        guide.start("auto")
+        st = wait(guide, lambda s: s["phase"] == "paused")
+        self.assertEqual(st["pause_reason"], "call")
+        self.assertIn("phone call", st["instruction"])
+        time.sleep(0.2)
+        phone.calling = False  # hung up: the phone stays on the call app
+        st = wait(guide, lambda s: s["phase"] == "done")
+        guide.stop()
+        self.assertEqual(phone.bad, [])
+        self.assertEqual(phone.launches, 1)
+
+    def test_57_whatsapp_call_is_never_touched(self):
+        phone = BusyPhone(e2e_on=False, when={"chats": lambda p: setattr(p, "wa_call", True)})
+        guide = make_guide(phone)
+        guide.start("auto")
+        st = wait(guide, lambda s: s["phase"] == "paused")
+        self.assertIn("WhatsApp call", st["instruction"])
+        taps = len(phone.taps)
+        time.sleep(0.3)
+        self.assertEqual(len(phone.taps), taps)
+        phone.wa_call = False
+        wait(guide, lambda s: s["phase"] == "done")
+        guide.stop()
+        self.assertEqual(phone.bad, [])
+
+    def test_58_a_menu_still_sliding_in_is_tapped_where_it_ends_up(self):
+        phone = BusyPhone(e2e_on=False, when={"menu": lambda p: setattr(p, "menu_moves", 2)})
+        self.finish(phone)
+        self.assertEqual(phone.menu_moves, 0)
+
+    def test_59_guide_mode_never_closes_or_reopens_anything(self):
+        # (the shade comes down after the guide has read the Chats screen once)
+        phone = BusyPhone(e2e_on=False, start="chats",
+                          when={"chats": lambda p: p.when.__setitem__("chats", lambda q: q.leave_for("shade"))})
+        guide = make_guide(phone)
+        guide.start("guide")
+        st = wait(guide, lambda s: "notification panel" in s["instruction"])
+        time.sleep(0.2)
+        guide.stop()
+        self.assertEqual((phone.collapsed, phone.taps), (0, []))
+
+    def test_60_parsing(self):
+        windows = """
+  Window #12 Window{a1 u0 NotificationShade}:
+    mOwnerUid=10050 showForAllUsers=true package=com.android.systemui appop=NONE
+      fl=NOT_FOCUSABLE LAYOUT_IN_SCREEN
+    mViewVisibility=0x0 mHaveFrame=true mObscured=false
+      Frames: parent=[0,0][1080,2400] display=[0,0][1080,2400] frame=[0,0][1080,2400]
+    isOnScreen=true
+    isVisible=true
+  Window #11 Window{b2 u0 ScreenDecorOverlay}:
+    package=com.android.systemui appop=NONE
+      fl=NOT_FOCUSABLE NOT_TOUCHABLE
+    mViewVisibility=0x0
+      Frames: frame=[0,0][1080,2400]
+  Window #10 Window{c3 u0 com.whatsapp/com.whatsapp.HomeActivity}:
+    package=com.whatsapp appop=NONE
+    mViewVisibility=0x0
+      Frames: frame=[0,0][1080,2400]
+  Window #9 Window{d4 u0 com.facebook.orca}:
+    package=com.facebook.orca appop=SYSTEM_ALERT_WINDOW
+    mViewVisibility=0x0
+    mFrame=[0,0][1080,2400] last=[0,0][1080,2400]
+"""
+        cw = wa_guide.covering_window
+        self.assertEqual(cw(windows, 500, 300), "NotificationShade")
+        hidden = windows.replace("mViewVisibility=0x0 mHaveFrame", "mViewVisibility=0x4 mHaveFrame")
+        self.assertEqual(cw(hidden, 500, 300), "", "an invisible shade covers nothing; screen filters let taps through")
+        self.assertEqual(cw(windows.replace("frame=[0,0][1080,2400]\n    isOnScreen", "frame=[0,0][1080,300]\n    isOnScreen"), 500, 900), "")
+        bubble = hidden.replace("Window #9 Window{d4 u0 com.facebook.orca}", "Window #13 Window{e5 u0 com.facebook.orca}")
+        bubble = bubble.replace("  Window #12", "  Window #13 Window{e5 u0 ChatHead}:\n    package=com.facebook.orca\n"
+                                               "    mViewVisibility=0x0\n    mFrame=[900,1000][1080,1180]\n  Window #12")
+        self.assertEqual(cw(bubble, 950, 1100), "ChatHead", "another app's bubble over the target")
+        self.assertEqual(cw(bubble, 500, 1100), "")
+        self.assertEqual(cw("", 1, 1), "")
+        self.assertEqual(wa_guide.parse_user_activity("  mLastUserActivityTime=81234567 (12s ago)"), 81234567)
+        self.assertIsNone(wa_guide.parse_user_activity("nothing"))
+        self.assertTrue(wa_guide.parse_in_call("  mCallState=0\n  mCallState=2"))
+        self.assertFalse(wa_guide.parse_in_call("  mCallState=0\n  mCallState=0"))
+        self.assertEqual(classify(parse_layout(to_xml(BusyPhone.SHADE)), "com.whatsapp/.Conversation").name, "shade")
+        self.assertEqual(classify(parse_layout(to_xml(BusyPhone.SHADE)), "com.android.launcher/.Home").name, "other_app")
+        self.assertEqual(classify(parse_layout(to_xml(HOME)), "com.whatsapp/com.whatsapp.voipcalling.VoipActivityV2").name, "wa_call")
 
 
 class AdbPhoneCommandTests(unittest.TestCase):

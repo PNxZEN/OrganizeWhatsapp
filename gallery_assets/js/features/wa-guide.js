@@ -27,7 +27,7 @@ function waGuideDeviceReady() {
 function buildWaGuideView(ctx) {
     const g = ctx.guide || {};
     const esc = (s) => escapeHtml(String(s == null ? '' : s));
-    const running = !!g.active || ['needs_choice', 'needs_user', 'have_key', 'low_storage', 'locked', 'backing_up', 'backup_failed'].includes(g.phase);
+    const running = !!g.active || ['needs_choice', 'needs_user', 'have_key', 'low_storage', 'locked', 'paused', 'backing_up', 'backup_failed'].includes(g.phase);
     const view = { html: '', showManual: !!ctx.showManual, showFinish: !!ctx.keySet, state: '' };
 
     const haveKeyPanel = () => `
@@ -95,11 +95,14 @@ function buildWaGuideView(ctx) {
         const failed = g.phase === 'backup_failed';
         const backingUp = g.phase === 'backing_up';
         const yourTurn = ['needs_user', 'locked'].includes(g.phase);
+        // Another app, a call: the guide waits (it never pulls the user out of what they opened)
+        const paused = g.phase === 'paused';
         // Finishing mid-way would close the guide before WhatsApp's "Create"; once the backup is
         // being made, the sync can take over (it waits for the backup file)
         view.showFinish = backingUp;
         view.showManual = !!ctx.showManual || !!g.fallback;
         const heading = g.phase === 'locked' ? 'Waiting for you'
+            : paused ? 'Paused'
             : backingUp ? 'WhatsApp is making the backup'
             : failed ? 'WhatsApp could not make the backup'
             : lowStorage ? 'Paused: low storage'
@@ -121,7 +124,7 @@ function buildWaGuideView(ctx) {
         view.html = `
             <div class="wag-card">
                 <div class="wag-head">
-                    <div class="wag-live"><span class="wag-dot ${yourTurn || lowStorage || failed ? 'action' : 'ready'}"></span>${esc(heading)}</div>
+                    <div class="wag-live"><span class="wag-dot ${yourTurn || paused || lowStorage || failed ? 'action' : 'ready'}"></span>${esc(heading)}</div>
                     <div class="wag-head-actions">
                         ${g.input_allowed !== false && !backingUp && !failed ? `<button type="button" class="wag-link" onclick="waGuideSetMode('${auto ? 'guide' : 'auto'}')">${auto ? 'Let me tap myself' : 'Do it for me'}</button>` : ''}
                         <button type="button" class="wag-link" onclick="waGuideStop()">Stop</button>
@@ -134,6 +137,7 @@ function buildWaGuideView(ctx) {
                         ${g.warning ? `<div class="wag-warn">${esc(g.warning)}</div>` : ''}
                         ${g.notice ? `<div class="wag-warn">${esc(g.notice)}</div>` : ''}
                         ${g.storage_warning && !lowStorage && !backingUp ? `<div class="wag-warn">${esc(g.storage_warning)}</div>` : ''}
+                        ${paused && g.pause_reason === 'away' ? `<div class="wag-row"><button type="button" class="action-btn action-btn-primary wag-btn" onclick="waGuideContinue()">Continue</button></div>` : ''}
                         ${lowStorage ? `<div class="wag-row"><button type="button" class="action-btn action-btn-secondary wag-btn" onclick="waGuideAllowLowStorage()">Continue anyway</button></div>` : ''}
                         ${failed ? `
                             <div class="wag-text">Make room on the phone (for example, delete large videos or unused apps), then try again. Your key is already saved.</div>
@@ -310,6 +314,7 @@ function waGuideSetMode(mode) { waGuidePost('mode', { mode }); }
 function waGuideChoose(choice) { waGuidePost('choose', { choice }); }
 function waGuideAllowLowStorage() { waGuidePost('allow-low-storage'); }
 function waGuideRetryBackup() { waGuidePost('retry-backup'); }
+function waGuideContinue() { waGuidePost('continue'); }
 
 function waGuideToggleManual() {
     waGuideShowManual = !waGuideShowManual;

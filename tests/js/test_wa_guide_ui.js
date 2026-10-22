@@ -97,6 +97,16 @@ v = view({ guide: { active: true, phase: 'running', mode: 'auto', storage_warnin
 assert.ok(v.html.includes('0.4 GB free'), 'the storage warning shows from the start');
 console.log('  -> Passed: locked phone, backup running and backup failed (with retry)');
 
+// 3d. Paused (another app, a call): progress kept; Continue only when the user left WhatsApp
+v = view({ guide: { active: true, phase: 'paused', pause_reason: 'away', mode: 'auto', screen: 'settings', instruction: 'Paused: your phone shows another app.', steps } });
+assert.ok(v.state === 'running' && v.html.includes('Paused') && v.html.includes('waGuideContinue()'));
+assert.ok(v.html.includes('wag-step-done'), 'the steps done so far stay ticked');
+v = view({ guide: { active: true, phase: 'paused', pause_reason: 'call', mode: 'auto', instruction: 'Paused during your phone call.', steps } });
+assert.ok(v.html.includes('phone call') && !v.html.includes('waGuideContinue()'), 'no Continue during a call');
+v = view({ guide: { active: false, phase: 'paused', pause_reason: 'away', steps } });
+assert.strictEqual(v.state, 'running');
+console.log('  -> Passed: paused for another app or a call');
+
 // 4. Fallback keeps watching but shows the slides
 v = view({ guide: { active: true, phase: 'running', mode: 'auto', fallback: true, fallback_reason: 'Unknown screen.', steps } });
 assert.ok(v.showManual && v.html.includes('still watches for your key'));

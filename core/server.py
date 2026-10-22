@@ -2071,6 +2071,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 elif action == "retry-backup":
                     _wa_guide.retry_backup()
                     self._send_json(200, _wa_guide.status())
+                elif action == "continue":
+                    _wa_guide.resume()
+                    self._send_json(200, _wa_guide.status())
                 elif action == "key-provided":
                     hex_key = load_config().get("hex_key", "")
                     if not hex_key:

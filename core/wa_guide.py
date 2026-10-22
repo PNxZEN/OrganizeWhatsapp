@@ -35,6 +35,12 @@ SAME_ACTION_LIMIT = 3                # the same tap on the same screen without e
 SETTLE_SECS = 1.2                    # after a tap, let the phone draw the next screen
 BACKUP_WATCH_SECS = 10 * 60          # after "Create": wait this long for the backup file or an error
 UNKNOWN_RECOVER_SECS = 2.5           # a WhatsApp screen that is not part of the setup (a chat, Status...)
+# Interruptions (notifications, the user's own touches, calls, other apps)
+USER_QUIET_SECS = 3.0                # no tap until the user has not touched the phone for this long
+USER_QUIET_RELAUNCH_SECS = 8.0       # ... and longer before closing what they opened (a chat, the shade)
+USER_BUSY_GIVE_UP_SECS = 45.0        # "touched" never stops: the phone's signal is not about touches
+COVER_WAIT_SECS = 15.0               # a notification over the tap target: wait this long for it to go
+SHADE_WAIT_SECS = 4.0                # the notification shade open: close it after this long
 
 HEX4 = re.compile(r"^[0-9a-fA-F]{4}$")
 HEX64 = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -305,6 +311,11 @@ def classify(nodes: List[Node], foreground: str = "") -> Screen:
     if any(n.package in SYSTEM_LOCK_PACKAGES and re.search(r"credential|biometric|password_entry|pinEntry|lockPattern|lockPassword", n.rid)
            for n in nodes):
         return Screen("screen_lock")
+    in_whatsapp = re.match(r"com\.whatsapp(\.w4b)?/", foreground or "")
+    if in_whatsapp and re.search(r"(?i)voip|\.calling\.", foreground):
+        return Screen("wa_call")  # a WhatsApp call: never tap or reopen anything during it
+    if not wa_nodes and in_whatsapp and all(n.package == "com.android.systemui" for n in nodes if n.package):
+        return Screen("shade")    # the notification shade / quick settings pulled down over WhatsApp
     if not wa_nodes:
         return Screen("other_app", info={"foreground": foreground})
 
@@ -433,7 +444,12 @@ INSTRUCTIONS = {
     "dialog": "WhatsApp shows a message on your phone. Read it and tap OK.",
     "unknown": "Go back to WhatsApp's Chats list, then open Settings.",
     "unreadable": "Unlock your phone and keep it on.",
+    "shade": "Close the notification panel on the phone (swipe it up).",
+    "wa_call": "Paused during your WhatsApp call. The app continues when the call ends.",
 }
+# Interruptions: the guide waits (screens it does not count as progress or as unknown)
+INTERRUPTION_SCREENS = {"shade", "wa_call"}
+WAITING_FOR_USER = "Waiting while you use the phone… The app carries on when you stop touching it."
 
 
 # ---------------------------------------------------------------- phone access
@@ -457,6 +473,52 @@ def parse_lock_state(window_text: str, power_text: str) -> str:
     if re.search(keys + r"\s*[=:]\s*false", window_text or ""):
         return "unlocked"
     return "unknown"
+
+
+def parse_user_activity(text: str) -> Optional[int]:
+    """When the phone was last touched (its uptime clock), from `dumpsys power`; None if not reported."""
+    m = re.search(r"mLastUserActivityTime=(\d+)", text or "")
+    return int(m.group(1)) if m else None
+
+
+def parse_in_call(text: str) -> bool:
+    """A phone call ringing or going on (`dumpsys telephony.registry`: mCallState 1 or 2, per SIM)."""
+    return any(s in ("1", "2") for s in re.findall(r"mCallState=(\d)", text or ""))
+
+
+def covering_window(text: str, x: int, y: int, packages=WA_PACKAGES) -> str:
+    """
+    The window drawn over WhatsApp at (x, y) that would catch a tap there (a notification banner,
+    the shade, another app's bubble or keyboard), from `dumpsys window windows`, or "".
+    Windows are listed top first; the search stops at WhatsApp's own (its menus and dialogs are fine).
+    Invisible windows and ones that let touches through (toasts, screen filters) do not count.
+    """
+    blocks, current = [], None
+    for line in (text or "").splitlines():
+        m = re.match(r"\s*Window #\d+ Window\{\w+ u\d+ (.*?)\}:?\s*$", line)
+        if m:
+            current = {"title": m.group(1), "lines": []}
+            blocks.append(current)
+        elif current is not None:
+            current["lines"].append(line)
+    for b in blocks:
+        body = "\n".join(b["lines"])
+        pkg = re.search(r"\bpackage=(\S+)", body)
+        pkg = pkg.group(1) if pkg else b["title"].split("/")[0]
+        if pkg in packages or any(b["title"].startswith(p + "/") for p in packages):
+            return ""
+        vis = re.search(r"mViewVisibility=0x([0-9a-f]+)", body)
+        if (vis and int(vis.group(1), 16) != 0) or re.search(r"isVisible=false|isOnScreen=false", body):
+            continue
+        if "NOT_TOUCHABLE" in body:
+            continue
+        frame = re.search(r"(?:\bframe|mFrame)=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]", body)
+        if not frame:
+            continue
+        l, t, r, btm = map(int, frame.groups())
+        if l <= x < r and t <= y < btm:
+            return b["title"]
+    return ""
 
 
 def parse_backup_stats(text: str):
@@ -499,6 +561,24 @@ class AdbPhone:
         _, window = self._run("shell", "dumpsys window | grep -iE 'keyguard|lockscreen'", timeout=10)
         _, power = self._run("shell", "dumpsys power | grep -E 'mWakefulness=|Display Power'", timeout=10)
         return parse_lock_state(window, power)
+
+    def user_activity(self) -> Optional[int]:
+        _, out = self._run("shell", "dumpsys power | grep -m1 mLastUserActivityTime", timeout=10)
+        return parse_user_activity(out)
+
+    def in_call(self) -> bool:
+        _, out = self._run("shell", "dumpsys telephony.registry | grep mCallState", timeout=10)
+        return parse_in_call(out)
+
+    def covered_at(self, x: int, y: int) -> str:
+        _, out = self._run("shell", "dumpsys window windows | grep -E "
+                                    "'Window #|package=|mViewVisibility|frame=|mFrame=|isVisible=|isOnScreen=|NOT_TOUCHABLE'",
+                           timeout=10)
+        return covering_window(out, x, y)
+
+    def collapse_panels(self):
+        # The status bar service, not a swipe: works on phones that block simulated input
+        self._run("shell", "cmd statusbar collapse", timeout=10)
 
     def wake(self):
         # Turns the screen on (shows the lock screen); it cannot unlock anything
@@ -629,12 +709,27 @@ class WaGuide:
         self._backup_since = None      # the phone's clock when "Create" / "Back up" was tapped
         self._backup_clock = None      # this computer's clock then (for the watch timeout)
         self._retry = False
+        # Interruptions
+        self._foreground = ""
+        self._activity_base = None     # the phone's "last touched" time, as left by the guide's own input
+        self._expect_activity = True   # the guide just touched / opened something: take the new time as its own
+        self._last_foreign_touch = None
+        self._busy_since = None
+        self._activity_unreliable = False
+        self._covered_since = None
+        self._shade_since = None
+        self._collapses = 0
+        self._seen_whatsapp = False    # WhatsApp was on screen since the guide opened it
+        self._away = False             # paused: the phone shows another app
+        self._paused_for = None        # "call"
+        self._continue = False
 
     def status(self) -> dict:
         with self._lock:
             self._last_poll = self._clock()
             st = dict(self._state)
         st["steps"] = self._steps(st)
+        st["pause_reason"] = (self._paused_for or ("away" if self._away else "")) if st["phase"] == "paused" else ""
         st["slide"] = (11 if st["phase"] == "backing_up" else None if st["phase"] in ("locked", "backup_failed")
                        else st.get("slide_hint") if st.get("slide_hint") is not None else SCREEN_SLIDE.get(st["screen"]))
         return st
@@ -689,7 +784,16 @@ class WaGuide:
             self._you_tapped = self._menu_failed = self._handed_over = False
             self._menu_unrecognised = 0
             self._unknown_since = None
+            self._covered_since = None
+            self._collapses = 0
         self._set(mode=mode, notice="")
+
+    def resume(self):
+        """"Continue" after the phone went to another app: bring WhatsApp back where it was."""
+        if not self._state.get("active"):
+            raise ValueError("the guide is not running; start it again")
+        self._continue = True
+        self._set(instruction="Opening WhatsApp again…")
 
     def choose(self, choice):
         """After "already encrypted": 'reset' (turn it off, make a new key) or 'have_key'."""
@@ -792,14 +896,144 @@ class WaGuide:
                     return
                 self._set(phase="running")
             now = self._clock()
+            st = self._state
+            watching = st["mode"] == "auto" and not (st["created"] and not self._retry)
+            if watching:
+                self._track_touches(phone, now)
+                if self._call(phone, "in_call", False):
+                    self._paused_for = "call"
+                    self._set(phase="paused", instruction="Paused during your phone call. The app continues when the call ends.")
+                    self._sleep(1.0)
+                    continue
             foreground = phone.foreground()
+            self._foreground = foreground
             nodes = parse_layout(phone.dump())
             screen = classify(nodes, foreground)
             acted = self._handle(phone, screen, nodes, now)
-            self._prev_screen = screen.name
+            if acted:
+                self._expect_activity = True
+            if screen.name not in INTERRUPTION_SCREENS and screen.name != "other_app":
+                self._prev_screen = screen.name
             if self._state["phase"] == "done":
                 return
             self._sleep(SETTLE_SECS if acted else 0.4)
+
+    # ----- interruptions
+
+    @staticmethod
+    def _call(phone, method, default, *args):
+        """An optional phone call (older phone objects may not have it); its failure is not fatal."""
+        fn = getattr(phone, method, None)
+        if fn is None:
+            return default
+        try:
+            return fn(*args)
+        except Exception:
+            return default
+
+    def _track_touches(self, phone, now):
+        """Notices the user touching the phone: its "last touched" time moved without the guide's input."""
+        act = self._call(phone, "user_activity", None)
+        if act is None:
+            return
+        if self._expect_activity or self._activity_base is None:
+            self._activity_base, self._expect_activity = act, False
+        elif act != self._activity_base:
+            self._activity_base, self._last_foreign_touch = act, now
+
+    def _user_busy(self, now, quiet=USER_QUIET_SECS) -> bool:
+        if self._activity_unreliable or self._last_foreign_touch is None:
+            return False
+        if now - self._last_foreign_touch >= quiet:
+            self._busy_since = None
+            return False
+        self._busy_since = self._busy_since or now
+        if now - self._busy_since > USER_BUSY_GIVE_UP_SECS:
+            self._activity_unreliable = True  # it never stops: not a person touching the phone
+            return False
+        return True
+
+    def _interruption(self, phone, screen, now):
+        """
+        The notification shade, a call, or another app in front of WhatsApp: wait or tidy up instead
+        of navigating. Returns None when WhatsApp's screen is showing, "wait", or the action taken.
+        """
+        st = self._state
+        name = screen.name
+        auto = st["mode"] == "auto"
+        if name not in INTERRUPTION_SCREENS and name != "other_app":
+            if name not in ("unreadable", "screen_lock"):
+                self._seen_whatsapp = True
+            self._shade_since = None
+            self._paused_for = None
+            if self._away:
+                self._away = False  # back in WhatsApp: carry on from its screen
+            return None
+        if name == "wa_call":
+            self._paused_for = "call"
+            self._set(phase="paused", instruction=INSTRUCTIONS["wa_call"])
+            return "wait"
+        if name == "shade":
+            self._shade_since = self._shade_since or now
+            if (auto and self._collapses < 3 and now - self._shade_since >= SHADE_WAIT_SECS
+                    and not self._user_busy(now)):
+                self._collapses += 1
+                self._call(phone, "collapse_panels", None)
+                self._set(phase="running", instruction="Closing the notification panel…")
+                return "collapse"
+            self._set(phase="running", instruction=INSTRUCTIONS["shade"]
+                      + (" The app closes it in a moment." if auto and self._collapses < 3 else ""))
+            return "wait"
+        # Another app (or the home screen) in front of WhatsApp
+        if self._paused_for == "call" and auto:
+            self._paused_for = None  # the call ended elsewhere: back to WhatsApp, where it was
+            phone.launch(self.package)
+            self._set(phase="running", instruction="Opening WhatsApp again…")
+            return "relaunch"
+        if not self._seen_whatsapp:
+            return None  # WhatsApp is still opening: the usual relaunch after a few seconds
+        if self._continue:
+            self._continue = False
+            phone.launch(self.package)  # resumes WhatsApp on the screen it was left on
+            self._set(phase="running", instruction="Opening WhatsApp again…")
+            return "relaunch"
+        # Never pull the user out of what they opened (a notification, a call app, the home screen)
+        self._away = True
+        self._set(phase="paused", instruction="Paused: your phone shows another app. Open WhatsApp on the phone, "
+                                              "or press Continue here, and the app carries on where it was.")
+        return "wait"
+
+    def _before_touch(self, phone, name, action, point) -> str:
+        """
+        Right before a tap or swipe: the screen still shows the same thing at the same place,
+        nothing (a notification banner, another app's bubble) is over that spot, and the user is not
+        touching the phone. Returns why the guide waits, or "" to go ahead.
+        """
+        now = self._clock()
+        act = self._call(phone, "user_activity", None)
+        if act is not None and self._activity_base is not None and act != self._activity_base:
+            self._activity_base, self._last_foreign_touch = act, now
+            return WAITING_FOR_USER
+        foreground = phone.foreground()  # a call screen or another app may have come up meanwhile
+        fresh = parse_layout(phone.dump())
+        if classify(fresh, foreground).name != name:
+            return "Reading the phone’s screen again…"
+        if action[0] == "tap":
+            t = action[1]
+            if not any(n.rid == t.rid and n.bounds == t.bounds and n.text == t.text for n in fresh):
+                return "Reading the phone’s screen again…"  # it moved (scrolled, animating, changed)
+        cover = self._call(phone, "covered_at", "", *point)
+        if not cover:
+            self._covered_since = None
+            return ""
+        self._covered_since = self._covered_since or now
+        if now - self._covered_since < COVER_WAIT_SECS:
+            return "Waiting for the notification on the phone to go away… (you can swipe it away)"
+        if re.search(r"(?i)NotificationShade|StatusBar|HeadsUp", cover) and point[1] > 0.35 * screen_size(fresh)[1]:
+            return ""  # a banner that stays only covers the top of the screen
+        self._covered_since = None
+        self._hand_over(f"Something on the phone’s screen ({cover[:40]}) covers WhatsApp.")
+        return "Something covers WhatsApp on the phone. Close it, then tap the next step yourself."
 
     # ----- one screen
 
@@ -841,7 +1075,12 @@ class WaGuide:
         name = screen.name
 
         # Unrecognised for too long -> manual slides (keeps watching for the key meanwhile)
-        if name in ("unknown", "unreadable", "other_app"):
+        interrupted = name in INTERRUPTION_SCREENS or (name == "other_app" and self._seen_whatsapp)
+        if interrupted:
+            pass  # the shade, a call, another app: waiting for it is not "lost"
+        elif name in ("unknown", "unreadable", "other_app"):
+            if self._user_busy(now, USER_QUIET_RELAUNCH_SECS):
+                self._unknown_since = now  # the user is doing something there (replying to a chat?)
             self._unknown_since = self._unknown_since or now
             if now - self._unknown_since > UNKNOWN_FALLBACK_SECS and not st["fallback"]:
                 self._set(fallback=True, fallback_reason="This phone shows a WhatsApp screen the guide does not know yet.")
@@ -863,6 +1102,10 @@ class WaGuide:
         # After Create: watch the backup instead of navigating
         if st["created"] and not self._retry:
             return self._watch_backup(phone, screen, nodes)
+
+        handled = self._interruption(phone, screen, now)
+        if handled is not None:
+            return None if handled == "wait" else handled
 
         warning = ""
         instruction = INSTRUCTIONS.get(name, INSTRUCTIONS["unknown"])
@@ -898,6 +1141,12 @@ class WaGuide:
                 action = ("scroll",)
 
         will_act = st["mode"] == "auto" and action is not None and phase == "running"
+        # The user is touching the phone: do not tap under their finger, and give them longer before
+        # closing what they opened (a chat from a notification, say)
+        reopening = action is not None and (action[0] == "relaunch" or (action[0] == "back" and name == "unknown"))
+        if will_act and self._user_busy(now, USER_QUIET_RELAUNCH_SECS if reopening else USER_QUIET_SECS):
+            will_act = False
+            instruction = WAITING_FOR_USER
         if will_act:
             # Say what the app is doing, not what the user should tap
             kind = action[0]
@@ -1059,6 +1308,13 @@ class WaGuide:
 
     def _act(self, phone, name, action, nodes):
         kind = action[0]
+        w, h = screen_size(nodes)
+        if kind in ("tap", "scroll"):
+            point = action[1].center if kind == "tap" else (w // 2, int(h * 0.72))
+            why = self._before_touch(phone, name, action, point)
+            if why:
+                self._set(instruction=why)
+                return None
         signature = (name, kind, action[1].bounds if kind == "tap" and action[1] else None)
         if signature == self._last_action:
             self._same_action += 1
@@ -1077,7 +1333,6 @@ class WaGuide:
             if count >= 4:
                 return None
             self._scrolls[name] = count + 1
-            w, h = screen_size(nodes)
             ok, out = phone.swipe(w // 2, int(h * 0.72), w // 2, int(h * 0.38))
             if ok and action[1:] == ("you_page",):
                 self._you_scrolls += 1
