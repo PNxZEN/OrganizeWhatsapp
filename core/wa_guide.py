@@ -187,6 +187,17 @@ def settings_menu_item(nodes: List[Node], titles: List[Node]) -> Optional[Node]:
     return None
 
 
+def settings_named(nodes: List[Node], wa_nodes: List[Node]) -> Optional[Node]:
+    """A tappable item whose whole label is "Settings" (or a translation), outside the chat list."""
+    for n in wa_nodes:
+        if _first_label(n.text) in SETTINGS_WORDS and (n.text or "").strip().lower() == _first_label(n.text):
+            target = clickable_around(nodes, n)
+            if not CHAT_ROW_ID.search(target.rid or "") and not any(
+                    p.contains(n) and p.rid and CHAT_ROW_ID.search(p.rid) for p in nodes if p is not n):
+                return target
+    return None
+
+
 def is_you_tab(nodes: List[Node], tab: Node) -> bool:
     """Whether this (bottom-right) tab is newer WhatsApp's "You" tab: by its label or element id."""
     inside = [n for n in nodes if tab.contains(n)]
@@ -315,7 +326,9 @@ def classify(nodes: List[Node], foreground: str = "") -> Screen:
         message = next((n for n in nodes if n.rid == "android:id/message" and n.text), None)
         return Screen("dialog", find(nodes, "android:id/button1"), "OK", {"message": (message.text if message else "")[:300]})
     # WhatsApp's ⋮ menu (New group, ..., Settings): a popup of 3 or more items
-    titles = [n for n in wa_nodes if n.rid == "android:id/title" and (n.text or "").strip()]
+    # Item labels are "android:id/title" in system popups, "<app>:id/title" (short: "title") in WhatsApp's own
+    titles = [n for n in wa_nodes if (n.rid in ("title", "android:id/title") or n.rid.endswith(":id/title"))
+              and (n.text or "").strip()]
     if len(titles) >= 3:
         item = settings_menu_item(nodes, titles)
         return Screen("menu", item, "Settings", {"has_settings": item is not None})
@@ -335,6 +348,8 @@ def classify(nodes: List[Node], foreground: str = "") -> Screen:
             "you_tab": you_tab,
             "on_you_page": tab_selected(nodes, you_tab) if you_tab else False,
             "chat_rows": any(CHAT_LIST_ID.search(n.rid) for n in wa_nodes if n.rid),
+            # A plainly named Settings item (used only right after opening ⋮; never inside a chat row)
+            "settings_item": settings_named(nodes, wa_nodes),
             "overflow": overflow,
         })
     return Screen("unknown", info={"foreground": foreground})
@@ -362,6 +377,12 @@ SCREEN_STEP = {
     "key_intro": "generate", "key_shown": "generate", "popup": "generate",
     "key_confirm": "confirm", "create": "create",
 }
+# Screens that are part of the backup setup: starting the guide on one of these continues from it
+SETUP_SCREENS = {
+    "settings", "chat_settings", "backup_settings", "e2e_on", "e2e_off", "enter_old_key", "screen_lock",
+    "confirm_turn_off", "turned_off", "more_options", "key_intro", "key_shown", "popup", "key_confirm", "create",
+}
+
 # The setup guide's tutorial screenshot of the same WhatsApp screen (gallery_assets wa_step<N>.webp),
 # shown next to the live instructions so the user sees where on the phone things happen
 SCREEN_SLIDE = {
@@ -636,8 +657,15 @@ class WaGuide:
                 self._state.update(active=False, phase="stopped")
 
     def set_mode(self, mode):
-        self._set(mode=mode if mode in ("auto", "guide") else "guide", notice="")
-        self._same_action = 0
+        """Switching to "Do it for me" (again) gives the navigation fresh attempts, from the current screen."""
+        mode = mode if mode in ("auto", "guide") else "guide"
+        if mode == "auto":
+            self._last_action, self._same_action = None, 0
+            self._scrolls, self._recoveries, self._backs = {}, 0, 0
+            self._you_taps = self._you_scrolls = self._menu_taps = 0
+            self._you_tapped = self._menu_failed = self._handed_over = False
+            self._unknown_since = None
+        self._set(mode=mode, notice="")
 
     def choose(self, choice):
         """After "already encrypted": 'reset' (turn it off, make a new key) or 'have_key'."""
@@ -705,12 +733,19 @@ class WaGuide:
     def _prepare(self, phone) -> bool:
         if not self._wait_unlocked(phone):
             return False
-        self._set(phase="running", screen="", instruction="Opening WhatsApp…")
+        self._launched_at = self._clock()
+        self._check_storage(phone)
+        # Already part-way through the setup (the user got there, or restarted the guide)? Carry on
+        # from that screen: going home and reopening WhatsApp would throw that progress away.
+        screen = classify(parse_layout(phone.dump()), phone.foreground())
+        if screen.name in SETUP_SCREENS:
+            self._set(phase="running", notice="", instruction="Continuing from the screen your phone shows\u2026")
+            return True
+        self._set(phase="running", screen="", instruction="Opening WhatsApp\u2026")
         phone.go_home()
         self._sleep(0.8)
         phone.open_fresh(self.package)
         self._launched_at = self._clock()
-        self._check_storage(phone)
         self._sleep(SETTLE_SECS)
         return True
 
@@ -982,6 +1017,9 @@ class WaGuide:
             # Seen the You tab before but not now: do not try ⋮ (no Settings there in that version)
             self._hand_over("The app lost track of WhatsApp's screens.")
             return None, "Tap You (bottom right), scroll down a little and tap Chats.", "You"
+        if self._menu_taps and info.get("settings_item"):
+            # Just opened ⋮ and its menu was not recognised as one, but Settings is plainly on screen
+            return ("tap", info["settings_item"]), "Tap Settings.", "Settings"
         overflow = info.get("overflow")
         if overflow and not self._menu_failed and self._menu_taps < 2:
             return ("tap", overflow, "overflow"), "Tap \u22ee (top right), then Settings.", "\u22ee (More options)"

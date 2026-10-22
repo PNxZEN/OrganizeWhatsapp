@@ -55,7 +55,7 @@ HOME = [
      "package": "com.whatsapp", "text": "Mom"},
 ]
 def overflow_menu(labels=("New group", "New community", "Broadcast lists", "Linked devices", "Starred",
-                          "Payments", "Read all", "Settings")):
+                          "Payments", "Read all", "Settings"), title_id="com.whatsapp:id/title"):
     """WhatsApp's ⋮ menu as uiautomator shows it: a row per item, each holding an android:id/title."""
     items = [{"class": "FrameLayout", "bounds": f"[560,140][1070,{160 + 100 * len(labels)}]", "package": "com.whatsapp"},
              {"class": "ListView", "bounds": f"[560,150][1070,{150 + 100 * len(labels)}]", "package": "com.whatsapp"}]
@@ -63,7 +63,7 @@ def overflow_menu(labels=("New group", "New community", "Broadcast lists", "Link
         top = 150 + 100 * n
         items.append({"class": "LinearLayout", "clickable": True, "bounds": f"[560,{top}][1070,{top + 100}]", "package": "com.whatsapp"})
         items.append({"class": "RelativeLayout", "bounds": f"[600,{top + 20}][1040,{top + 80}]", "package": "com.whatsapp"})
-        items.append({"id": "android:id/title", "class": "TextView", "bounds": f"[600,{top + 20}][1000,{top + 80}]",
+        items.append({"id": title_id, "class": "TextView", "bounds": f"[600,{top + 20}][1000,{top + 80}]",
                       "package": "com.whatsapp", "text": label})
     return items
 
@@ -374,7 +374,8 @@ class FakePhone:
         self.taps.append((self.current, rid))
         if self.current == "menu":
             row = hit[0] if hit else None
-            title = next((i for i in items if i.get("id") == "android:id/title" and row and self._contains(row, i)), None)
+            title = next((i for i in items if i.get("text") and row and self._contains(row, i)
+                          and i.get("class") == "TextView"), None)
             self.current = 2 if title and title["text"] in ("Settings", "Ajustes") else "home"
             return True, ""
         if self.current == "you":
@@ -767,6 +768,84 @@ class YouVersionTests(unittest.TestCase):
         home = classify(parse_layout(to_xml(tabs_home(labels=("Chats", "Updates", "Communities", "Calls", "You")))),
                         "com.whatsapp/.home.ui.HomeActivity")
         self.assertIsNone(home.info["on_you_page"], "no selected state reported: unknown")
+
+
+class MenuIdTests(unittest.TestCase):
+    """Your phone: WhatsApp's ⋮ menu labels its items com.whatsapp:id/title (not android:id/title)."""
+
+    def test_70_whatsapp_and_system_menu_ids(self):
+        for title_id in ("com.whatsapp:id/title", "android:id/title"):
+            menu = classify(parse_layout(to_xml(overflow_menu(title_id=title_id))), "com.whatsapp/.home.ui.HomeActivity")
+            self.assertEqual((menu.name, menu.target.bounds[1]), ("menu", 850), title_id)
+
+    def test_71_menu_with_unfamiliar_ids_still_reaches_settings(self):
+        phone = FakePhone(e2e_on=False, home="menu")
+        original = phone.layout
+        phone.layout = lambda: (overflow_menu(title_id="com.whatsapp:id/menu_item_label") if phone.current == "menu" else original())
+        st, _, _ = run_guide(phone)
+        self.assertEqual(st["phase"], "done", st)
+        self.assertEqual(phone.taps[:2], [("home", "menuitem_overflow"), ("menu", "")])
+
+    def test_72_a_chat_named_settings_is_never_tapped(self):
+        chat = [{"id": "com.whatsapp:id/contact_row_container", "class": "LinearLayout", "clickable": True,
+                 "bounds": "[0,300][1080,480]", "package": "com.whatsapp"},
+                {"id": "com.whatsapp:id/conversations_row_contact_name", "class": "TextView", "bounds": "[200,330][700,390]",
+                 "package": "com.whatsapp", "text": "Settings"}]
+        home = classify(parse_layout(to_xml(HOME + chat)), "com.whatsapp/.home.ui.HomeActivity")
+        self.assertIsNone(home.info["settings_item"])
+
+
+class MidwayTests(unittest.TestCase):
+    """The user got part-way before starting the guide, or switches to "Do it for me" later."""
+
+    def test_80_starting_on_a_setup_screen_continues_from_it(self):
+        phone = FakePhone(e2e_on=False, start="backup")
+        st, saved, _ = run_guide(phone)
+        self.assertEqual(st["phase"], "done", st)
+        self.assertNotIn("home", phone.events, "did not go to the home screen")
+        self.assertNotIn("open", phone.events, "did not reopen WhatsApp")
+        self.assertEqual(phone.taps[0], ("backup", "settings_gdrive_e2e_encryption"))
+
+    def test_81_starting_while_the_key_is_shown_reads_it_at_once(self):
+        phone = FakePhone(e2e_on=False, start=16)
+        st, saved, _ = run_guide(phone)
+        self.assertEqual(saved, [KEY])
+        self.assertEqual(st["phase"], "done", st)
+        self.assertNotIn("open", phone.events)
+
+    def test_82_starting_in_a_chat_still_goes_home_first(self):
+        phone = FakePhone(e2e_on=False, start="chat")
+        st, _, _ = run_guide(phone)
+        self.assertEqual(st["phase"], "done", st)
+        self.assertEqual(phone.events[:2], ["home", "open"])
+
+    def test_83_guide_mode_then_do_it_for_me_from_the_users_screen(self):
+        phone = FakePhone(e2e_on=False)
+        guide = make_guide(phone)
+        guide.start("guide")
+        wait(guide, lambda s: s["screen"] == "home")
+        # The user taps through to Chats themselves, then clicks "Do it for me"
+        phone.current = "chats"
+        wait(guide, lambda s: s["screen"] == "chat_settings")
+        self.assertEqual(phone.taps, [])
+        guide.set_mode("auto")
+        st = wait(guide, lambda s: s["phase"] == "done")
+        guide.stop()
+        self.assertEqual(phone.taps[0][0], "chats", "carried on from the user's screen")
+
+    def test_84_do_it_for_me_again_after_a_hand_over_tries_again(self):
+        phone = FakePhone(e2e_on=False, home="menu")
+        full = phone.layout
+        hide = {"on": True}
+        phone.layout = lambda: [n for n in full() if not (hide["on"] and "overflow" in n.get("id", ""))]
+        guide = make_guide(phone)
+        guide.start("auto")
+        st = wait(guide, lambda s: s["mode"] == "guide" and "open it yourself" in s["notice"])
+        hide["on"] = False  # e.g. the user closed a dialog that was hiding ⋮
+        guide.set_mode("auto")
+        st = wait(guide, lambda s: s["phase"] == "done")
+        guide.stop()
+        self.assertIn(("home", "menuitem_overflow"), phone.taps)
 
 
 class ParsingTests(unittest.TestCase):
