@@ -2068,6 +2068,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 elif action == "allow-low-storage":
                     _wa_guide.allow_low_storage()
                     self._send_json(200, _wa_guide.status())
+                elif action == "retry-backup":
+                    _wa_guide.retry_backup()
+                    self._send_json(200, _wa_guide.status())
                 elif action == "key-provided":
                     hex_key = load_config().get("hex_key", "")
                     if not hex_key:

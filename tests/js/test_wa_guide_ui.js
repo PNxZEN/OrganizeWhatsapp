@@ -59,6 +59,31 @@ v = view({ guide: { active: true, phase: 'running', mode: 'auto', key_captured: 
 assert.ok(v.html.includes('Key read from your phone and saved (0123…cdef)'));
 console.log('  -> Passed: running view, your-turn, low storage and key captured');
 
+// 3b. The tutorial screenshot of the same screen shows in both modes
+ctx.TUTORIAL_SLIDES_DATA = Array.from({ length: 12 }, (_, i) => ({ title: 'Slide ' + i }));
+for (const mode of ['auto', 'guide']) {
+    v = view({ guide: { active: true, phase: 'running', mode, slide: 2, instruction: 'x', steps } });
+    assert.ok(v.html.includes('/assets/tutorial/wa_step2.webp'), mode + ' shows the screenshot');
+    assert.ok(v.html.includes('Slide 2') && v.html.includes('may look a little different'));
+}
+v = view({ guide: { active: true, phase: 'running', mode: 'auto', slide: null, instruction: 'x', steps } });
+assert.ok(!v.html.includes('wa_step') && v.html.includes('no-shot'), 'no screenshot for screens without one');
+console.log('  -> Passed: the matching tutorial screenshot sits beside the live guide');
+
+// 3c. Locked phone, backing up, backup failed
+v = view({ guide: { active: true, phase: 'locked', mode: 'auto', instruction: 'Unlock your phone. (This app never enters or sees your PIN.)', steps } });
+assert.ok(v.html.includes('Your turn') && v.html.includes('Waiting for you'));
+v = view({ guide: { active: true, phase: 'backing_up', mode: 'auto', slide: 11, instruction: 'WhatsApp is making the backup', steps } });
+assert.ok(v.showFinish, 'the sync can take over while WhatsApp makes the backup');
+assert.ok(!v.html.includes('Let me tap myself'));
+v = view({ guide: { active: true, phase: 'backup_failed', mode: 'auto', instruction: 'WhatsApp says: “no space”', storage_warning: 'Your phone has 0.4 GB free', steps } });
+assert.ok(v.html.includes('try again') && v.html.includes('waGuideRetryBackup()'));
+assert.ok(v.html.includes('0.4 GB free') && v.html.includes('Your key is already saved'));
+assert.ok(!v.showFinish);
+v = view({ guide: { active: true, phase: 'running', mode: 'auto', storage_warning: 'Your phone has 0.4 GB free', instruction: 'x', steps } });
+assert.ok(v.html.includes('0.4 GB free'), 'the storage warning shows from the start');
+console.log('  -> Passed: locked phone, backup running and backup failed (with retry)');
+
 // 4. Fallback keeps watching but shows the slides
 v = view({ guide: { active: true, phase: 'running', mode: 'auto', fallback: true, fallback_reason: 'Unknown screen.', steps } });
 assert.ok(v.showManual && v.html.includes('still watches for your key'));

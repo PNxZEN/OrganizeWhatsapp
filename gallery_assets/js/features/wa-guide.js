@@ -21,7 +21,7 @@ function waGuideDeviceReady() {
 function buildWaGuideView(ctx) {
     const g = ctx.guide || {};
     const esc = (s) => escapeHtml(String(s == null ? '' : s));
-    const running = !!g.active || ['needs_choice', 'needs_user', 'have_key', 'low_storage'].includes(g.phase);
+    const running = !!g.active || ['needs_choice', 'needs_user', 'have_key', 'low_storage', 'locked', 'backing_up', 'backup_failed'].includes(g.phase);
     const view = { html: '', showManual: !!ctx.showManual, showFinish: !!ctx.keySet, state: '' };
 
     const haveKeyPanel = () => `
@@ -84,27 +84,58 @@ function buildWaGuideView(ctx) {
 
     if (running) {
         view.state = 'running';
-        view.showFinish = false;  // finishing now would close the guide before WhatsApp's "Create"
         const auto = g.mode === 'auto';
         const lowStorage = g.phase === 'low_storage';
+        const failed = g.phase === 'backup_failed';
+        const backingUp = g.phase === 'backing_up';
+        const yourTurn = ['needs_user', 'locked'].includes(g.phase);
+        // Finishing mid-way would close the guide before WhatsApp's "Create"; once the backup is
+        // being made, the sync can take over (it waits for the backup file)
+        view.showFinish = backingUp;
         view.showManual = !!ctx.showManual || !!g.fallback;
+        const heading = g.phase === 'locked' ? 'Waiting for you'
+            : backingUp ? 'WhatsApp is making the backup'
+            : failed ? 'WhatsApp could not make the backup'
+            : lowStorage ? 'Paused: low storage'
+            : auto && g.input_allowed !== false ? 'Doing it for you on your phone' : 'Follow along on your phone';
+        const slide = Number.isInteger(g.slide) ? g.slide : null;
+        const slideInfo = (slide !== null && typeof TUTORIAL_SLIDES_DATA !== 'undefined') ? TUTORIAL_SLIDES_DATA[slide] : null;
+        const shot = slide !== null ? `
+                <figure class="wag-shot">
+                    <div class="tut-phone-frame wag-phone">
+                        <div class="tut-phone-notch"></div>
+                        <div class="tut-phone-screen-wrap">
+                            <img class="tut-slide-img" src="/assets/tutorial/wa_step${slide}.webp" alt="${esc(slideInfo ? slideInfo.title : 'WhatsApp screen')}" onerror="if (window.handleTutImgError) handleTutImgError(this)">
+                        </div>
+                    </div>
+                    <figcaption>${slideInfo ? esc(slideInfo.title) + ' &middot; ' : ''}example; your screen may look a little different</figcaption>
+                </figure>` : '';
         view.html = `
             <div class="wag-card">
                 <div class="wag-head">
-                    <div class="wag-live"><span class="wag-dot ${g.phase === 'needs_user' || lowStorage ? 'action' : 'ready'}"></span>
-                        ${auto && g.input_allowed !== false ? 'Doing it for you on your phone' : 'Follow along on your phone'}</div>
+                    <div class="wag-live"><span class="wag-dot ${yourTurn || lowStorage || failed ? 'action' : 'ready'}"></span>${esc(heading)}</div>
                     <div class="wag-head-actions">
-                        ${g.input_allowed !== false ? `<button type="button" class="wag-link" onclick="waGuideSetMode('${auto ? 'guide' : 'auto'}')">${auto ? 'Let me tap myself' : 'Do it for me'}</button>` : ''}
+                        ${g.input_allowed !== false && !backingUp && !failed ? `<button type="button" class="wag-link" onclick="waGuideSetMode('${auto ? 'guide' : 'auto'}')">${auto ? 'Let me tap myself' : 'Do it for me'}</button>` : ''}
                         <button type="button" class="wag-link" onclick="waGuideStop()">Stop</button>
                     </div>
                 </div>
-                <div class="wag-now">${g.phase === 'needs_user' ? '<span class="wag-you">Your turn:</span> ' : ''}${esc(g.instruction || 'Reading your phone’s screen…')}</div>
-                ${g.warning ? `<div class="wag-warn">${esc(g.warning)}</div>` : ''}
-                ${g.notice ? `<div class="wag-warn">${esc(g.notice)}</div>` : ''}
-                ${lowStorage ? `<div class="wag-row"><button type="button" class="action-btn action-btn-secondary wag-btn" onclick="waGuideAllowLowStorage()">Continue anyway</button></div>` : ''}
-                ${g.key_captured ? `<div class="wag-key-ok">&#10003; Key read from your phone and saved (${esc(g.masked_key)})</div>` : ''}
-                ${g.fallback ? `<div class="wag-warn">${esc(g.fallback_reason)} Follow the steps below; this app still watches for your key.</div>` : ''}
-                ${stepsList(g.steps)}
+                <div class="wag-live-grid ${shot ? '' : 'no-shot'}">
+                    ${shot}
+                    <div class="wag-main">
+                        <div class="wag-now">${yourTurn ? '<span class="wag-you">Your turn:</span> ' : ''}${esc(g.instruction || 'Reading your phone’s screen…')}</div>
+                        ${g.warning ? `<div class="wag-warn">${esc(g.warning)}</div>` : ''}
+                        ${g.notice ? `<div class="wag-warn">${esc(g.notice)}</div>` : ''}
+                        ${g.storage_warning && !lowStorage && !backingUp ? `<div class="wag-warn">${esc(g.storage_warning)}</div>` : ''}
+                        ${lowStorage ? `<div class="wag-row"><button type="button" class="action-btn action-btn-secondary wag-btn" onclick="waGuideAllowLowStorage()">Continue anyway</button></div>` : ''}
+                        ${failed ? `
+                            <div class="wag-text">Make room on the phone (for example, delete large videos or unused apps), then try again. Your key is already saved.</div>
+                            <div class="wag-row"><button type="button" class="action-btn action-btn-primary wag-btn" onclick="waGuideRetryBackup()">I freed up space, try again</button></div>` : ''}
+                        ${backingUp ? `<div class="wag-text">You can already finish: the sync waits until the backup is ready.</div>` : ''}
+                        ${g.key_captured ? `<div class="wag-key-ok">&#10003; Key read from your phone and saved (${esc(g.masked_key)})</div>` : ''}
+                        ${g.fallback ? `<div class="wag-warn">${esc(g.fallback_reason)} Follow the steps below; this app still watches for your key.</div>` : ''}
+                        ${stepsList(g.steps)}
+                    </div>
+                </div>
             </div>`;
         return view;
     }
@@ -270,6 +301,7 @@ function waGuideStop() { waGuidePost('stop'); }
 function waGuideSetMode(mode) { waGuidePost('mode', { mode }); }
 function waGuideChoose(choice) { waGuidePost('choose', { choice }); }
 function waGuideAllowLowStorage() { waGuidePost('allow-low-storage'); }
+function waGuideRetryBackup() { waGuidePost('retry-backup'); }
 
 function waGuideToggleManual() {
     waGuideShowManual = !waGuideShowManual;

@@ -146,6 +146,7 @@ class TestTabClosedEndpoint(AutoShutdownBase):
         super().setUp()
         self.tmp = tempfile.mkdtemp(prefix="wa_test_shutdown_")
         out = self.tmp
+        srv._ensure_frontend_installed(Path(out).resolve())  # not inside the first (timed) request
 
         class Handler(srv.GalleryHTTPRequestHandler):
             def __init__(self, *a, **kw):
@@ -168,7 +169,7 @@ class TestTabClosedEndpoint(AutoShutdownBase):
     def post(self, path, body):
         req = urllib.request.Request(self.base + path, data=json.dumps(body).encode(), method="POST",
                                      headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=5) as r:
+        with urllib.request.urlopen(req, timeout=30) as r:  # a cold CI runner can be slow on the first request
             return json.loads(r.read())
 
     def test_10_last_tab_closing_waits_for_an_import(self):

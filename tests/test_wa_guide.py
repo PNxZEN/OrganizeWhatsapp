@@ -98,7 +98,7 @@ class ClassifyRecordedScreens(unittest.TestCase):
 
     def test_06_home_menu_and_other_apps(self):
         home = classify(parse_layout(to_xml(HOME)), "com.whatsapp/.home.ui.HomeActivity")
-        self.assertEqual((home.name, home.target.rid), ("home", "menuitem_overflow"))
+        self.assertEqual((home.name, home.info["overflow"].rid), ("home", "menuitem_overflow"))
         menu = classify(parse_layout(to_xml(MENU)), "com.whatsapp/.home.ui.HomeActivity")
         self.assertEqual(menu.name, "menu")
         self.assertEqual(menu.target.cls, "LinearLayout")  # the row, not the text inside it
@@ -115,27 +115,85 @@ class ClassifyRecordedScreens(unittest.TestCase):
         self.assertEqual(classify(nodes_from_fixture(items)).name, "settings")
 
 
-class FakePhone:
-    """Plays the recorded setup: each tap on a recognised button shows the next recorded screen."""
+def tabs_home(labels=("", "", "", "", ""), overflow=False):
+    """Newer WhatsApp: a bottom tab bar (labels may be in any language, or missing)."""
+    items = [{"id": "com.whatsapp:id/toolbar", "class": "ViewGroup", "bounds": "[0,126][1080,273]", "package": "com.whatsapp"},
+             {"id": "com.whatsapp:id/search", "class": "EditText", "bounds": "[30,290][1050,380]", "package": "com.whatsapp"},
+             {"id": "com.whatsapp:id/conversations_row", "class": "View", "clickable": True, "bounds": "[0,400][1080,600]",
+              "package": "com.whatsapp", "text": "Mom"}]
+    if overflow:
+        items.append({"id": "com.whatsapp:id/menuitem_overflow", "class": "ImageView", "clickable": True,
+                      "bounds": "[980,140][1070,260]", "package": "com.whatsapp", "desc": "More options"})
+    width = 1080 // len(labels)
+    for n, label in enumerate(labels):
+        left = n * width
+        items.append({"id": "com.whatsapp:id/navigation_bar_item", "class": "FrameLayout", "clickable": True,
+                      "bounds": f"[{left},2200][{left + width},2349]", "package": "com.whatsapp", "desc": label})
+        items.append({"id": "com.whatsapp:id/navigation_bar_item_icon", "class": "ImageView",
+                      "bounds": f"[{left + 40},2220][{left + 100},2280]", "package": "com.whatsapp"})
+    return items
 
-    def __init__(self, e2e_on=True, taps_allowed=True, free_gb=20.0, fail_backup=False):
-        self.current = "launcher"
+
+CHAT = [
+    {"id": "com.whatsapp:id/conversation_contact_name", "class": "TextView", "bounds": "[150,150][700,220]", "package": "com.whatsapp", "text": "Mom"},
+    {"id": "com.whatsapp:id/emoji_picker_btn", "class": "ImageButton", "clickable": True, "bounds": "[20,2240][120,2340]", "package": "com.whatsapp", "desc": "Emoji"},
+    {"id": "com.whatsapp:id/entry", "class": "EditText", "clickable": True, "bounds": "[120,2240][700,2340]", "package": "com.whatsapp"},
+    {"id": "com.whatsapp:id/input_attach_button", "class": "ImageButton", "clickable": True, "bounds": "[700,2240][800,2340]", "package": "com.whatsapp", "desc": "Attach"},
+    {"id": "com.whatsapp:id/camera_btn", "class": "ImageButton", "clickable": True, "bounds": "[800,2240][900,2340]", "package": "com.whatsapp", "desc": "Camera"},
+    {"id": "com.whatsapp:id/voice_note_btn", "class": "ImageButton", "clickable": True, "bounds": "[930,2240][1060,2340]", "package": "com.whatsapp", "desc": "Voice message"},
+]
+DIALOG_TEXT = ("Can't back up your chat history because there isn't enough space left on your internal storage. "
+               "Remove files from your internal storage and try again.")
+
+
+class FakePhone:
+    """
+    Plays the recorded setup: each tap on a recognised button shows the next recorded screen.
+    Also: a lock screen, WhatsApp left on a chat, old (⋮ menu) or new (bottom tab) home screens,
+    the phone's clock, and WhatsApp's backup file appearing (or a "not enough space" message).
+    """
+
+    def __init__(self, e2e_on=True, taps_allowed=True, free_gb=20.0, fail_backup=False,
+                 locked=False, unlock_after=3, start="launcher", home="menu", previous_backup_mb=None):
+        self.current = start
         self.e2e_on = e2e_on
         self.taps_allowed = taps_allowed
         self.free = int(free_gb * 1024 ** 3)
         self.fail_backup = fail_backup
+        self.locked = locked
+        self.unlock_after = unlock_after
+        self.home_style = home
         self.taps, self.swipes, self.backs = [], 0, 0
+        self.events = []
         self.lock_reads = 0
+        self.lock_checks = 0
         self.shown = []
         self.scrolled_chats = False
+        self.clock = 1_700_000_000
+        self.backup = (self.clock - 86400, previous_backup_mb * 1024 ** 2) if previous_backup_mb else None
+        self.after_backup = None  # ("ok" | "fail", dumps left)
+        self.lock_at = None       # the phone locks itself when this screen is reached
         self.lock = threading.Lock()
+
+    # ----- what is on screen
 
     def layout(self):
         c = self.current
         if c == "launcher":
             return [{"id": "com.android.launcher:id/workspace", "class": "View", "bounds": "[0,0][1080,2412]", "package": "com.android.launcher"}]
+        if c == "keyguard":
+            return [{"id": "com.android.systemui:id/keyguard_pin_view", "class": "View", "bounds": "[0,0][1080,2412]", "package": "com.android.systemui"},
+                    {"id": "com.android.systemui:id/pinEntry", "class": "EditText", "bounds": "[100,900][980,1000]", "package": "com.android.systemui"}]
+        if c == "chat":
+            return CHAT
         if c == "home":
-            return HOME
+            if self.home_style == "menu":
+                return HOME
+            if self.home_style == "tabs":
+                return tabs_home()
+            return tabs_home(labels=("", "", "", ""), overflow=True)  # last tab is Calls, Settings in ⋮
+        if c == "calls":
+            return tabs_home(labels=("", "", "", ""), overflow=True)
         if c == "menu":
             return MENU
         if c == "chats":
@@ -147,27 +205,81 @@ class FakePhone:
             return items
         if c == "backup":
             return screen(6 if self.e2e_on else 12)
+        if c == 22:
+            return screen(22) + [{"id": "android:id/message", "class": "TextView", "bounds": "[91,1067][989,1255]",
+                                  "package": "com.whatsapp", "text": DIALOG_TEXT}]
         return screen(c)
 
     def foreground(self):
+        if self.locked:
+            return "com.android.systemui/.keyguard"
         return {"launcher": "com.android.launcher/.Home", "home": "com.whatsapp/.home.ui.HomeActivity",
-                "menu": "com.whatsapp/.home.ui.HomeActivity"}.get(self.current, "com.whatsapp/.Whatever")
+                "calls": "com.whatsapp/.home.ui.HomeActivity", "menu": "com.whatsapp/.home.ui.HomeActivity",
+                "chat": "com.whatsapp/.Conversation"}.get(self.current, "com.whatsapp/.Whatever")
 
     def dump(self):
         with self.lock:
+            if self.locked:
+                return to_xml(self.layout_locked())
+            if self.lock_at is not None and self.current == self.lock_at:
+                self.lock_at = None
+                self.locked, self.lock_checks = True, 0
+                return to_xml(self.layout_locked())
             if not self.shown or self.shown[-1] != self.current:
                 self.shown.append(self.current)
             if self.current == 9:  # the user confirms the screen lock after a moment
                 self.lock_reads += 1
                 if self.lock_reads >= 2:
                     self.current = 10
+            if self.after_backup and self.current == "backup":
+                outcome, left = self.after_backup
+                if left <= 0:
+                    self.after_backup = None
+                    if outcome == "fail":
+                        self.current = 22
+                    else:
+                        self.backup = (self.clock, 48 * 1024 ** 2)
+                else:
+                    self.after_backup = (outcome, left - 1)
             return to_xml(self.layout())
 
-    def launch(self, package):
-        with self.lock:
-            if self.current == "launcher":
-                self.current = "home"
+    def layout_locked(self):
+        saved, self.current = self.current, "keyguard"
+        try:
+            return self.layout()
+        finally:
+            self.current = saved
+
+    # ----- phone calls
+
+    def lock_state(self):
+        self.lock_checks += 1
+        if self.locked and self.lock_checks > self.unlock_after:
+            self.locked = False  # the user unlocked it
+            self.events.append("unlocked")
+        return "locked" if self.locked else "unlocked"
+
+    def wake(self):
+        self.events.append("wake")
+
+    def go_home(self):
+        self.events.append("home")
+        self.current = "launcher"
+
+    def open_fresh(self, package):
+        self.events.append("open")
+        self.current = "home"
         return True
+
+    def launch(self, package):
+        return self.open_fresh(package)
+
+    def now(self):
+        self.clock += 1
+        return self.clock
+
+    def latest_backup(self, package):
+        return self.backup
 
     def free_bytes(self):
         return self.free
@@ -192,8 +304,15 @@ class FakePhone:
         hit.sort(key=lambda i: self._area(i))
         rid = hit[0].get("id", "").split("/")[-1] if hit else ""
         self.taps.append((self.current, rid))
+        if self.current in ("home", "calls") and rid == "navigation_bar_item":
+            last = x > 1080 * 0.75
+            if self.home_style == "tabs" and last:
+                self.current = 2       # newer WhatsApp: the last tab is Settings
+            elif last:
+                self.current = "calls"  # an older tab bar: the last tab is Calls
+            return True, ""
         nxt = {
-            ("home", "menuitem_overflow"): "menu", ("menu", ""): 2,
+            ("home", "menuitem_overflow"): "menu", ("calls", "menuitem_overflow"): "menu", ("menu", ""): 2,
             (2, "settings_chat"): "chats", ("chats", "chat_backup_preference"): "backup",
             ("backup", "settings_gdrive_e2e_encryption"): 7 if self.e2e_on else 13,
             (7, "enc_backup_enabled_landing_disable_button"): 8,
@@ -204,19 +323,20 @@ class FakePhone:
             (15, "encryption_key_info_bottom_button"): 16,
             (16, "encryption_key_info_bottom_button"): 19,
             (19, "encryption_key_confirm_button_confirm"): 20,
-            (20, "enable_done_create_button"): 22 if self.fail_backup else "backup_on",
-            (22, "button1"): "backup_on",
+            (22, "button1"): "backup",
         }
         if self.current == 11 and rid == "disable_done_done_button":
             self.e2e_on = False
             self.current = "backup"
             return True, ""
+        if (self.current == 20 and rid == "enable_done_create_button") or (self.current == "backup" and rid == "google_drive_backup_now_btn"):
+            self.e2e_on = True
+            self.current = "backup"
+            self.after_backup = ("fail" if self.fail_backup else "ok", 2)  # WhatsApp answers a moment later
+            return True, ""
         key = (self.current, rid)
         if key in nxt:
             self.current = nxt[key]
-            if self.current == "backup_on":
-                self.e2e_on = True
-                self.current = "backup"
         return True, ""
 
     @staticmethod
@@ -232,9 +352,14 @@ class FakePhone:
         return (r - l) * (b - t)
 
 
-def run_guide(phone, mode="auto", choice=None, until=("done",), timeout=10, allow_low_storage=False):
+def make_guide(phone, saved=None, **kw):
+    saved = [] if saved is None else saved
+    return WaGuide(lambda: phone, lambda k: saved.append(k) or True, sleep=lambda s: time.sleep(0.002), **kw)
+
+
+def run_guide(phone, mode="auto", choice=None, until=("done",), timeout=10, allow_low_storage=False, guide=None):
     saved = []
-    guide = WaGuide(lambda: phone, lambda k: saved.append(k) or True, sleep=lambda s: time.sleep(0.002))
+    guide = guide or make_guide(phone, saved)
     guide.start(mode)
     deadline = time.time() + timeout
     seen = []
@@ -254,6 +379,17 @@ def run_guide(phone, mode="auto", choice=None, until=("done",), timeout=10, allo
     return final, saved, seen
 
 
+def wait(guide, predicate, timeout=10):
+    deadline = time.time() + timeout
+    st = guide.status()
+    while time.time() < deadline:
+        st = guide.status()
+        if predicate(st):
+            return st
+        time.sleep(0.005)
+    raise AssertionError(f"condition not reached: {st}")
+
+
 class AutoSessionTests(unittest.TestCase):
     def test_10_new_key_all_the_way_without_touching_the_phone(self):
         phone = FakePhone(e2e_on=False)
@@ -261,7 +397,7 @@ class AutoSessionTests(unittest.TestCase):
         self.assertEqual(st["phase"], "done", st)
         self.assertEqual(saved, [KEY])
         self.assertTrue(st["key_captured"] and st["created"])
-        self.assertIn("making the encrypted backup", st["message"])
+        self.assertIn("made the encrypted backup (48 MB)", st["message"])
         self.assertEqual(st["masked_key"], KEY[:4] + "…" + KEY[-4:])
         self.assertNotIn(KEY, json.dumps(st))  # the full key never reaches the browser
         self.assertTrue(phone.swipes >= 1, "Chat backup was half off-screen and had to be scrolled into view")
@@ -271,6 +407,7 @@ class AutoSessionTests(unittest.TestCase):
                         tapped.index("encryption_key_confirm_button_confirm"))
         self.assertTrue(all(s["state"] == "done" for s in st["steps"]))
         self.assertNotIn("turn_off", [s["key"] for s in st["steps"]])
+        self.assertEqual(phone.events[:2], ["home", "open"], "home screen first, then WhatsApp opened fresh")
 
     def test_11_existing_backup_waits_for_the_users_choice(self):
         phone = FakePhone(e2e_on=True)
@@ -285,12 +422,11 @@ class AutoSessionTests(unittest.TestCase):
         self.assertEqual(st["phase"], "done", st)
         self.assertEqual(saved, [KEY])
         self.assertIn(9, phone.shown, "went through the screen lock")
-        self.assertIn("screen_lock", [classify(nodes_from_fixture(screen(9))).name])
         tapped = [rid for _, rid in phone.taps]
         for rid in ("enc_backup_enabled_landing_disable_button", "enc_backup_encryption_key_input_forgot",
                     "confirm_disable_disable_button", "disable_done_done_button"):
             self.assertIn(rid, tapped)
-        self.assertNotIn(9, [screen for screen, _ in phone.taps], "the screen lock is never tapped by the app")
+        self.assertNotIn(9, [s for s, _ in phone.taps], "the screen lock is never tapped by the app")
 
     def test_13_have_key_leaves_the_phone_alone(self):
         phone = FakePhone(e2e_on=True)
@@ -308,16 +444,10 @@ class AutoSessionTests(unittest.TestCase):
 
     def test_15_phone_that_blocks_taps_switches_to_guide_mode(self):
         phone = FakePhone(e2e_on=False, taps_allowed=False)
-        saved = []
-        guide = WaGuide(lambda: phone, lambda k: saved.append(k) or True, sleep=lambda s: time.sleep(0.002))
+        guide = make_guide(phone)
         guide.start("auto")
-        for _ in range(400):
-            st = guide.status()
-            if not st["input_allowed"]:
-                break
-            time.sleep(0.005)
+        st = wait(guide, lambda s: not s["input_allowed"])
         guide.stop()
-        self.assertFalse(st["input_allowed"])
         self.assertEqual(st["mode"], "guide")
         self.assertIn("Security settings", st["notice"])
 
@@ -325,47 +455,39 @@ class AutoSessionTests(unittest.TestCase):
         phone = FakePhone(e2e_on=False, free_gb=0.3)
         st, _, _ = run_guide(phone, until=("low_storage",))
         self.assertEqual((st["phase"], st["screen"]), ("low_storage", "create"))
-        self.assertIn("0.3 GB", st["warning"])
+        self.assertEqual(st["slide"], 10, "the tutorial screenshot of the Create screen")
+        self.assertIn("0.3 GB free", st["warning"])
+        self.assertIn("0.3 GB free", st["storage_warning"], "also shown from the start")
         self.assertNotIn("enable_done_create_button", [rid for _, rid in phone.taps])
         phone2 = FakePhone(e2e_on=False, free_gb=0.3)
         st2, _, _ = run_guide(phone2, allow_low_storage=True)
         self.assertEqual(st2["phase"], "done")
 
-    def test_17_failed_backup_is_reported_honestly(self):
+    def test_17_not_enough_space_after_create_is_shown_and_can_be_retried(self):
+        # Your test phone: WhatsApp returns to Chat backup, then a moment later says there is no space
         phone = FakePhone(e2e_on=False, fail_backup=True)
-        guide = WaGuide(lambda: phone, lambda k: True, sleep=lambda s: time.sleep(0.002))
+        guide = make_guide(phone)
         guide.start("auto")
-        # The dialog's text is WhatsApp's; the fixture keeps none, so give it one
-        for _ in range(2000):
-            if phone.current == 22:
-                break
-            time.sleep(0.002)
-        self.assertEqual(phone.current, 22)
-        msg = {"id": "android:id/message", "class": "TextView", "bounds": "[91,1067][989,1255]", "package": "com.whatsapp",
-               "text": "Not enough storage to back up."}
-        original = phone.layout
-        phone.layout = lambda: (original() + [msg]) if phone.current == 22 else original()
-        for _ in range(400):
-            st = guide.status()
-            if st["screen"] == "dialog":
-                break
-            time.sleep(0.005)
-        self.assertIn("Not enough storage", st["instruction"])
-        # The user taps OK on the phone
-        phone.current = "backup"
-        phone.e2e_on = True
-        for _ in range(400):
-            st = guide.status()
-            if st["phase"] == "done":
-                break
-            time.sleep(0.005)
+        st = wait(guide, lambda s: s["phase"] == "backup_failed")
+        self.assertIn("isn't enough space", st["backup_error"])
+        self.assertIn("isn't enough space", st["instruction"])
+        self.assertTrue(st["key_captured"], "the key is saved even though the backup failed")
+        self.assertNotIn("making the encrypted backup", st["message"])
+        self.assertEqual([s["state"] for s in st["steps"] if s["key"] == "making"], ["active"])
+        # The user frees space and presses Try again: the app closes the message and taps Back up
+        phone.fail_backup = False
+        guide.retry_backup()
+        st = wait(guide, lambda s: s["phase"] == "done")
         guide.stop()
-        self.assertIn("could not make the backup", st["message"])
+        self.assertIn("made the encrypted backup", st["message"])
+        tapped = [rid for _, rid in phone.taps]
+        self.assertIn("button1", tapped)
+        self.assertIn("google_drive_backup_now_btn", tapped)
 
     def test_18_unknown_screens_fall_back_to_the_manual_steps(self):
         clock = {"t": 1000.0}
         phone = FakePhone(e2e_on=False)
-        phone.current = 17  # a lone popup is fine, but make it something the guide does not know:
+        phone.open_fresh = lambda package: phone.events.append("open") or True  # reopening does not help here
         phone.layout = lambda: [{"id": "com.whatsapp:id/mystery", "class": "View", "bounds": "[0,0][1080,2412]", "package": "com.whatsapp"}]
 
         def sleep(s):
@@ -373,28 +495,121 @@ class AutoSessionTests(unittest.TestCase):
             time.sleep(0.002)
         guide = WaGuide(lambda: phone, lambda k: True, clock=lambda: clock["t"], sleep=sleep)
         guide.start("auto")
-        for _ in range(400):
-            st = guide.status()
-            if st["fallback"]:
-                break
-            time.sleep(0.005)
+        st = wait(guide, lambda s: s["fallback"])
         guide.stop()
-        self.assertTrue(st["fallback"])
         self.assertTrue(st["fallback_reason"])
+        self.assertGreaterEqual(phone.events.count("open"), 2, "tried reopening WhatsApp first")
 
     def test_19_repeated_taps_without_effect_stop_auto_mode(self):
-        phone = FakePhone(e2e_on=False)
-        phone.current = 13
-        original_tap = phone.tap
+        phone = FakePhone(e2e_on=False, start=13)
+        phone.go_home = phone.open_fresh = lambda *a: True  # stays on screen 13
         phone.tap = lambda x, y: (phone.taps.append((13, "nothing happens")) or (True, ""))
         st, _, _ = run_guide(phone, until=("never",), timeout=1.5)
         self.assertEqual(st["mode"], "guide")
         self.assertIn("could not move forward", st["notice"])
         self.assertLessEqual(len(phone.taps), wa_guide.SAME_ACTION_LIMIT + 1)
 
+    def test_20_locked_phone_is_woken_and_unlocked_first(self):
+        phone = FakePhone(e2e_on=False, locked=True, unlock_after=4)
+        guide = make_guide(phone)
+        guide.start("auto")
+        st = wait(guide, lambda s: s["phase"] == "locked")
+        self.assertIn("Unlock your phone", st["instruction"])
+        self.assertIn("never enters", st["instruction"])
+        st = wait(guide, lambda s: s["phase"] == "done")
+        guide.stop()
+        e = phone.events
+        self.assertLess(e.index("wake"), e.index("unlocked"))
+        self.assertLess(e.index("unlocked"), e.index("home"))
+        self.assertLess(e.index("home"), e.index("open"))
+        self.assertNotIn("keyguard", phone.shown, "nothing is read or tapped on the lock screen")
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_21_locked_half_way_waits_and_carries_on(self):
+        phone = FakePhone(e2e_on=False, unlock_after=3)
+        phone.lock_at = "chats"
+        guide = make_guide(phone)
+        guide.start("auto")
+        wait(guide, lambda s: s["phase"] == "locked")
+        st = wait(guide, lambda s: s["phase"] == "done")
+        guide.stop()
+        self.assertTrue(st["key_captured"])
+
+    def test_22_whatsapp_left_on_a_chat_is_reopened_on_its_main_screen(self):
+        phone = FakePhone(e2e_on=False, start="chat")
+        phone.open_fresh_count = 0
+        original = phone.open_fresh
+        first = {"done": False}
+
+        def open_fresh(package):  # the first open still lands on the chat (WhatsApp restored it)
+            if not first["done"]:
+                first["done"] = True
+                phone.events.append("open")
+                phone.current = "chat"
+                return True
+            return original(package)
+        phone.open_fresh = open_fresh
+        st, _, _ = run_guide(phone)
+        self.assertEqual(st["phase"], "done", st)
+        self.assertNotIn("chat", [s for s, _ in phone.taps], "never taps inside a chat")
+        self.assertGreaterEqual(phone.events.count("open"), 2)
+
+    def test_23_newer_whatsapp_settings_in_the_last_tab_any_language(self):
+        phone = FakePhone(e2e_on=False, home="tabs")
+        st, _, _ = run_guide(phone)
+        self.assertEqual(st["phase"], "done", st)
+        self.assertEqual(phone.taps[0], ("home", "navigation_bar_item"))
+        self.assertNotIn("menu", [s for s, _ in phone.taps])
+
+    def test_24_last_tab_is_not_settings_then_the_menu_is_used(self):
+        phone = FakePhone(e2e_on=False, home="tabs_calls")
+        st, _, _ = run_guide(phone)
+        self.assertEqual(st["phase"], "done", st)
+        self.assertIn(("calls", "menuitem_overflow"), phone.taps)
+
+    def test_25_guide_mode_watches_the_backup_after_the_user_taps_create(self):
+        phone = FakePhone(e2e_on=False, start=20)
+        phone.go_home = phone.open_fresh = lambda *a: True  # keep the phone on the Create screen
+        guide = make_guide(phone)
+        guide.start("guide")
+        wait(guide, lambda s: s["screen"] == "create")
+        self.assertEqual(phone.taps, [])
+        phone.tap(540, 2100)  # the user taps Create
+        st = wait(guide, lambda s: s["phase"] == "done")
+        guide.stop()
+        self.assertIn("made the encrypted backup", st["message"])
+
+    def test_26_storage_need_comes_from_the_previous_backup(self):
+        self.assertEqual(wa_guide.storage_needed(None), wa_guide.LOW_STORAGE_BYTES)
+        self.assertEqual(wa_guide.storage_needed(100 * 1024 ** 2), wa_guide.LOW_STORAGE_BYTES)
+        self.assertEqual(wa_guide.storage_needed(2 * 1024 ** 3), 3 * 1024 ** 3 + 300 * 1024 ** 2)
+        phone = FakePhone(e2e_on=False, free_gb=2.5, previous_backup_mb=2048)
+        st, _, _ = run_guide(phone, until=("low_storage",))
+        self.assertEqual(st["phase"], "low_storage")
+        self.assertIn("about 3.3 GB", st["storage_warning"])
+
+
+class ParsingTests(unittest.TestCase):
+    def test_27_lock_state(self):
+        p = wa_guide.parse_lock_state
+        self.assertEqual(p("", "  mWakefulness=Asleep"), "asleep")
+        self.assertEqual(p("  mDreamingLockscreen=true mDreamingSleepToken=null", "mWakefulness=Awake"), "locked")
+        self.assertEqual(p("KeyguardController:\n  mKeyguardShowing=true", "mWakefulness=Awake"), "locked")
+        self.assertEqual(p("    isKeyguardShowing=false\n  mDreamingLockscreen=false", "mWakefulness=Awake"), "unlocked")
+        self.assertEqual(p("", "mWakefulness=Awake"), "unknown")
+
+    def test_28_backup_stats(self):
+        self.assertEqual(wa_guide.parse_backup_stats("1700000000 1000\n1700000500 2000\njunk\n"), (1700000500, 2000))
+        self.assertIsNone(wa_guide.parse_backup_stats(""))
+
+    def test_29_a_chat_is_never_the_home_screen(self):
+        chat = classify(parse_layout(to_xml(CHAT)), "com.whatsapp/.home.ui.HomeActivity")  # even with a lagging name
+        self.assertEqual(chat.name, "unknown")
+        self.assertEqual(wa_guide.bottom_tabs(parse_layout(to_xml(tabs_home())))[-1].bounds[0], 864)
+        home = classify(parse_layout(to_xml(tabs_home())), "com.whatsapp/.home.ui.HomeActivity")
+        self.assertEqual(home.name, "home")
+        self.assertIsNotNone(home.info["last_tab"])
+        self.assertEqual(classify(parse_layout(to_xml(tabs_home(labels=("Chats", "Updates", "Communities", "Calls", "Settings")))),
+                                  "com.whatsapp/.home.ui.HomeActivity").info["label"].desc, "Settings")
 
 
 class ApiTests(unittest.TestCase):
@@ -515,3 +730,7 @@ class AdbPhoneCommandTests(unittest.TestCase):
         self.assertIn("rm -f /data/local/tmp/wa_guide_layout.xml", fallback[4])
         self.assertTrue(ok)
         self.assertEqual(calls[2], ["adb", "-s", "SER", "shell", "input", "tap", "10", "20"])
+
+
+if __name__ == "__main__":
+    unittest.main()

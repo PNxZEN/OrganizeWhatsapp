@@ -60,7 +60,8 @@ class UsbDetectionTests(unittest.TestCase):
                 for k, v in files.items():
                     (d / k).write_text(v + "\n")
             dev("1-1", idVendor="04e8", bDeviceClass="00", manufacturer="SAMSUNG", product="SAMSUNG_Android", serial="R5CT")
-            dev("1-1:1.0", idVendor="04e8")                      # interface, not a device
+            if sys.platform != "win32":  # ":" cannot be in a Windows folder name (Linux names interfaces so)
+                dev("1-1:1.0", idVendor="04e8")                  # interface, not a device
             dev("usb1", idVendor="1d6b", bDeviceClass="09", product="xHCI Host Controller")
             dev("1-2", idVendor="046d", bDeviceClass="00", product="USB Receiver")
             dev("1-3", idVendor="abcd", bDeviceClass="00", product="Android")  # unknown vendor, phone name
