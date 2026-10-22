@@ -179,18 +179,38 @@ def _first_label(value: str) -> str:
     return (value or "").split(",")[0].strip().lower()
 
 
+def _label_words(value: str) -> str:
+    """A label without badges, dots, counts or punctuation: "Settings •" / "Settings, New" -> "settings"."""
+    value = (value or "").split(",")[0]
+    value = re.sub(r"[^\w\s]|\d|_", " ", value, flags=re.UNICODE)
+    return " ".join(value.lower().split())
+
+
+def is_settings_label(value: str) -> bool:
+    words = _label_words(value)
+    return any(words == w or words.startswith(w + " ") for w in SETTINGS_WORDS)
+
+
 def settings_menu_item(nodes: List[Node], titles: List[Node]) -> Optional[Node]:
-    """The ⋮ menu's Settings row, only when it is recognisably Settings."""
+    """
+    The ⋮ menu's Settings row, only when it is recognisably Settings: by an item's text, or the
+    description of the item or its row (the label can carry a "new" dot or sit on the row itself).
+    """
     for t in titles:
-        if _first_label(t.text) in SETTINGS_WORDS:
+        if is_settings_label(t.text) or is_settings_label(t.desc):
             return clickable_around(nodes, t)
+    rows = {id(clickable_around(nodes, t)): clickable_around(nodes, t) for t in titles}
+    for row in rows.values():
+        if is_settings_label(row.desc) or is_settings_label(row.text):
+            return row
     return None
 
 
 def settings_named(nodes: List[Node], wa_nodes: List[Node]) -> Optional[Node]:
     """A tappable item whose whole label is "Settings" (or a translation), outside the chat list."""
     for n in wa_nodes:
-        if _first_label(n.text) in SETTINGS_WORDS and (n.text or "").strip().lower() == _first_label(n.text):
+        label = n.text if (n.text or "").strip() else n.desc
+        if is_settings_label(label) and len(_label_words(label).split()) <= 2:
             target = clickable_around(nodes, n)
             if not CHAT_ROW_ID.search(target.rid or "") and not any(
                     p.contains(n) and p.rid and CHAT_ROW_ID.search(p.rid) for p in nodes if p is not n):
@@ -328,10 +348,11 @@ def classify(nodes: List[Node], foreground: str = "") -> Screen:
     # WhatsApp's ⋮ menu (New group, ..., Settings): a popup of 3 or more items
     # Item labels are "android:id/title" in system popups, "<app>:id/title" (short: "title") in WhatsApp's own
     titles = [n for n in wa_nodes if (n.rid in ("title", "android:id/title") or n.rid.endswith(":id/title"))
-              and (n.text or "").strip()]
+              and ((n.text or "").strip() or (n.desc or "").strip())]
     if len(titles) >= 3:
         item = settings_menu_item(nodes, titles)
-        return Screen("menu", item, "Settings", {"has_settings": item is not None})
+        labels = [(t.text or t.desc).strip()[:30] for t in sorted(titles, key=lambda n: (n.bounds[1], n.bounds[0]))][:12]
+        return Screen("menu", item, "Settings", {"has_settings": item is not None, "items": labels})
     if len(nodes) <= 12 and titles:
         return Screen("popup")  # e.g. the "Copy" bubble after long-pressing the key
     # Only WhatsApp's own home screen: a chat also has a row of buttons at the bottom (emoji,
@@ -599,6 +620,8 @@ class WaGuide:
         self._you_scrolls = 0
         self._menu_taps = 0
         self._menu_failed = False
+        self._menu_unrecognised = 0
+        self._menu_seen = ""
         self._handed_over = False
         self._recoveries = 0
         self._backs = 0
@@ -664,6 +687,7 @@ class WaGuide:
             self._scrolls, self._recoveries, self._backs = {}, 0, 0
             self._you_taps = self._you_scrolls = self._menu_taps = 0
             self._you_tapped = self._menu_failed = self._handed_over = False
+            self._menu_unrecognised = 0
             self._unknown_since = None
         self._set(mode=mode, notice="")
 
@@ -940,12 +964,18 @@ class WaGuide:
             if screen.target:
                 action, label = ("tap", screen.target), "Settings"
                 instruction = "Tap Settings."
+            elif self._menu_unrecognised < 2:
+                # The menu may still be opening: look once more before deciding
+                self._menu_unrecognised += 1
+                instruction = "Reading the menu\u2026"
             else:
                 # This menu has no recognisable Settings (newer WhatsApp keeps it in the "You" tab, or
                 # another language): never guess an item (it could be "Read all"); close it, hand over
                 action, label = ("back",), "the menu"
                 instruction = "Close the menu, then open WhatsApp's Settings yourself."
                 self._menu_failed = True
+                seen = ", ".join(screen.info.get("items") or [])
+                self._menu_seen = seen
         elif name == "key_shown":
             if st["key_captured"]:
                 action = ("tap", screen.target)
@@ -1023,7 +1053,8 @@ class WaGuide:
         overflow = info.get("overflow")
         if overflow and not self._menu_failed and self._menu_taps < 2:
             return ("tap", overflow, "overflow"), "Tap \u22ee (top right), then Settings.", "\u22ee (More options)"
-        self._hand_over("The app could not find WhatsApp's Settings on this phone.")
+        self._hand_over("The app could not find WhatsApp's Settings on this phone"
+                        + (f" (its \u22ee menu showed: {self._menu_seen})." if self._menu_seen else "."))
         return None, "Open WhatsApp's Settings: tap \u22ee (top right) and then Settings, or You (bottom right).", ""
 
     def _act(self, phone, name, action, nodes):

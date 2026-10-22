@@ -65,6 +65,7 @@ class PureTests(unittest.TestCase):
         self.assertEqual(rec.mask_strict("Settings"), "Settings")
         self.assertEqual(rec.mask_strict("Settings, tab 5 of 5"), "Settings, tab 5 of 5")
         self.assertEqual(rec.mask_strict("You"), "You")
+        self.assertEqual(rec.mask_strict("Settings \u2022"), "Settings \u2022")
         for private in ("Mom", "Chat with John", "Settings for John's party", "+91 98765 43210", "a@b.c", "Hey!"):
             self.assertEqual(rec.mask_strict(private), "<text>", private)
 

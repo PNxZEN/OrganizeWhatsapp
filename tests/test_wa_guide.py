@@ -848,6 +848,71 @@ class MidwayTests(unittest.TestCase):
         self.assertIn(("home", "menuitem_overflow"), phone.taps)
 
 
+class MenuVariantTests(unittest.TestCase):
+    """Settings in the ⋮ menu however WhatsApp labels it; the menu is only closed when it truly has none."""
+
+    def menu_with(self, mutate):
+        items = overflow_menu()
+        for i in items:
+            if i.get("text") == "Settings":
+                mutate(i, items)
+        return items
+
+    def test_90_settings_with_a_new_badge_or_in_the_description(self):
+        variants = {
+            "badge dot": lambda i, items: i.update(text="Settings \u2022"),
+            "badge word": lambda i, items: i.update(text="Settings, New"),
+            "description only": lambda i, items: i.update(text="", desc="Settings"),
+        }
+        for name, mutate in variants.items():
+            with self.subTest(name):
+                menu = classify(parse_layout(to_xml(self.menu_with(mutate))), "com.whatsapp/.home.ui.HomeActivity")
+                self.assertEqual((menu.name, menu.target.bounds[1]), ("menu", 850))
+
+    def test_91_label_on_the_row_itself(self):
+        items = overflow_menu()
+        for i in items:
+            if i.get("text") == "Settings":
+                i["text"] = "Xyz"
+        rows = [i for i in items if i.get("clickable")]
+        rows[-1]["desc"] = "Settings"
+        menu = classify(parse_layout(to_xml(items)), "com.whatsapp/.home.ui.HomeActivity")
+        self.assertEqual((menu.name, menu.target.bounds[1]), ("menu", 850))
+
+    def test_92_menu_still_opening_is_read_again_before_closing(self):
+        phone = FakePhone(e2e_on=False, home="menu")
+        reads = {"n": 0}
+        original = phone.layout
+
+        def layout():
+            if phone.current == "menu":
+                reads["n"] += 1
+                if reads["n"] <= 2:  # half-drawn: Settings not there yet
+                    return overflow_menu(labels=("New group", "New community", "Broadcast lists"))
+            return original()
+        phone.layout = layout
+        st, _, _ = run_guide(phone)
+        self.assertEqual(st["phase"], "done", st)
+        self.assertEqual(phone.backs, 0, "the menu was not closed")
+
+    def test_93_hand_over_says_what_the_menu_showed(self):
+        phone = FakePhone(e2e_on=False, home="menu")
+        original = phone.layout
+        phone.layout = lambda: (overflow_menu(("New group", "Starred", "Read all")) if phone.current == "menu" else original())
+        st, _, _ = run_guide(phone, until=("never",), timeout=2)
+        self.assertIn("New group, Starred, Read all", st["notice"])
+        self.assertEqual(st["mode"], "guide")
+
+    def test_94_label_matching(self):
+        yes = ["Settings", "settings", "Settings \u2022", "Settings 1", "Settings, tab 5 of 5", "Ajustes", "Einstellungen",
+               "\u8bbe\u7f6e", "Settings new"]
+        no = ["Read all", "New group", "Starred", "", "Setting up", "Chat settings help"]
+        for v in yes:
+            self.assertTrue(wa_guide.is_settings_label(v), v)
+        for v in no:
+            self.assertFalse(wa_guide.is_settings_label(v), v)
+
+
 class ParsingTests(unittest.TestCase):
     def test_27_lock_state(self):
         p = wa_guide.parse_lock_state

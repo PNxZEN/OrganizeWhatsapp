@@ -146,7 +146,8 @@ def mask_strict(text):
     t = (text or "").strip()
     if not t:
         return ""
-    head = t.split(",")[0].strip().lower()  # tabs read like "Settings, tab 5 of 5"
+    # Tabs read like "Settings, tab 5 of 5"; menu items may carry a "new" dot ("Settings •")
+    head = " ".join(re.sub(r"[^\w\s]|\d|_", " ", t.split(",")[0]).lower().split())
     return t if head in HOME_WORDS and not re.search(r"\d{3,}|@", t) else "<text>"
 
 
