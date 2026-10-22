@@ -7,6 +7,7 @@ Run it once while you go through the setup on your phone, then send the report f
     python scripts/record_e2e_flow.py                  (from the repository folder)
     python scripts/record_e2e_flow.py --adb PATH       (if adb is not found by itself)
     python scripts/record_e2e_flow.py --no-text        (keep no on-screen text at all)
+    python scripts/record_e2e_flow.py --include-home   (also the home screen, tabs and account page)
 
 What it records, every time the phone shows a different screen:
 - the Android screen (activity) name, e.g. com.whatsapp/.settings.SettingsChat
@@ -130,6 +131,25 @@ def mask_label(text):
     return t
 
 
+# Home / tab / account pages (--include-home): only these exact button words are kept, so a chat
+# or contact name can never end up in the report, whatever it is called
+HOME_WORDS = {
+    "settings", "chats", "updates", "communities", "calls", "you", "account", "profile", "status",
+    "more options", "new group", "new community", "broadcast lists", "linked devices", "starred",
+    "starred messages", "payments", "read all", "search", "camera", "new chat", "archived", "lists",
+    "favourites", "favorites", "unread", "groups", "all", "help", "privacy", "avatar", "notifications",
+    "storage and data", "app language", "invite a friend", "app updates", "meta ai",
+}
+
+
+def mask_strict(text):
+    t = (text or "").strip()
+    if not t:
+        return ""
+    head = t.split(",")[0].strip().lower()  # tabs read like "Settings, tab 5 of 5"
+    return t if head in HOME_WORDS and not re.search(r"\d{3,}|@", t) else "<text>"
+
+
 def key_visibility(nodes_text):
     """How much of a 64-digit key the screen shows: (hex blocks of 4, a full 64-hex string seen)."""
     blocks = 0
@@ -145,7 +165,7 @@ def key_visibility(nodes_text):
     return blocks, full or blocks >= 16
 
 
-def summarize_layout(xml_text, keep_text):
+def summarize_layout(xml_text, keep_text, strict=False):
     """Layout without personal data: ids, classes, tappable, bounds, masked labels if allowed."""
     try:
         root = ET.fromstring(xml_text)
@@ -166,10 +186,11 @@ def summarize_layout(xml_text, keep_text):
         if a.get("package"):
             item["package"] = a.get("package")
         if keep_text:
+            mask = mask_strict if strict else mask_label
             if text:
-                item["text"] = mask_label(text)
+                item["text"] = mask(text)
             if desc:
-                item["desc"] = mask_label(desc)
+                item["desc"] = mask(desc)
         else:
             item["has_text"] = bool(text or desc)
         nodes.append(item)
@@ -273,6 +294,8 @@ def main(argv=None):
     ap.add_argument("--serial", help="phone serial, when several are connected")
     ap.add_argument("--package", default="com.whatsapp", help="com.whatsapp (default) or com.whatsapp.w4b")
     ap.add_argument("--no-text", action="store_true", help="keep no on-screen text at all")
+    ap.add_argument("--include-home", action="store_true",
+                    help="also record the layout of WhatsApp's home screen, tabs and account page (button words only)")
     ap.add_argument("--out", help="report file (default: e2e_recording_<model>_<time>.json)")
     args = ap.parse_args(argv)
 
@@ -353,7 +376,8 @@ def main(argv=None):
             report.setdefault("foreground_method", method)
             own_app = act.startswith(args.package + "/")
             settings = own_app and is_settings_screen(act)
-            if own_app and not settings and not force.is_set():
+            home = own_app and args.include_home and bool(re.search(r"(HomeActivity|\.Main)$", act))
+            if own_app and not settings and not home and not force.is_set():
                 # Chat list, conversations, etc.: record only that the screen was visited
                 signature = ("private", act)
                 if signature != last_signature:
@@ -369,7 +393,8 @@ def main(argv=None):
             t0 = time.time()
             xml_text, dump_method = dump_layout(phone)
             report.setdefault("layout_method", dump_method)
-            layout = summarize_layout(xml_text, keep_text=settings and not args.no_text) if xml_text else None
+            layout = summarize_layout(xml_text, keep_text=(settings or home) and not args.no_text,
+                                      strict=home and not settings) if xml_text else None
             signature = (act, tuple(layout["ids"]) if layout else (), len(layout["nodes"]) if layout else 0)
             if signature != last_signature or force.is_set():
                 forced = force.is_set()

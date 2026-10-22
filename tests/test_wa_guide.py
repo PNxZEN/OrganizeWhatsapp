@@ -41,7 +41,8 @@ def to_xml(items):
     def node(i):
         attrs = {"text": i.get("text", ""), "resource-id": i.get("id", ""), "class": "android.widget." + i.get("class", "View"),
                  "package": i.get("package", ""), "content-desc": i.get("desc", ""),
-                 "clickable": "true" if i.get("clickable") else "false", "bounds": i.get("bounds", "[0,0][0,0]")}
+                 "clickable": "true" if i.get("clickable") else "false", "bounds": i.get("bounds", "[0,0][0,0]"),
+                 "selected": "true" if i.get("selected") else "false"}
         return "<node " + " ".join(f"{k}={quoteattr(v)}" for k, v in attrs.items()) + " />"
     return '<?xml version="1.0" encoding="UTF-8"?><hierarchy rotation="0">' + "".join(map(node, items)) + "</hierarchy>"
 
@@ -53,11 +54,49 @@ HOME = [
     {"id": "com.whatsapp:id/conversations_row", "class": "View", "clickable": True, "bounds": "[0,400][1080,600]",
      "package": "com.whatsapp", "text": "Mom"},
 ]
-MENU = [
-    {"class": "FrameLayout", "bounds": "[560,140][1070,700]", "package": "com.whatsapp"},
-    {"class": "LinearLayout", "clickable": True, "bounds": "[560,560][1070,690]", "package": "com.whatsapp"},
-    {"id": "android:id/title", "class": "TextView", "bounds": "[600,590][1000,660]", "package": "com.whatsapp", "text": "Settings"},
+def overflow_menu(labels=("New group", "New community", "Broadcast lists", "Linked devices", "Starred",
+                          "Payments", "Read all", "Settings")):
+    """WhatsApp's ⋮ menu as uiautomator shows it: a row per item, each holding an android:id/title."""
+    items = [{"class": "FrameLayout", "bounds": f"[560,140][1070,{160 + 100 * len(labels)}]", "package": "com.whatsapp"},
+             {"class": "ListView", "bounds": f"[560,150][1070,{150 + 100 * len(labels)}]", "package": "com.whatsapp"}]
+    for n, label in enumerate(labels):
+        top = 150 + 100 * n
+        items.append({"class": "LinearLayout", "clickable": True, "bounds": f"[560,{top}][1070,{top + 100}]", "package": "com.whatsapp"})
+        items.append({"class": "RelativeLayout", "bounds": f"[600,{top + 20}][1040,{top + 80}]", "package": "com.whatsapp"})
+        items.append({"id": "android:id/title", "class": "TextView", "bounds": f"[600,{top + 20}][1000,{top + 80}]",
+                      "package": "com.whatsapp", "text": label})
+    return items
+
+
+MENU = overflow_menu()
+# The self-chat ("Message yourself") is listed as "You": it must never be taken for a "You" tab
+SELF_CHAT = [
+    {"id": "com.whatsapp:id/contact_row_container", "class": "LinearLayout", "clickable": True, "bounds": "[0,300][1080,480]", "package": "com.whatsapp"},
+    {"id": "com.whatsapp:id/contact_photo", "class": "ImageView", "clickable": True, "bounds": "[30,320][170,460]", "package": "com.whatsapp", "desc": "You"},
+    {"id": "com.whatsapp:id/conversations_row_contact_name", "class": "TextView", "bounds": "[200,330][700,390]", "package": "com.whatsapp", "text": "You"},
 ]
+
+
+def you_page(scrolled=False, chats_label="Chats", chats_id=""):
+    """Newer WhatsApp's "You" tab: the Settings page itself (Lists, Chats, Broadcasts...), Chats below the fold."""
+    items = [i for i in tabs_home(labels=("Chats", "Updates", "Communities", "Calls", "You"))
+             if "conversations" not in i.get("id", "") and "search" not in i.get("id", "")]  # no chat list here
+    rows = ["Lists", chats_label, "Broadcasts", "Notifications"] if scrolled else ["Avatar", "Lists"]
+    top = 300
+    for label in rows:
+        rid = chats_id if label == chats_label else ""
+        items.append({"id": rid, "class": "LinearLayout", "clickable": True, "bounds": f"[0,{top}][1080,{top + 160}]", "package": "com.whatsapp"})
+        items.append({"id": "com.whatsapp:id/row_text", "class": "TextView", "bounds": f"[150,{top + 30}][700,{top + 90}]", "package": "com.whatsapp", "text": label})
+        top += 170
+    return items
+
+
+def account_page(label="Settings", row_id=""):
+    """Newer WhatsApp's last tab: an account page with a Settings row on it."""
+    return tabs_home(labels=("", "", "", "", "")) + [
+        {"id": row_id, "class": "LinearLayout", "clickable": True, "bounds": "[0,900][1080,1050]", "package": "com.whatsapp"},
+        {"id": "com.whatsapp:id/row_text", "class": "TextView", "bounds": "[200,940][700,1000]", "package": "com.whatsapp", "text": label},
+    ]
 
 
 class ClassifyRecordedScreens(unittest.TestCase):
@@ -97,11 +136,22 @@ class ClassifyRecordedScreens(unittest.TestCase):
         self.assertEqual(off.info["passkey_button"].rid, "enable_info_turn_on_button")
 
     def test_06_home_menu_and_other_apps(self):
-        home = classify(parse_layout(to_xml(HOME)), "com.whatsapp/.home.ui.HomeActivity")
+        home = classify(parse_layout(to_xml(HOME + SELF_CHAT)), "com.whatsapp/.home.ui.HomeActivity")
         self.assertEqual((home.name, home.info["overflow"].rid), ("home", "menuitem_overflow"))
+        self.assertIsNone(home.info["you_tab"], "the self-chat called You is not the You tab")
         menu = classify(parse_layout(to_xml(MENU)), "com.whatsapp/.home.ui.HomeActivity")
         self.assertEqual(menu.name, "menu")
-        self.assertEqual(menu.target.cls, "LinearLayout")  # the row, not the text inside it
+        self.assertEqual((menu.target.cls, menu.target.bounds[1]), ("LinearLayout", 850))  # the Settings row
+        spanish = classify(parse_layout(to_xml(overflow_menu(("Nuevo grupo", "Ajustes", "Destacados", "Leer todo")))))
+        self.assertEqual((spanish.name, spanish.target.bounds[1]), ("menu", 250), "Settings found by name, wherever it is")
+        no_settings = classify(parse_layout(to_xml(overflow_menu(("New group", "New community", "Starred", "Read all")))))
+        self.assertEqual(no_settings.name, "menu")
+        self.assertIsNone(no_settings.target, "never guess: the last item could be Read all")
+        unknown_language = classify(parse_layout(to_xml(overflow_menu(("Grupo novo", "Comunidade nova", "Xyzzy")))))
+        self.assertIsNone(unknown_language.target)
+        copy_bubble = [{"class": "LinearLayout", "clickable": True, "bounds": "[565,951][1080,1077]", "package": "com.whatsapp"},
+                       {"id": "android:id/title", "class": "TextView", "bounds": "[607,983][1038,1044]", "package": "com.whatsapp", "text": "Copy"}]
+        self.assertEqual(classify(nodes_from_fixture(copy_bubble)).name, "popup")
         launcher = [{"id": "com.android.launcher:id/x", "class": "View", "bounds": "[0,0][9,9]", "package": "com.android.launcher"}]
         self.assertEqual(classify(nodes_from_fixture(launcher), "com.android.launcher/.Home").name, "other_app")
         self.assertEqual(classify([], "").name, "unreadable")
@@ -169,6 +219,7 @@ class FakePhone:
         self.lock_checks = 0
         self.shown = []
         self.scrolled_chats = False
+        self.you_scrolled = False
         self.clock = 1_700_000_000
         self.backup = (self.clock - 86400, previous_backup_mb * 1024 ** 2) if previous_backup_mb else None
         self.after_backup = None  # ("ok" | "fail", dumps left)
@@ -188,12 +239,24 @@ class FakePhone:
             return CHAT
         if c == "home":
             if self.home_style == "menu":
-                return HOME
+                return HOME + SELF_CHAT
+            if self.home_style in ("account", "account_ids"):
+                return tabs_home()
+            if self.home_style.startswith("you"):
+                return tabs_home(labels=("Chats", "Updates", "Communities", "Calls", "You"))
             if self.home_style == "tabs":
                 return tabs_home()
             return tabs_home(labels=("", "", "", ""), overflow=True)  # last tab is Calls, Settings in ⋮
         if c == "calls":
             return tabs_home(labels=("", "", "", ""), overflow=True)
+        if c == "you":
+            if self.home_style == "you_ids":
+                return you_page(scrolled=self.you_scrolled, chats_id="com.whatsapp:id/settings_chat")
+            if self.home_style == "you_other_language":
+                return you_page(scrolled=self.you_scrolled, chats_label="Conversas")
+            return you_page(scrolled=self.you_scrolled)
+        if c == "account":
+            return account_page(*(("Ajustes", "com.whatsapp:id/you_settings_row") if self.home_style == "account_ids" else ()))
         if c == "menu":
             return MENU
         if c == "chats":
@@ -215,6 +278,7 @@ class FakePhone:
             return "com.android.systemui/.keyguard"
         return {"launcher": "com.android.launcher/.Home", "home": "com.whatsapp/.home.ui.HomeActivity",
                 "calls": "com.whatsapp/.home.ui.HomeActivity", "menu": "com.whatsapp/.home.ui.HomeActivity",
+                "account": "com.whatsapp/.home.ui.HomeActivity", "you": "com.whatsapp/.home.ui.HomeActivity",
                 "chat": "com.whatsapp/.Conversation"}.get(self.current, "com.whatsapp/.Whatever")
 
     def dump(self):
@@ -288,12 +352,16 @@ class FakePhone:
         self.backs += 1
         if self.current == 17:
             self.current = 18
+        elif self.current == "menu":
+            self.current = "home"  # Back closes the ⋮ menu
         return True, ""
 
     def swipe(self, *a):
         self.swipes += 1
         if self.current == "chats":
             self.scrolled_chats = True
+        if self.current == "you":
+            self.you_scrolled = True
         return True, ""
 
     def tap(self, x, y):
@@ -304,15 +372,35 @@ class FakePhone:
         hit.sort(key=lambda i: self._area(i))
         rid = hit[0].get("id", "").split("/")[-1] if hit else ""
         self.taps.append((self.current, rid))
+        if self.current == "menu":
+            row = hit[0] if hit else None
+            title = next((i for i in items if i.get("id") == "android:id/title" and row and self._contains(row, i)), None)
+            self.current = 2 if title and title["text"] in ("Settings", "Ajustes") else "home"
+            return True, ""
+        if self.current == "you":
+            label = next((i["text"] for i in items if i.get("id") == "com.whatsapp:id/row_text" and hit
+                          and self._contains(hit[0], i)), "")
+            if label in ("Chats", "Conversas"):
+                self.current = "chats"
+            return True, ""
+        if self.current == "account":
+            self.current = 2 if hit and wa_guide._bounds(hit[0]["bounds"])[1] == 900 else "account"
+            return True, ""
         if self.current in ("home", "calls") and rid == "navigation_bar_item":
             last = x > 1080 * 0.75
-            if self.home_style == "tabs" and last:
+            if self.home_style in ("account", "account_ids") and last:
+                self.current = "account"  # an account page holding Settings
+            elif self.home_style.startswith("you") and last:
+                self.current = "you"      # the You tab is the Settings page itself
+            elif self.home_style.startswith("you") and x < 216:
+                self.current = "home"     # the Chats tab: back to the chat list
+            elif self.home_style == "tabs" and last:
                 self.current = 2       # newer WhatsApp: the last tab is Settings
             elif last:
                 self.current = "calls"  # an older tab bar: the last tab is Calls
             return True, ""
         nxt = {
-            ("home", "menuitem_overflow"): "menu", ("calls", "menuitem_overflow"): "menu", ("menu", ""): 2,
+            ("home", "menuitem_overflow"): "menu", ("calls", "menuitem_overflow"): "menu",
             (2, "settings_chat"): "chats", ("chats", "chat_backup_preference"): "backup",
             ("backup", "settings_gdrive_e2e_encryption"): 7 if self.e2e_on else 13,
             (7, "enc_backup_enabled_landing_disable_button"): 8,
@@ -346,6 +434,11 @@ class FakePhone:
     def _inside(self, i, x, y):
         l, t, r, b = self._xywh(i)
         return l <= x <= r and t <= y <= b
+
+    def _contains(self, outer, inner):
+        l, t, r, b = self._xywh(outer)
+        il, it, ir, ib = self._xywh(inner)
+        return l <= il and t <= it and r >= ir and b >= ib
 
     def _area(self, i):
         l, t, r, b = self._xywh(i)
@@ -553,18 +646,12 @@ class AutoSessionTests(unittest.TestCase):
         self.assertNotIn("chat", [s for s, _ in phone.taps], "never taps inside a chat")
         self.assertGreaterEqual(phone.events.count("open"), 2)
 
-    def test_23_newer_whatsapp_settings_in_the_last_tab_any_language(self):
-        phone = FakePhone(e2e_on=False, home="tabs")
-        st, _, _ = run_guide(phone)
-        self.assertEqual(st["phase"], "done", st)
-        self.assertEqual(phone.taps[0], ("home", "navigation_bar_item"))
-        self.assertNotIn("menu", [s for s, _ in phone.taps])
-
-    def test_24_last_tab_is_not_settings_then_the_menu_is_used(self):
+    def test_24_older_tab_bar_without_you_uses_the_menu(self):
         phone = FakePhone(e2e_on=False, home="tabs_calls")
         st, _, _ = run_guide(phone)
         self.assertEqual(st["phase"], "done", st)
-        self.assertIn(("calls", "menuitem_overflow"), phone.taps)
+        self.assertEqual(phone.taps[0], ("home", "menuitem_overflow"), "no You tab: straight to ⋮")
+        self.assertNotIn("navigation_bar_item", [rid for _, rid in phone.taps], "no other tab is tried")
 
     def test_25_guide_mode_watches_the_backup_after_the_user_taps_create(self):
         phone = FakePhone(e2e_on=False, start=20)
@@ -588,6 +675,100 @@ class AutoSessionTests(unittest.TestCase):
         self.assertIn("about 3.3 GB", st["storage_warning"])
 
 
+class SettingsRouteTests(unittest.TestCase):
+    def test_50_menu_route_never_taps_the_you_chat(self):
+        phone = FakePhone(e2e_on=False, home="menu")
+        st, _, _ = run_guide(phone)
+        self.assertEqual(st["phase"], "done", st)
+        self.assertEqual(phone.taps[:2], [("home", "menuitem_overflow"), ("menu", "")])
+        self.assertNotIn(("home", "contact_photo"), phone.taps)
+        self.assertNotIn(("home", "contact_row_container"), phone.taps)
+
+    def test_53_you_tab_is_the_settings_page_with_chats_below(self):
+        phone = FakePhone(e2e_on=False, home="you")
+        st, _, _ = run_guide(phone)
+        self.assertEqual(st["phase"], "done", st)
+        self.assertEqual(phone.taps[0][0], "home")
+        self.assertIn(("you", ""), phone.taps, "tapped the Chats row on the You page")
+        self.assertGreaterEqual(phone.swipes, 1, "scrolled the You page to find Chats")
+        self.assertNotIn(("you", "navigation_bar_item"), phone.taps, "never the Chats tab at the bottom")
+
+    def test_54_you_page_with_whatsapp_settings_ids(self):
+        phone = FakePhone(e2e_on=False, home="you_ids")
+        st, _, _ = run_guide(phone)
+        self.assertEqual(st["phase"], "done", st)
+
+    def test_55_you_page_in_an_unknown_language_hands_over(self):
+        phone = FakePhone(e2e_on=False, home="you_other_language")
+        st, _, _ = run_guide(phone, until=("never",), timeout=2)
+        self.assertEqual(st["mode"], "guide")
+        self.assertIn("could not find Chats", st["notice"])
+        self.assertLessEqual(phone.swipes, 3)
+        self.assertNotIn("menuitem_overflow", [rid for _, rid in phone.taps], "never ⋮ in the You version")
+        self.assertEqual(st["slide"], "you_page")
+
+    def test_56_chats_tab_is_not_a_settings_row(self):
+        home = classify(parse_layout(to_xml(tabs_home(labels=("Chats", "Updates", "Communities", "Calls", "You")))),
+                        "com.whatsapp/.home.ui.HomeActivity")
+        self.assertEqual(home.name, "home")
+        page = classify(parse_layout(to_xml(you_page(scrolled=True))), "com.whatsapp/.home.ui.HomeActivity")
+        self.assertEqual((page.name, page.target.bounds[1]), ("settings", 470))
+
+    def test_52_no_way_to_settings_hands_over_to_the_user(self):
+        phone = FakePhone(e2e_on=False, home="menu")
+        phone.layout_home = phone.layout
+        phone.layout = lambda: [n for n in phone.layout_home() if "overflow" not in n.get("id", "")]
+        st, _, _ = run_guide(phone, until=("never",), timeout=1.5)
+        self.assertEqual(st["mode"], "guide")
+        self.assertIn("open it yourself", st["notice"])
+        self.assertEqual(phone.taps, [])
+
+
+class YouVersionTests(unittest.TestCase):
+    def test_60_you_menu_without_settings_closes_and_hands_over(self):
+        # A phone whose ⋮ has no Settings and no recognisable You tab (e.g. WhatsApp changed again)
+        phone = FakePhone(e2e_on=False, home="menu")
+        original = phone.layout
+        phone.layout = lambda: (overflow_menu(("New group", "New community", "Starred", "Read all"))
+                                if phone.current == "menu" else original())
+        st, _, _ = run_guide(phone, until=("never",), timeout=2)
+        tapped = phone.taps
+        self.assertEqual(tapped, [("home", "menuitem_overflow")], "opened ⋮ once, tapped nothing in it")
+        self.assertGreaterEqual(phone.backs, 1, "closed the menu")
+        self.assertEqual(st["mode"], "guide")
+        self.assertIn("open it yourself", st["notice"])
+
+    def test_61_you_version_slides_and_instructions(self):
+        phone = FakePhone(e2e_on=False, home="you")
+        guide = make_guide(phone)
+        guide.start("guide")  # the user taps: the guide shows where
+        st = wait(guide, lambda s: s["screen"] == "home")
+        self.assertEqual(st["slide"], "you_home")
+        self.assertIn("Tap You (bottom right)", st["instruction"])
+        phone.tap(950, 2270)   # the user taps You
+        st = wait(guide, lambda s: s["slide"] == "you_page" or s["screen"] == "settings")
+        guide.stop()
+        self.assertEqual(phone.taps[0], ("home", "navigation_bar_item"))
+
+    def test_62_chat_called_you_is_never_the_you_tab(self):
+        phone = FakePhone(e2e_on=False, home="menu")  # HOME + a self-chat "You", older layout
+        st, _, _ = run_guide(phone)
+        self.assertEqual(st["phase"], "done", st)
+        self.assertNotIn("contact_photo", [rid for _, rid in phone.taps])
+        self.assertNotIn("contact_row_container", [rid for _, rid in phone.taps])
+
+    def test_63_you_tab_reports_selected_state(self):
+        items = you_page(scrolled=False)
+        for i in items:
+            if i.get("desc") == "You":
+                i["selected"] = True
+        page = classify(parse_layout(to_xml(items)), "com.whatsapp/.home.ui.HomeActivity")
+        self.assertTrue(page.info["on_you_page"])
+        home = classify(parse_layout(to_xml(tabs_home(labels=("Chats", "Updates", "Communities", "Calls", "You")))),
+                        "com.whatsapp/.home.ui.HomeActivity")
+        self.assertIsNone(home.info["on_you_page"], "no selected state reported: unknown")
+
+
 class ParsingTests(unittest.TestCase):
     def test_27_lock_state(self):
         p = wa_guide.parse_lock_state
@@ -607,9 +788,19 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(wa_guide.bottom_tabs(parse_layout(to_xml(tabs_home())))[-1].bounds[0], 864)
         home = classify(parse_layout(to_xml(tabs_home())), "com.whatsapp/.home.ui.HomeActivity")
         self.assertEqual(home.name, "home")
-        self.assertIsNotNone(home.info["last_tab"])
-        self.assertEqual(classify(parse_layout(to_xml(tabs_home(labels=("Chats", "Updates", "Communities", "Calls", "Settings")))),
-                                  "com.whatsapp/.home.ui.HomeActivity").info["label"].desc, "Settings")
+        self.assertIsNone(home.info["you_tab"], "unlabelled tabs: not taken for the You tab")
+        you = classify(parse_layout(to_xml(tabs_home(labels=("Chats", "Updates", "Communities", "Calls", "You")))),
+                       "com.whatsapp/.home.ui.HomeActivity")
+        self.assertEqual(you.info["you_tab"].bounds[0], 864, "the bottom-right tab")
+        calls_last = classify(parse_layout(to_xml(tabs_home(labels=("Chats", "Updates", "Communities", "Calls")))),
+                              "com.whatsapp/.home.ui.HomeActivity")
+        self.assertIsNone(calls_last.info["you_tab"])
+        you_middle = classify(parse_layout(to_xml(tabs_home(labels=("Chats", "You", "Communities", "Calls")))),
+                              "com.whatsapp/.home.ui.HomeActivity")
+        self.assertIsNone(you_middle.info["you_tab"], "only the bottom-right tab counts")
+        hindi = classify(parse_layout(to_xml(tabs_home(labels=("चैट", "अपडेट", "कम्युनिटी", "कॉल", "आप")))),
+                         "com.whatsapp/.home.ui.HomeActivity")
+        self.assertIsNotNone(hindi.info["you_tab"])
 
 
 class ApiTests(unittest.TestCase):

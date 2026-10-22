@@ -6,6 +6,12 @@
  * off the screen. The manual slides below stay available, and are shown automatically when the
  * phone is not connected or shows a screen the guide does not know. */
 
+// Newer WhatsApp keeps Settings in the bottom-right "You" tab (drawn mock-ups, see scripts/make_you_tab_slides.py)
+const WA_GUIDE_EXTRA_SLIDES = {
+    you_home: { title: 'Tap "You" (bottom right)' },
+    you_page: { title: 'Swipe up, tap "Chats"' },
+};
+
 let waGuideStatus = null;
 let waGuidePollTimer = null;
 let waGuideShowManual = false;
@@ -98,14 +104,16 @@ function buildWaGuideView(ctx) {
             : failed ? 'WhatsApp could not make the backup'
             : lowStorage ? 'Paused: low storage'
             : auto && g.input_allowed !== false ? 'Doing it for you on your phone' : 'Follow along on your phone';
-        const slide = Number.isInteger(g.slide) ? g.slide : null;
-        const slideInfo = (slide !== null && typeof TUTORIAL_SLIDES_DATA !== 'undefined') ? TUTORIAL_SLIDES_DATA[slide] : null;
+        // A numbered tutorial slide, or one of the newer-WhatsApp pictures ("You" tab)
+        const slide = Number.isInteger(g.slide) || WA_GUIDE_EXTRA_SLIDES[g.slide] ? g.slide : null;
+        const slideInfo = WA_GUIDE_EXTRA_SLIDES[slide]
+            || ((slide !== null && typeof TUTORIAL_SLIDES_DATA !== 'undefined') ? TUTORIAL_SLIDES_DATA[slide] : null);
         const shot = slide !== null ? `
                 <figure class="wag-shot">
                     <div class="tut-phone-frame wag-phone">
                         <div class="tut-phone-notch"></div>
                         <div class="tut-phone-screen-wrap">
-                            <img class="tut-slide-img" src="/assets/tutorial/wa_step${slide}.webp" alt="${esc(slideInfo ? slideInfo.title : 'WhatsApp screen')}" onerror="if (window.handleTutImgError) handleTutImgError(this)">
+                            <img class="tut-slide-img" src="/assets/tutorial/${WA_GUIDE_EXTRA_SLIDES[slide] ? 'wa_step_' : 'wa_step'}${slide}.webp" alt="${esc(slideInfo ? slideInfo.title : 'WhatsApp screen')}" onerror="if (window.handleTutImgError) handleTutImgError(this)">
                         </div>
                     </div>
                     <figcaption>${slideInfo ? esc(slideInfo.title) + ' &middot; ' : ''}example; your screen may look a little different</figcaption>

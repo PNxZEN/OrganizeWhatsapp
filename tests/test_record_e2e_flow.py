@@ -61,6 +61,13 @@ class PureTests(unittest.TestCase):
         self.assertEqual(rec.mask_label("".join(KEY_BLOCKS)), "<key>")
         self.assertEqual(rec.mask_label(" ".join(KEY_BLOCKS)), "<key>")
 
+    def test_03b_home_pages_keep_only_exact_button_words(self):
+        self.assertEqual(rec.mask_strict("Settings"), "Settings")
+        self.assertEqual(rec.mask_strict("Settings, tab 5 of 5"), "Settings, tab 5 of 5")
+        self.assertEqual(rec.mask_strict("You"), "You")
+        for private in ("Mom", "Chat with John", "Settings for John's party", "+91 98765 43210", "a@b.c", "Hey!"):
+            self.assertEqual(rec.mask_strict(private), "<text>", private)
+
     def test_04_key_visibility_without_storing_it(self):
         self.assertEqual(rec.key_visibility(KEY_BLOCKS), (16, True))
         self.assertEqual(rec.key_visibility([" ".join(KEY_BLOCKS)]), (0, True))

@@ -50,6 +50,7 @@ class Node:
     package: str = ""
     text: str = ""
     desc: str = ""
+    selected: bool = False
 
     @property
     def center(self):
@@ -99,6 +100,7 @@ def parse_layout(xml_text: str) -> List[Node]:
             package=a.get("package", ""),
             text=a.get("text", ""),
             desc=a.get("content-desc", ""),
+            selected=a.get("selected") == "true",
         )
         for n in root.iter("node")
         for a in [n.attrib]
@@ -109,7 +111,7 @@ def nodes_from_fixture(items: List[dict]) -> List[Node]:
     """Nodes from the recorded-fixture format (tests)."""
     return [Node(rid=_short_id(i.get("id", "")), cls=i.get("class", ""), clickable=bool(i.get("clickable")),
                  bounds=_bounds(i.get("bounds")), package=i.get("package", ""),
-                 text=i.get("text", ""), desc=i.get("desc", "")) for i in items]
+                 text=i.get("text", ""), desc=i.get("desc", ""), selected=bool(i.get("selected"))) for i in items]
 
 
 def screen_size(nodes: List[Node]):
@@ -137,6 +139,83 @@ def find_label(nodes, *labels, prefix=False) -> Optional[Node]:
             parents = [p for p in nodes if p.clickable and p.contains(n)]
             if parents:
                 return min(parents, key=lambda p: (p.bounds[2] - p.bounds[0]) * (p.bounds[3] - p.bounds[1]))
+    return None
+
+
+def clickable_around(nodes: List[Node], node: Node) -> Node:
+    """The smallest tappable element containing `node` (or the node itself)."""
+    if node.clickable:
+        return node
+    parents = [p for p in nodes if p.clickable and p.contains(node)]
+    return min(parents, key=lambda p: (p.bounds[2] - p.bounds[0]) * (p.bounds[3] - p.bounds[1])) if parents else node
+
+
+CHAT_ROW_ID = re.compile(r"conversation|contact|chat_row|jid", re.I)
+CHAT_LIST_ID = re.compile(r"conversations?_row|contact_row|chat_row", re.I)  # rows of the chat list itself
+
+
+# "Settings" in WhatsApp's ⋮ menu, in the languages it is most used in. A menu item is only tapped
+# when it is one of these: guessing (e.g. "the last item") could hit "Read all" instead.
+SETTINGS_WORDS = {
+    "settings", "ajustes", "configuración", "configuraciones", "configurações", "definições", "paramètres",
+    "réglages", "einstellungen", "impostazioni", "instellingen", "setelan", "pengaturan", "tetapan", "ayarlar",
+    "настройки", "налаштування", "ustawienia", "nastavení", "nastavenia", "beállítások", "inställningar",
+    "innstillinger", "indstillinger", "asetukset", "setări", "postavke", "ρυθμίσεις", "הגדרות", "الإعدادات",
+    "تنظیمات", "ترتیبات", "सेटिंग", "सेटिंग्स", "সেটিংস", "சேவை அமைப்புகள்", "அமைப்புகள்", "సెట్టింగ్‌లు",
+    "ಸೆಟ್ಟಿಂಗ್‌ಗಳು", "ക്രമീകരണങ്ങൾ", "सेटिंग्ज", "સેટિંગ્સ", "ਸੈਟਿੰਗਾਂ", "设置", "設定", "설정", "การตั้งค่า",
+    "cài đặt", "mipangilio", "mga setting", "tilpasninger",
+}
+# The bottom-right tab of newer WhatsApp, which opens the Settings page itself
+YOU_WORDS = {
+    "you", "tú", "tu", "usted", "você", "vous", "du", "sie", "jij", "u", "anda", "kamu", "awak", "siz", "sen",
+    "вы", "ты", "ви", "ти", "ty", "wy", "te", "ön", "εσύ", "אתה", "أنت", "شما", "آپ", "आप", "तुम", "আপনি",
+    "நீங்கள்", "మీరు", "ನೀವು", "നിങ്ങൾ", "तुम्ही", "તમે", "ਤੁਸੀਂ", "你", "您", "あなた", "나", "คุณ", "bạn",
+}
+YOU_ID = re.compile(r"profile|avatar|\bme\b|_me_|you|account", re.I)
+
+
+def _first_label(value: str) -> str:
+    # Tabs read like "You, tab 5 of 5" or "Settings, 3 new"
+    return (value or "").split(",")[0].strip().lower()
+
+
+def settings_menu_item(nodes: List[Node], titles: List[Node]) -> Optional[Node]:
+    """The ⋮ menu's Settings row, only when it is recognisably Settings."""
+    for t in titles:
+        if _first_label(t.text) in SETTINGS_WORDS:
+            return clickable_around(nodes, t)
+    return None
+
+
+def is_you_tab(nodes: List[Node], tab: Node) -> bool:
+    """Whether this (bottom-right) tab is newer WhatsApp's "You" tab: by its label or element id."""
+    inside = [n for n in nodes if tab.contains(n)]
+    for n in inside:
+        if _first_label(n.text) in YOU_WORDS or _first_label(n.desc) in YOU_WORDS:
+            return True
+        if n.rid and YOU_ID.search(n.rid):
+            return True
+    return False
+
+
+def tab_selected(nodes: List[Node], tab: Node) -> Optional[bool]:
+    """Whether the tab is the open one, or None when this phone does not report it."""
+    tabs_report = any(n.selected for n in nodes)
+    if not tabs_report:
+        return None
+    return any(n.selected for n in nodes if tab.contains(n))
+
+
+def settings_row(nodes: List[Node], wa_nodes: List[Node], label: str) -> Optional[Node]:
+    """A full-width settings row showing `label` (not a bottom tab, chip or chat row), or None."""
+    w, h = screen_size(nodes)
+    for n in wa_nodes:
+        if (n.text or "").strip().lower() != label.lower():
+            continue
+        row = clickable_around(nodes, n)
+        wide = (row.bounds[2] - row.bounds[0]) >= 0.6 * w
+        if row.clickable and wide and row.bounds[1] < 0.85 * h and not CHAT_ROW_ID.search(row.rid):
+            return row
     return None
 
 
@@ -227,27 +306,35 @@ def classify(nodes: List[Node], foreground: str = "") -> Screen:
         return Screen("chat_settings", find(nodes, "chat_backup_preference"), "Chat backup")
     if has & {"settings_chat", "settings_account_info", "privacy_preference"}:
         return Screen("settings", find(nodes, "settings_chat"), "Chats")
+    # Newer WhatsApp's "You" tab is the Settings page itself (Lists, Chats, Broadcasts...): its
+    # full-width "Chats" row, never the narrow "Chats" tab at the bottom
+    chats_row = settings_row(nodes, wa_nodes, "Chats")
+    if chats_row:
+        return Screen("settings", chats_row, "Chats")
     if "android:id/button1" in has and len(nodes) < 30:
         message = next((n for n in nodes if n.rid == "android:id/message" and n.text), None)
         return Screen("dialog", find(nodes, "android:id/button1"), "OK", {"message": (message.text if message else "")[:300]})
-    if len(nodes) <= 12 and find(nodes, "android:id/title"):
-        settings_item = find_label(nodes, "Settings")
-        if settings_item:
-            return Screen("menu", settings_item, "Settings")
-        return Screen("popup")
+    # WhatsApp's ⋮ menu (New group, ..., Settings): a popup of 3 or more items
+    titles = [n for n in wa_nodes if n.rid == "android:id/title" and (n.text or "").strip()]
+    if len(titles) >= 3:
+        item = settings_menu_item(nodes, titles)
+        return Screen("menu", item, "Settings", {"has_settings": item is not None})
+    if len(nodes) <= 12 and titles:
+        return Screen("popup")  # e.g. the "Copy" bubble after long-pressing the key
     # Only WhatsApp's own home screen: a chat also has a row of buttons at the bottom (emoji,
     # attach, camera, mic) and a text box, and must never be mistaken for the home tabs.
     message_box = any(n.cls == "EditText" and n.bounds[1] > 0.7 * screen_size(nodes)[1] for n in wa_nodes)
     if re.search(r"(HomeActivity|\.Main)$", foreground or "") and not message_box:
         tabs = bottom_tabs(wa_nodes)
-        # Newer WhatsApp: Settings is the last bottom tab ("Settings" / "You"); older: ⋮ > Settings.
-        # The label only helps in English; the tab position and the ⋮ button work in any language.
+        # Only the bottom-right tab is checked (never a chat that happens to be called "You")
+        you_tab = tabs[-1] if tabs and is_you_tab(nodes, tabs[-1]) else None
         overflow = find(nodes, "menuitem_overflow") or find_label(nodes, "More options")
         if overflow and overflow.bounds[1] > 0.3 * screen_size(nodes)[1]:
             overflow = None  # ⋮ is in the top bar
         return Screen("home", None, "Settings", {
-            "label": find_label(nodes, "Settings", "You", prefix=True),
-            "last_tab": tabs[-1] if tabs else None,
+            "you_tab": you_tab,
+            "on_you_page": tab_selected(nodes, you_tab) if you_tab else False,
+            "chat_rows": any(CHAT_LIST_ID.search(n.rid) for n in wa_nodes if n.rid),
             "overflow": overflow,
         })
     return Screen("unknown", info={"foreground": foreground})
@@ -477,7 +564,7 @@ class WaGuide:
             "key_captured": False, "masked_key": "", "input_allowed": True,
             "choice": None, "e2e_was_on": False, "low_storage_ok": False,
             "free_bytes": None, "storage_needed": None, "storage_warning": "",
-            "created": False, "backup_error": "", "backup_size": None,
+            "created": False, "backup_error": "", "backup_size": None, "slide_hint": None,
             "fallback": False, "fallback_reason": "", "started_at": now,
         }
         self._last_poll = now
@@ -485,7 +572,13 @@ class WaGuide:
         self._last_action = None
         self._same_action = 0
         self._scrolls = {}
-        self._home_attempt = 0
+        self._you_version = False      # newer WhatsApp: Settings is the bottom-right "You" tab
+        self._you_tapped = False
+        self._you_taps = 0
+        self._you_scrolls = 0
+        self._menu_taps = 0
+        self._menu_failed = False
+        self._handed_over = False
         self._recoveries = 0
         self._backs = 0
         self._prev_screen = ""
@@ -498,7 +591,8 @@ class WaGuide:
             self._last_poll = self._clock()
             st = dict(self._state)
         st["steps"] = self._steps(st)
-        st["slide"] = 11 if st["phase"] == "backing_up" else SCREEN_SLIDE.get(st["screen"]) if st["phase"] not in ("locked", "backup_failed") else None
+        st["slide"] = (11 if st["phase"] == "backing_up" else None if st["phase"] in ("locked", "backup_failed")
+                       else st.get("slide_hint") if st.get("slide_hint") is not None else SCREEN_SLIDE.get(st["screen"]))
         return st
 
     def _steps(self, st):
@@ -702,8 +796,6 @@ class WaGuide:
                 self._set(key_captured=True, masked_key=key[:4] + "…" + key[-4:])
         if name == "e2e_on":
             self._set(e2e_was_on=True)
-        if name in ("settings", "chat_settings", "backup_settings"):
-            self._home_attempt = 0
 
         # The user tapped Create themselves (guide mode)
         if self._prev_screen == "create" and name in ("backup_settings", "dialog") and not st["created"]:
@@ -760,6 +852,13 @@ class WaGuide:
                 instruction = "Going back…" if name == "unknown" else "Closing the menu…"
             else:
                 instruction = "Opening WhatsApp on its main screen…"
+        # Newer WhatsApp ("You" tab): its own tutorial pictures instead of the ⋮ menu ones
+        slide_hint = None
+        if self._you_version and name in ("home", "settings", "other_app", "unknown"):
+            on_page = name == "settings" or (name == "home" and (screen.info.get("on_you_page") or (
+                screen.info.get("on_you_page") is None and (self._you_tapped or not screen.info.get("chat_rows")))))
+            slide_hint = "you_page" if on_page else "you_home"
+        self._set(slide_hint=slide_hint)
         self._set(screen=name, step=SCREEN_STEP.get(name, ""), instruction=instruction, warning=warning,
                   phase=phase, target=label, message="" if phase == "running" else st["message"])
 
@@ -798,15 +897,20 @@ class WaGuide:
         elif name == "e2e_off":
             warning = "Do not tap \"Use passkey\": a passkey cannot unlock your backup on this computer."
             action = ("tap", screen.target)
-        elif name in ("more_options", "key_intro", "turned_off", "menu", "settings", "chat_settings", "backup_settings"):
+        elif name in ("more_options", "key_intro", "turned_off", "settings", "chat_settings", "backup_settings"):
             action = ("tap", screen.target) if screen.target else ("scroll",)
         elif name == "home":
-            # Try the "Settings"/"You" label, then the last bottom tab, then ⋮ (each once per visit)
-            options = [(k, screen.info.get(k)) for k in ("label", "last_tab", "overflow") if screen.info.get(k)]
-            if options:
-                kind, node = options[min(self._home_attempt, len(options) - 1)]
-                action = ("tap", node)
-                label = {"label": "Settings", "last_tab": "the last tab (Settings)", "overflow": "⋮ (More options)"}[kind]
+            action, instruction, label = self._plan_home(screen, instruction)
+        elif name == "menu":
+            if screen.target:
+                action, label = ("tap", screen.target), "Settings"
+                instruction = "Tap Settings."
+            else:
+                # This menu has no recognisable Settings (newer WhatsApp keeps it in the "You" tab, or
+                # another language): never guess an item (it could be "Read all"); close it, hand over
+                action, label = ("back",), "the menu"
+                instruction = "Close the menu, then open WhatsApp's Settings yourself."
+                self._menu_failed = True
         elif name == "key_shown":
             if st["key_captured"]:
                 action = ("tap", screen.target)
@@ -844,6 +948,46 @@ class WaGuide:
                 action = ("relaunch",)
         return action, instruction, phase, warning, label
 
+    def _hand_over(self, why):
+        """Settings could not be reached automatically: the user opens it, the guide continues from there."""
+        if self._state["mode"] == "auto" and not self._handed_over:
+            self._handed_over = True
+            self._set(mode="guide", notice=why + " Please open it yourself on the phone; the app takes over from there.")
+
+    def _plan_home(self, screen, instruction):
+        """
+        From WhatsApp's main screen to Settings, in this order:
+        1. newer WhatsApp: the bottom-right "You" tab is the Settings page (Chats a little further down);
+        2. otherwise the ⋮ menu, which then has Settings;
+        3. anything else (e.g. a WhatsApp update moved it): the user opens Settings.
+        """
+        info = screen.info
+        you_tab = info.get("you_tab")
+        if you_tab:
+            self._you_version = True
+            on_page = info.get("on_you_page")
+            if on_page is None:
+                # The phone does not say which tab is open: our own tap, or (the user tapped) no chat list
+                on_page = self._you_tapped or not info.get("chat_rows")
+            if not on_page:
+                if self._you_taps < 2:
+                    return ("tap", you_tab, "you_tab"), "Tap You (bottom right).", "You"
+                self._hand_over("The app could not open the You tab.")
+                return None, "Tap You (bottom right), scroll down a little and tap Chats.", "You"
+            if self._you_scrolls < 3:
+                return ("scroll", "you_page"), "Scroll down a little and tap Chats.", "Chats"
+            self._hand_over("The app could not find Chats on the You page.")
+            return None, "On the You page, scroll down and tap Chats.", "Chats"
+        if self._you_version:
+            # Seen the You tab before but not now: do not try ⋮ (no Settings there in that version)
+            self._hand_over("The app lost track of WhatsApp's screens.")
+            return None, "Tap You (bottom right), scroll down a little and tap Chats.", "You"
+        overflow = info.get("overflow")
+        if overflow and not self._menu_failed and self._menu_taps < 2:
+            return ("tap", overflow, "overflow"), "Tap \u22ee (top right), then Settings.", "\u22ee (More options)"
+        self._hand_over("The app could not find WhatsApp's Settings on this phone.")
+        return None, "Open WhatsApp's Settings: tap \u22ee (top right) and then Settings, or You (bottom right).", ""
+
     def _act(self, phone, name, action, nodes):
         kind = action[0]
         signature = (name, kind, action[1].bounds if kind == "tap" and action[1] else None)
@@ -866,10 +1010,15 @@ class WaGuide:
             self._scrolls[name] = count + 1
             w, h = screen_size(nodes)
             ok, out = phone.swipe(w // 2, int(h * 0.72), w // 2, int(h * 0.38))
+            if ok and action[1:] == ("you_page",):
+                self._you_scrolls += 1
         elif kind == "tap":
             ok, out = phone.tap(*action[1].center)
-            if ok and name == "home":
-                self._home_attempt += 1
+            if ok and action[2:] == ("you_tab",):
+                self._you_tapped = True
+                self._you_taps += 1
+            if ok and action[2:] == ("overflow",):
+                self._menu_taps += 1
             if ok and (name == "create" or (self._retry and name == "backup_settings")):
                 self._retry = False
                 self._start_backup_watch(phone)

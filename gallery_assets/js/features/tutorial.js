@@ -19,12 +19,13 @@ const TUTORIAL_SLIDES_DATA = [
     {
         badge: 'Step 1 of 12',
         title: 'Open WhatsApp Settings',
-        desc: 'On your Android phone, open WhatsApp. Tap the <strong>3-dot menu</strong> (top right) or tap your <strong>Settings / Profile tab</strong> (bottom right) and select <strong>Settings</strong>.',
+        desc: 'On your Android phone, open WhatsApp. Tap the <strong>3-dot menu</strong> (top right) and select <strong>Settings</strong>. If your WhatsApp has a <strong>You</strong> tab at the bottom right, see the tip below.',
         alert: {
             type: 'tip',
             icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>',
-            title: 'Newer WhatsApp with Bottom Navigation Bar?',
-            text: 'In newer WhatsApp versions, the 3-dot menu may not appear. Instead, tap the <strong>Settings</strong> (or <strong>"You" / Profile picture</strong>) tab located at the bottom right corner.'
+            title: 'Newer WhatsApp with a "You" tab?',
+            text: 'If the bottom-right tab is <strong>You</strong>, the 3-dot menu has no Settings. Tap <strong>You</strong> instead: that page is the Settings page. Swipe up a little, tap <strong>Chats</strong>, and continue from step 3. '
+                + '<button type="button" class="wag-link" onclick="toggleTutYouVersion()">Show the \u201cYou\u201d version</button>'
         }
     },
     {
@@ -192,6 +193,13 @@ function preloadTutorialImages() {
             _preloadedTutImages[i] = im;
         }
     }
+    TUT_YOU_PICTURES.forEach((src, i) => {
+        if (!_preloadedTutImages['you' + i]) {
+            const im = new Image();
+            im.src = src;
+            _preloadedTutImages['you' + i] = im;
+        }
+    });
 }
 
 async function openTutorialModal(tab = null, slide = 0) {
@@ -594,6 +602,16 @@ function setTutSlide(idx) {
         if (btnFinishFooter) btnFinishFooter.style.display = 'none';
     }
     if (typeof waGuideSyncFooter === 'function') waGuideSyncFooter();  // guided setup hides the slide controls
+}
+
+// Slide 1's tip: cycle the picture through the newer "You" tab version and back
+const TUT_YOU_PICTURES = ['/assets/tutorial/wa_step_you_home.webp', '/assets/tutorial/wa_step_you_page.webp'];
+function toggleTutYouVersion() {
+    const img = document.getElementById('tutSlideImg');
+    if (!img) return;
+    const current = TUT_YOU_PICTURES.findIndex(src => img.getAttribute('src') === src);
+    img.setAttribute('src', current === -1 ? TUT_YOU_PICTURES[0]
+        : current + 1 < TUT_YOU_PICTURES.length ? TUT_YOU_PICTURES[current + 1] : '/assets/tutorial/wa_step0.webp');
 }
 
 function nextTutSlide() {

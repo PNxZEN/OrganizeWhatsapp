@@ -70,6 +70,19 @@ v = view({ guide: { active: true, phase: 'running', mode: 'auto', slide: null, i
 assert.ok(!v.html.includes('wa_step') && v.html.includes('no-shot'), 'no screenshot for screens without one');
 console.log('  -> Passed: the matching tutorial screenshot sits beside the live guide');
 
+// 3b'. Newer WhatsApp ("You" tab): its own pictures
+for (const key of ['you_home', 'you_page']) {
+    v = view({ guide: { active: true, phase: 'running', mode: 'auto', slide: key, instruction: 'x', steps } });
+    assert.ok(v.html.includes(`/assets/tutorial/wa_step_${key}.webp`), key);
+    assert.ok(fs.existsSync(path.join(ROOT, 'core/assets/tutorial', `wa_step_${key}.webp`)), key + ' picture exists');
+}
+assert.ok(view({ guide: { active: true, phase: 'running', mode: 'auto', slide: 'you_page', instruction: 'x', steps } }).html.includes('Swipe up'));
+v = view({ guide: { active: true, phase: 'running', mode: 'auto', slide: 'nonsense', instruction: 'x', steps } });
+assert.ok(!v.html.includes('wa_step'), 'unknown picture names are not used');
+const tutSrc = fs.readFileSync(path.join(ROOT, 'gallery_assets/js/features/tutorial.js'), 'utf8');
+assert.ok(tutSrc.includes('toggleTutYouVersion') && tutSrc.includes('wa_step_you_home.webp'), 'manual slide 1 can show the You version');
+console.log('  -> Passed: the "You" tab pictures for newer WhatsApp');
+
 // 3c. Locked phone, backing up, backup failed
 v = view({ guide: { active: true, phase: 'locked', mode: 'auto', instruction: 'Unlock your phone. (This app never enters or sees your PIN.)', steps } });
 assert.ok(v.html.includes('Your turn') && v.html.includes('Waiting for you'));
