@@ -270,6 +270,7 @@ function switchTutTab(tab, isUserAction = true) {
         if (footKey) footKey.style.display = 'flex';
         setTutSlide(activeTutSlide);
     }
+    if (typeof waGuideOnTabShown === 'function') waGuideOnTabShown(tab);
 }
 
 function switchTutOem(oemKey, isHardwareAuto = false, isUserManual = false) {
@@ -293,16 +294,117 @@ function switchTutOem(oemKey, isHardwareAuto = false, isUserManual = false) {
     renderTutOemContent(oemKey);
 }
 
+// ---------------------------------------------------------------- live connection checklist
+// The phone tab shows three steps that tick themselves off from /api/device-status "stage":
+//   unplugged -> usb_only -> unauthorized -> ready   (plus no_adb, no_permission, offline)
+// Every step stays readable and the brand chips stay clickable, so a phone the app cannot
+// recognise on USB (unknown vendor) is simply set up by following the steps by hand.
+
+const CONNECTION_STAGE_ORDER = { unplugged: 0, usb_only: 1, no_adb: 1, unauthorized: 2, no_permission: 2, offline: 2, ready: 3 };
+
+function connectionStageOf(st) {
+    st = st || {};
+    if (st.stage && st.stage in CONNECTION_STAGE_ORDER) return st.stage;
+    if (st.connected && st.authorized) return 'ready';
+    if (st.connected) return st.usb_debugging === false ? 'usb_only' : 'unauthorized';
+    return 'unplugged';
+}
+
+function clientOsName() {
+    const fm = fileManagerName();
+    return fm === 'Finder' ? 'mac' : fm === 'File Explorer' ? 'windows' : 'linux';
+}
+
+// Pure: what the checklist shows for a device status. Exposed for tests.
+function buildConnectionChecklist(st, oemKey, os) {
+    st = st || {};
+    const stage = connectionStageOf(st);
+    const level = CONNECTION_STAGE_ORDER[stage];
+    const secs = Number(st.stage_seconds) || 0;
+    const brandSteps = (OEM_INSTRUCTIONS[oemKey] || OEM_INSTRUCTIONS.xiaomi)
+        .slice(0, -1)  // the last step of every brand is "Allow", which is checklist step 3
+        .filter(s => !/special permissions/i.test(s.title));  // not needed to back up or clean
+    const phoneName = st.model || st.vendor || '';
+
+    const steps = [
+        {
+            key: 'plug',
+            title: level >= 1 ? (phoneName ? `Phone plugged in (${phoneName})` : 'Phone plugged in') : 'Plug your phone into this computer',
+            detail: 'Use a USB cable that can transfer data, not only charge.',
+            substeps: [],
+            hint: ''
+        },
+        {
+            key: 'debugging',
+            title: level >= 2 ? 'USB debugging is on' : 'Turn on USB debugging',
+            detail: 'Do this once on your phone:',
+            substeps: brandSteps,
+            hint: ''
+        },
+        {
+            key: 'allow',
+            title: level >= 3 ? `Connected${phoneName ? ': ' + phoneName : ''}` : 'Tap "Allow" on your phone',
+            detail: 'Unlock your phone. In the <strong>"Allow USB debugging?"</strong> popup, tick <strong>"Always allow from this computer"</strong> and tap <strong>Allow</strong>.',
+            substeps: [],
+            hint: ''
+        }
+    ];
+
+    // done / active / todo. The debugging steps stay open before the cable is in (they can be
+    // done first), and step 2 is the fallback for phones that only appear once debugging is on.
+    const activeIndex = level >= 3 ? -1 : level === 0 ? 0 : level === 1 ? 1 : 2;
+    steps.forEach((step, i) => {
+        step.state = level >= 3 || i < activeIndex ? 'done' : i === activeIndex ? 'active' : 'todo';
+        step.open = step.state === 'active' || (level === 0 && i === 1);
+    });
+
+    // Hints for someone who is stuck on a step
+    if (stage === 'unplugged' && secs >= 20) {
+        steps[0].hint = 'Already plugged in? Some phones only show up once USB debugging is on, so carry on with step 2. Otherwise try another cable or USB port.';
+    }
+    if (stage === 'usb_only' && secs >= 45) {
+        steps[1].hint = 'Already turned it on? Unplug the cable and plug it back in. Can\'t find "Developer options"? It only appears after tapping the version or build number 7 times.'
+            + (os === 'windows' && /samsung/i.test(st.vendor || st.model || '') ? ' Samsung phones on Windows may also need the Samsung USB Driver.' : '');
+    }
+    if (stage === 'no_adb') {
+        steps[1].hint = os === 'windows'
+            ? 'The phone tool (ADB) is missing from this app folder. Download the Windows ZIP again and extract it fully.'
+            : 'The phone tool (ADB) is missing. Run <code>./install.sh</code> again in the app folder.';
+    }
+    if (stage === 'unauthorized' && secs >= 15) {
+        steps[2].hint = 'No popup? Unlock the phone and check the notifications. Or turn USB debugging off and on again, then unplug and plug back in.';
+    }
+    if (stage === 'offline') {
+        steps[2].hint = 'The phone stopped answering. Unplug the cable and plug it back in.';
+    }
+    if (stage === 'no_permission') {
+        steps[2].hint = 'Linux does not let this app open the phone yet. Install the Android USB rules (Ubuntu/Debian: <code>sudo apt install android-sdk-platform-tools-common</code>), then unplug and plug back in.';
+    }
+    return { stage, steps };
+}
+
 function renderTutOemContent(oemKey) {
     const container = document.getElementById('tutOemContent');
     if (!container) return;
-    const steps = OEM_INSTRUCTIONS[oemKey] || OEM_INSTRUCTIONS.xiaomi;
-    container.innerHTML = steps.map(s => `
-                <div class="tut-step-item">
-                    <div class="tut-step-num">${s.num}</div>
-                    <div>${s.text}</div>
-                </div>
-            `).join('');
+    const model = buildConnectionChecklist(currentDeviceStatus, oemKey, clientOsName());
+    const html = model.steps.map((step, i) => {
+        const mark = step.state === 'done' ? '&#10003;' : String(i + 1);
+        const sub = step.open && step.substeps.length ? `
+                    <ol class="tut-check-substeps">${step.substeps.map(s => `<li>${s.text}</li>`).join('')}</ol>` : '';
+        const detail = step.open ? `<div class="tut-check-detail">${step.detail}</div>${sub}` : '';
+        const hint = step.hint ? `<div class="tut-check-hint">${step.hint}</div>` : '';
+        return `
+                <div class="tut-check tut-check-${step.state}" data-step="${step.key}">
+                    <div class="tut-check-mark">${mark}</div>
+                    <div class="tut-check-body">
+                        <div class="tut-check-title">${step.title}</div>${detail}${hint}
+                    </div>
+                </div>`;
+    }).join('');
+    if (html === container._checklistHtml) return;  // re-rendered every poll: avoid flicker
+    container._checklistHtml = html;
+    container.innerHTML = html;
+    container.setAttribute('data-stage', model.stage);
 }
 
 async function tutPollDeviceStatus() {
@@ -348,7 +450,14 @@ async function tutPollDeviceStatus() {
     } else if (st.connected && !st.authorized) {
         if (svgBox) svgBox.className = 'tut-svg-cable-box state-authorizing';
         dot.className = 'tut-pulse-indicator action';
-        if (st.usb_debugging === false) {
+        const stage = connectionStageOf(st);
+        if (stage === 'no_adb') {
+            title.innerText = (st.model || 'Phone') + ' Connected: Phone Tool Missing';
+            sub.innerText = 'The ADB tool this app needs was not found. See the steps below.';
+        } else if (stage === 'offline' || stage === 'no_permission') {
+            title.innerText = 'Device Detected: Not Responding';
+            sub.innerText = 'See the tip in step 3 below.';
+        } else if (st.usb_debugging === false) {
             title.innerText = (st.model || 'Phone') + ' Connected: USB Debugging OFF';
             sub.innerText = 'Phone detected, but USB Debugging is not enabled. Follow the steps below.';
         } else {
@@ -361,6 +470,8 @@ async function tutPollDeviceStatus() {
         title.innerText = 'No Device Detected';
         sub.innerText = 'Plug your phone into PC with a USB data cable.';
     }
+
+    renderTutOemContent(activeTutOem);
 
     // Hardware suggested brand detection if plugged in and user hasn't manually selected
     if (isHttpServer && !tutUserManuallySelectedOem && !tutOemDetected && (st.connected || st.authorized)) {
@@ -482,6 +593,7 @@ function setTutSlide(idx) {
         if (btnNextFooter) btnNextFooter.style.display = 'inline-flex';
         if (btnFinishFooter) btnFinishFooter.style.display = 'none';
     }
+    if (typeof waGuideSyncFooter === 'function') waGuideSyncFooter();  // guided setup hides the slide controls
 }
 
 function nextTutSlide() {

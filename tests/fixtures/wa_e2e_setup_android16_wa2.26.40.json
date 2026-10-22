@@ -1,0 +1,5126 @@
+{
+ "source": "Recorded with scripts/record_e2e_flow.py: Nothing phone, Android 16, WhatsApp 2.26.40.76, en-GB. UI labels only; personal text removed. key_block marks where the 64-digit key was shown (tests fill in a made-up key).",
+ "screen_size": [
+  1080,
+  2412
+ ],
+ "screens": [
+  {
+   "step": 2,
+   "recorded_activity": "com.whatsapp/.settings.ui.SettingsTabActivity",
+   "expected": "settings",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,126][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wds_search_bar",
+     "class": "FrameLayout",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar",
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wds_toolbar_nav_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[0,126][126,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[136,157][359,241]",
+     "package": "com.whatsapp",
+     "text": "Settings"
+    },
+    {
+     "class": "LinearLayoutCompat",
+     "bounds": "[953,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/menuitem_search",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[953,136][1080,262]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_scroll_view",
+     "class": "ScrollView",
+     "bounds": "[0,273][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/container",
+     "class": "LinearLayout",
+     "bounds": "[0,273][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/profile_info",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,294][1080,505]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/contact_selector",
+     "class": "FrameLayout",
+     "bounds": "[0,305][210,494]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/profile_info_photo",
+     "class": "ImageView",
+     "bounds": "[42,315][210,483]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[210,324][828,474]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/profile_info_name",
+     "class": "TextView",
+     "bounds": "[252,324][621,384]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/profile_about_pill",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[221,396][515,472]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/profile_about_emoji_button",
+     "class": "ImageView",
+     "bounds": "[241,411][288,458]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/profile_about_text",
+     "class": "TextView",
+     "bounds": "[299,411][496,458]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/profile_info_qr_code",
+     "class": "ImageView",
+     "clickable": true,
+     "bounds": "[828,294][975,505]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/account_switcher_button_layout",
+     "class": "RelativeLayout",
+     "clickable": true,
+     "bounds": "[975,294][1041,505]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/account_switcher_button_area",
+     "class": "FrameLayout",
+     "bounds": "[975,360][1041,439]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/account_switcher_button",
+     "class": "ImageView",
+     "bounds": "[975,373][1028,426]",
+     "package": "com.whatsapp",
+     "desc": "Button to switch or add an account"
+    },
+    {
+     "id": "com.whatsapp:id/settings_top_divider",
+     "class": "View",
+     "bounds": "[0,537][1080,538]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/setting_payments",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,549][1080,738]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,591][147,696]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,613][1038,674]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,613][389,674]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[189,613][389,674]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/subscriptions_row_item",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,738][1080,946]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,789][147,894]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,780][1006,904]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,780][468,846]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[189,780][468,846]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[189,846][653,904]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_end",
+     "class": "View",
+     "bounds": "[1006,826][1038,858]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_linked_devices_row",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,946][1080,1149]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,995][147,1100]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,988][1038,1107]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,988][493,1049]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[189,988][493,1049]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[189,1049][774,1107]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_account_info",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1149][1080,1357]",
+     "package": "com.whatsapp",
+     "desc": "Account,Security notifications, change number"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,1200][147,1305]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,1191][1038,1315]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,1191][359,1257]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[189,1191][359,1257]",
+     "package": "com.whatsapp",
+     "text": "Account"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[189,1257][882,1315]",
+     "package": "com.whatsapp",
+     "text": "Security notifications, change number"
+    },
+    {
+     "id": "com.whatsapp:id/privacy_preference",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1357][1080,1565]",
+     "package": "com.whatsapp",
+     "desc": "Privacy,Blocked accounts, disappearing messages"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,1408][147,1513]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,1399][1038,1523]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,1399][341,1465]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[189,1399][341,1465]",
+     "package": "com.whatsapp",
+     "text": "Privacy"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[189,1465][967,1523]",
+     "package": "com.whatsapp",
+     "text": "Blocked accounts, disappearing messages"
+    },
+    {
+     "id": "com.whatsapp:id/settings_lists_inflated",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1565][1080,1773]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,1616][147,1721]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,1607][1038,1731]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,1607][283,1673]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[189,1607][283,1673]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[189,1673][687,1731]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_chat",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1773][1080,1981]",
+     "package": "com.whatsapp",
+     "desc": "Chats,Chat history, backup"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,1824][147,1929]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,1815][1038,1939]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,1815][307,1881]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[189,1815][307,1881]",
+     "package": "com.whatsapp",
+     "text": "Chats"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[189,1881][564,1939]",
+     "package": "com.whatsapp",
+     "text": "Chat history, backup"
+    },
+    {
+     "id": "com.whatsapp:id/settings_appearance",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1981][1080,2189]",
+     "package": "com.whatsapp",
+     "desc": "Appearance,Chat theme, app icon, app theme"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,2032][147,2137]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,2023][1038,2147]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,2023][437,2089]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[189,2023][437,2089]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[189,2089][791,2147]",
+     "package": "com.whatsapp",
+     "text": "Chat theme, app icon, app theme"
+    },
+    {
+     "id": "com.whatsapp:id/settings_broadcasts",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,2189][1080,2397]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,2240][147,2345]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,2231][1038,2355]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,2231][418,2297]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[189,2231][418,2297]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[189,2297][811,2355]",
+     "package": "com.whatsapp"
+    }
+   ]
+  },
+  {
+   "step": 3,
+   "recorded_activity": "com.whatsapp/.settings.ui.SettingsTabActivity",
+   "expected": "chat_settings",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar",
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wds_toolbar_nav_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[0,126][126,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[136,157][295,241]",
+     "package": "com.whatsapp",
+     "text": "Chats"
+    },
+    {
+     "class": "ScrollView",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,294][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[63,294][1017,390]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[63,326][1017,379]",
+     "package": "com.whatsapp",
+     "text": "Chat settings"
+    },
+    {
+     "id": "com.whatsapp:id/enter_key_preference",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,390][1080,582]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,429][870,543]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,429][446,490]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,490][775,543]",
+     "package": "com.whatsapp",
+     "text": "Enter key will send your message"
+    },
+    {
+     "id": "com.whatsapp:id/enter_key_preference_switch",
+     "class": "Switch",
+     "bounds": "[870,429][1038,513]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/media_visibility_preference",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,582][1080,819]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,621][870,780]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,621][484,682]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,682][870,780]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/media_visibility_preference_switch",
+     "class": "Switch",
+     "bounds": "[870,621][1038,705]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/font_size_preference",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,819][1080,1011]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,858][367,919]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/font_size_preference_subtitle",
+     "class": "TextView",
+     "bounds": "[189,919][284,972]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/default_reactions_preference",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1011][1080,1200]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,1053][147,1158]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,1075][933,1136]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,1075][537,1136]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[189,1075][537,1136]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_end",
+     "class": "ImageView",
+     "bounds": "[933,1053][1038,1158]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/preferences_voice_message_transcription_view",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1200][1080,1392]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,1239][1038,1353]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,1239][716,1300]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/preferences_voice_message_transcription_view_subtitle",
+     "class": "TextView",
+     "bounds": "[189,1300][657,1353]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/preferences_contextual_suggestions_view",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1392][1080,1629]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,1431][870,1590]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,1431][580,1492]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,1492][870,1590]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/contextual_suggestions_preference_switch",
+     "class": "Switch",
+     "bounds": "[870,1431][1038,1515]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/recent_media_suggestions_switch_view",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1629][1080,1866]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wa_switch_view_container",
+     "class": "LinearLayout",
+     "bounds": "[189,1668][1038,1827]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,1668][791,1827]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/switch_view_title",
+     "class": "TextView",
+     "bounds": "[189,1668][730,1729]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/switch_view_description",
+     "class": "TextView",
+     "bounds": "[189,1729][791,1827]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/switch_view_toggle",
+     "class": "Switch",
+     "bounds": "[870,1668][1038,1752]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "View",
+     "bounds": "[0,1887][1080,1888]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[63,1909][1017,2005]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[63,1941][1017,1994]",
+     "package": "com.whatsapp",
+     "text": "Archived chats"
+    },
+    {
+     "id": "com.whatsapp:id/chat_settings_notify_new_message_switch_view",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,2005][1080,2287]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wa_switch_view_container",
+     "class": "LinearLayout",
+     "bounds": "[189,2044][1038,2248]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,2044][791,2248]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/switch_view_title",
+     "class": "TextView",
+     "bounds": "[189,2044][607,2105]",
+     "package": "com.whatsapp",
+     "text": "Keep chats archived"
+    },
+    {
+     "id": "com.whatsapp:id/switch_view_description",
+     "class": "TextView",
+     "bounds": "[189,2105][791,2248]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/switch_view_toggle",
+     "class": "Switch",
+     "bounds": "[870,2044][1038,2128]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/read_later_setting_divider",
+     "class": "View",
+     "bounds": "[0,2308][1080,2309]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/chat_backup_preference",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,2330][1080,2349]",
+     "package": "com.whatsapp",
+     "desc": "Chat backup"
+    }
+   ]
+  },
+  {
+   "step": 4,
+   "recorded_activity": "com.whatsapp/.settings.ui.SettingsChat",
+   "expected": "chat_settings",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar",
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wds_toolbar_nav_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[0,126][126,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[136,157][295,241]",
+     "package": "com.whatsapp",
+     "text": "Chats"
+    },
+    {
+     "class": "ScrollView",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,294][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[63,294][1017,390]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[63,326][1017,379]",
+     "package": "com.whatsapp",
+     "text": "Chat settings"
+    },
+    {
+     "id": "com.whatsapp:id/enter_key_preference",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,390][1080,582]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,429][870,543]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,429][446,490]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,490][775,543]",
+     "package": "com.whatsapp",
+     "text": "Enter key will send your message"
+    },
+    {
+     "id": "com.whatsapp:id/enter_key_preference_switch",
+     "class": "Switch",
+     "bounds": "[870,429][1038,513]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/media_visibility_preference",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,582][1080,819]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,621][870,780]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,621][484,682]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,682][870,780]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/media_visibility_preference_switch",
+     "class": "Switch",
+     "bounds": "[870,621][1038,705]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/font_size_preference",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,819][1080,1011]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,858][367,919]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/font_size_preference_subtitle",
+     "class": "TextView",
+     "bounds": "[189,919][284,972]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/default_reactions_preference",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1011][1080,1200]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,1053][147,1158]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,1075][933,1136]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,1075][537,1136]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[189,1075][537,1136]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_end",
+     "class": "ImageView",
+     "bounds": "[933,1053][1038,1158]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/preferences_voice_message_transcription_view",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1200][1080,1392]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,1239][1038,1353]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,1239][716,1300]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/preferences_voice_message_transcription_view_subtitle",
+     "class": "TextView",
+     "bounds": "[189,1300][657,1353]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/preferences_contextual_suggestions_view",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1392][1080,1629]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,1431][870,1590]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,1431][580,1492]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[189,1492][870,1590]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/contextual_suggestions_preference_switch",
+     "class": "Switch",
+     "bounds": "[870,1431][1038,1515]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/recent_media_suggestions_switch_view",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1629][1080,1866]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wa_switch_view_container",
+     "class": "LinearLayout",
+     "bounds": "[189,1668][1038,1827]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,1668][791,1827]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/switch_view_title",
+     "class": "TextView",
+     "bounds": "[189,1668][730,1729]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/switch_view_description",
+     "class": "TextView",
+     "bounds": "[189,1729][791,1827]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/switch_view_toggle",
+     "class": "Switch",
+     "bounds": "[870,1668][1038,1752]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "View",
+     "bounds": "[0,1887][1080,1888]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[63,1909][1017,2005]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[63,1941][1017,1994]",
+     "package": "com.whatsapp",
+     "text": "Archived chats"
+    },
+    {
+     "id": "com.whatsapp:id/chat_settings_notify_new_message_switch_view",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,2005][1080,2287]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wa_switch_view_container",
+     "class": "LinearLayout",
+     "bounds": "[189,2044][1038,2248]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[189,2044][791,2248]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/switch_view_title",
+     "class": "TextView",
+     "bounds": "[189,2044][607,2105]",
+     "package": "com.whatsapp",
+     "text": "Keep chats archived"
+    },
+    {
+     "id": "com.whatsapp:id/switch_view_description",
+     "class": "TextView",
+     "bounds": "[189,2105][791,2248]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/switch_view_toggle",
+     "class": "Switch",
+     "bounds": "[870,2044][1038,2128]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/read_later_setting_divider",
+     "class": "View",
+     "bounds": "[0,2308][1080,2309]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/chat_backup_preference",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,2330][1080,2349]",
+     "package": "com.whatsapp",
+     "desc": "Chat backup"
+    }
+   ]
+  },
+  {
+   "step": 5,
+   "recorded_activity": "com.whatsapp/.settings.ui.SettingsChat",
+   "expected": "backup_settings",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar",
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wds_toolbar_nav_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[0,126][126,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[136,157][485,241]",
+     "package": "com.whatsapp",
+     "text": "Chat backup"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/scrollview",
+     "class": "ScrollView",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/backup_settings_header_view",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,475]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_backup_now_category_title",
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,475]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[42,305][1038,358]",
+     "package": "com.whatsapp",
+     "text": "Backup settings"
+    },
+    {
+     "id": "com.whatsapp:id/sub_header_textview",
+     "class": "TextView",
+     "bounds": "[42,358][1038,464]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_backup_info_box",
+     "class": "LinearLayout",
+     "bounds": "[42,512][1080,1004]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,512][682,640]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/gdrive_backup_time",
+     "class": "TextView",
+     "bounds": "[42,512][640,565]",
+     "package": "com.whatsapp",
+     "text": "Last Backup: # September, #:#"
+    },
+    {
+     "id": "com.whatsapp:id/gdrive_backup_size",
+     "class": "TextView",
+     "bounds": "[42,576][268,629]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/google_drive_backup_now_btn",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,682][326,808]",
+     "package": "com.whatsapp",
+     "text": "BACK UP"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,808][1080,1004]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[42,832][1080,1004]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_change_account_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1004][1080,1207]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1046][1038,1165]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1046][368,1107]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1046][368,1107]",
+     "package": "com.whatsapp",
+     "text": "Google Account"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1107][396,1165]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_manage_google_storage_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1207][1080,1410]",
+     "package": "com.whatsapp",
+     "desc": "Manage Google storage,Loading storage info…"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1249][1038,1368]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1249][530,1310]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1249][530,1310]",
+     "package": "com.whatsapp",
+     "text": "Manage Google storage"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1310][449,1368]",
+     "package": "com.whatsapp",
+     "text": "Loading storage info…"
+    },
+    {
+     "id": "com.whatsapp:id/chat_backup_moved_rows",
+     "class": "LinearLayout",
+     "bounds": "[0,1410][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_change_frequency_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1410][1080,1613]",
+     "package": "com.whatsapp",
+     "desc": "Automatic backups,Weekly"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1452][1038,1571]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1452][435,1513]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1452][435,1513]",
+     "package": "com.whatsapp",
+     "text": "Automatic backups"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1513][174,1571]",
+     "package": "com.whatsapp",
+     "text": "Weekly"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_network_settings_view",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1613][1080,1781]",
+     "package": "com.whatsapp",
+     "desc": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1666][870,1727]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1666][559,1727]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1666][559,1727]",
+     "package": "com.whatsapp",
+     "text": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_end_switch_button",
+     "class": "Switch",
+     "bounds": "[870,1655][1038,1739]",
+     "package": "com.whatsapp",
+     "desc": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/include_video_setting",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1781][1080,1984]",
+     "package": "com.whatsapp",
+     "desc": "Include videos in chats,#.# GB backed up"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1823][870,1942]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1823][510,1884]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1823][510,1884]",
+     "package": "com.whatsapp",
+     "text": "Include videos in chats"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1884][370,1942]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_end_switch_button",
+     "class": "Switch",
+     "bounds": "[870,1840][1038,1924]",
+     "package": "com.whatsapp",
+     "desc": "Include videos in chats,#.# GB backed up"
+    },
+    {
+     "id": "com.whatsapp:id/e2e_encryption_section_divider",
+     "class": "View",
+     "bounds": "[0,2016][1080,2017]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/e2e_encryption_header_view",
+     "class": "ViewGroup",
+     "bounds": "[0,2038][1080,2240]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[42,2070][1038,2123]",
+     "package": "com.whatsapp",
+     "text": "End-to-end encryption"
+    },
+    {
+     "id": "com.whatsapp:id/sub_header_textview",
+     "class": "TextView",
+     "bounds": "[42,2123][1038,2229]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_e2e_encryption",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,2240][1080,2349]",
+     "package": "com.whatsapp",
+     "desc": "End-to-end encrypted backup,On · #-digit key"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,2291][147,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,2282][1038,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[210,2282][827,2348]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[210,2282][827,2348]",
+     "package": "com.whatsapp",
+     "text": "End-to-end encrypted backup"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[210,2348][513,2349]",
+     "package": "com.whatsapp",
+     "text": "On · #-digit key"
+    }
+   ]
+  },
+  {
+   "step": 6,
+   "recorded_activity": "com.whatsapp/.backup.google.SettingsGoogleDrive",
+   "expected": "backup_settings",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar",
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wds_toolbar_nav_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[0,126][126,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[136,157][485,241]",
+     "package": "com.whatsapp",
+     "text": "Chat backup"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/scrollview",
+     "class": "ScrollView",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/backup_settings_header_view",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,475]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_backup_now_category_title",
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,475]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[42,305][1038,358]",
+     "package": "com.whatsapp",
+     "text": "Backup settings"
+    },
+    {
+     "id": "com.whatsapp:id/sub_header_textview",
+     "class": "TextView",
+     "bounds": "[42,358][1038,464]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_backup_info_box",
+     "class": "LinearLayout",
+     "bounds": "[42,512][1080,1004]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,512][682,640]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/gdrive_backup_time",
+     "class": "TextView",
+     "bounds": "[42,512][640,565]",
+     "package": "com.whatsapp",
+     "text": "Last Backup: # September, #:#"
+    },
+    {
+     "id": "com.whatsapp:id/gdrive_backup_size",
+     "class": "TextView",
+     "bounds": "[42,576][268,629]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/google_drive_backup_now_btn",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,682][326,808]",
+     "package": "com.whatsapp",
+     "text": "BACK UP"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,808][1080,1004]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[42,832][1080,1004]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_change_account_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1004][1080,1207]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1046][1038,1165]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1046][368,1107]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1046][368,1107]",
+     "package": "com.whatsapp",
+     "text": "Google Account"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1107][396,1165]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_manage_google_storage_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1207][1080,1410]",
+     "package": "com.whatsapp",
+     "desc": "Manage Google storage,#.# GB of #.# TB used"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1249][1038,1368]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1249][530,1310]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1249][530,1310]",
+     "package": "com.whatsapp",
+     "text": "Manage Google storage"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1310][470,1368]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/chat_backup_moved_rows",
+     "class": "LinearLayout",
+     "bounds": "[0,1410][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_change_frequency_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1410][1080,1613]",
+     "package": "com.whatsapp",
+     "desc": "Automatic backups,Weekly"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1452][1038,1571]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1452][435,1513]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1452][435,1513]",
+     "package": "com.whatsapp",
+     "text": "Automatic backups"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1513][174,1571]",
+     "package": "com.whatsapp",
+     "text": "Weekly"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_network_settings_view",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1613][1080,1781]",
+     "package": "com.whatsapp",
+     "desc": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1666][870,1727]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1666][559,1727]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1666][559,1727]",
+     "package": "com.whatsapp",
+     "text": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_end_switch_button",
+     "class": "Switch",
+     "bounds": "[870,1655][1038,1739]",
+     "package": "com.whatsapp",
+     "desc": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/include_video_setting",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1781][1080,1984]",
+     "package": "com.whatsapp",
+     "desc": "Include videos in chats,#.# GB backed up"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1823][870,1942]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1823][510,1884]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1823][510,1884]",
+     "package": "com.whatsapp",
+     "text": "Include videos in chats"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1884][370,1942]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_end_switch_button",
+     "class": "Switch",
+     "bounds": "[870,1840][1038,1924]",
+     "package": "com.whatsapp",
+     "desc": "Include videos in chats,#.# GB backed up"
+    },
+    {
+     "id": "com.whatsapp:id/e2e_encryption_section_divider",
+     "class": "View",
+     "bounds": "[0,2016][1080,2017]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/e2e_encryption_header_view",
+     "class": "ViewGroup",
+     "bounds": "[0,2038][1080,2240]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[42,2070][1038,2123]",
+     "package": "com.whatsapp",
+     "text": "End-to-end encryption"
+    },
+    {
+     "id": "com.whatsapp:id/sub_header_textview",
+     "class": "TextView",
+     "bounds": "[42,2123][1038,2229]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_e2e_encryption",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,2240][1080,2349]",
+     "package": "com.whatsapp",
+     "desc": "End-to-end encrypted backup,On · #-digit key"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,2291][147,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,2282][1038,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[210,2282][827,2348]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[210,2282][827,2348]",
+     "package": "com.whatsapp",
+     "text": "End-to-end encrypted backup"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[210,2348][513,2349]",
+     "package": "com.whatsapp",
+     "text": "On · #-digit key"
+    }
+   ]
+  },
+  {
+   "step": 7,
+   "recorded_activity": "com.whatsapp/.backup.encryptedbackup.EncBackupMainActivity",
+   "expected": "e2e_on",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar_layout",
+     "class": "FrameLayout",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_toolbar_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[21,152][116,247]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/fragment_container",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,273][1038,2307]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ScrollView",
+     "bounds": "[42,273][1038,2055]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,273][996,1452]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_enabled_landing_image",
+     "class": "ImageView",
+     "bounds": "[84,336][996,651]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_enabled_landing_title",
+     "class": "TextView",
+     "bounds": "[84,714][996,872]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_enabled_landing_privacy_notice",
+     "class": "TextView",
+     "bounds": "[84,977][996,1162]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_enabled_landing_restore_notice",
+     "class": "TextView",
+     "bounds": "[84,1267][996,1452]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_enabled_landing_password_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2055][1038,2181]",
+     "package": "com.whatsapp",
+     "text": "CREATE PASSWORD"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_enabled_landing_disable_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2181][1038,2307]",
+     "package": "com.whatsapp",
+     "text": "TURN OFF"
+    }
+   ]
+  },
+  {
+   "step": 8,
+   "recorded_activity": "com.whatsapp/.backup.encryptedbackup.EncBackupMainActivity",
+   "expected": "enter_old_key",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,1440]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar_layout",
+     "class": "FrameLayout",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_toolbar_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[21,152][116,247]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/fragment_container",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,1440]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,273][1038,1398]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ScrollView",
+     "bounds": "[42,273][1038,1272]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,273][996,997]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[84,315][996,399]",
+     "package": "com.whatsapp",
+     "text": "Enter your encryption key"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_encryption_key_input_instructional",
+     "class": "TextView",
+     "bounds": "[84,431][996,537]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_key_background",
+     "class": "RelativeLayout",
+     "bounds": "[84,558][996,922]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_input_encryption_key_container",
+     "class": "FrameLayout",
+     "bounds": "[84,558][996,922]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_vertical_layout",
+     "class": "LinearLayout",
+     "bounds": "[84,558][996,922]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,558][996,649]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[84,569][312,638]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[312,569][540,638]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[540,569][768,638]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[768,569][996,638]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,649][996,740]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[84,660][312,729]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[312,660][540,729]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[540,660][768,729]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[768,660][996,729]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,740][996,831]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[84,751][312,820]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[312,751][540,820]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[540,751][768,820]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[768,751][996,820]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,831][996,922]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[84,842][312,911]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[312,842][540,911]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[540,842][768,911]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "clickable": true,
+     "bounds": "[768,842][996,911]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_encryption_key_input_forgot",
+     "class": "TextView",
+     "clickable": true,
+     "bounds": "[84,922][996,997]",
+     "package": "com.whatsapp",
+     "text": "I lost my encryption key"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_input_next_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,1272][1038,1398]",
+     "package": "com.whatsapp",
+     "text": "NEXT"
+    }
+   ]
+  },
+  {
+   "step": 9,
+   "recorded_activity": "com.whatsapp/.backup.encryptedbackup.EncBackupMainActivity",
+   "expected": "screen_lock",
+   "nodes": [
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/biometric_prompt_constraint_layout",
+     "class": "ViewGroup",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/background",
+     "class": "ImageView",
+     "clickable": true,
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.android.systemui",
+     "desc": "Tap to cancel authentication"
+    },
+    {
+     "id": "com.android.systemui:id/panel",
+     "class": "View",
+     "clickable": true,
+     "bounds": "[0,1349][1080,2412]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/scrollView",
+     "class": "ScrollView",
+     "bounds": "[0,1349][1080,2093]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/innerConstraint",
+     "class": "ViewGroup",
+     "bounds": "[63,1412][1017,2030]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/logo",
+     "class": "ImageView",
+     "bounds": "[498,1412][582,1496]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/logo_description",
+     "class": "TextView",
+     "bounds": "[63,1496][1017,1570]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/title",
+     "class": "TextView",
+     "bounds": "[258,1570][823,1703]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/subtitle",
+     "class": "TextView",
+     "bounds": "[63,1703][1017,1851]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/indicator",
+     "class": "TextView",
+     "bounds": "[126,1914][954,1967]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/customized_view_container",
+     "class": "LinearLayout",
+     "bounds": "[63,1967][1017,2030]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/button_bar",
+     "class": "ViewGroup",
+     "bounds": "[0,2202][1080,2349]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/button_use_credential",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[63,2202][294,2328]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/biometric_icon",
+     "class": "ImageView",
+     "bounds": "[447,2093][633,2279]",
+     "package": "com.android.systemui"
+    },
+    {
+     "id": "com.android.systemui:id/biometric_icon_overlay",
+     "class": "ImageView",
+     "bounds": "[447,2093][633,2279]",
+     "package": "com.android.systemui"
+    }
+   ]
+  },
+  {
+   "step": 10,
+   "recorded_activity": "com.whatsapp/.backup.encryptedbackup.EncBackupMainActivity",
+   "expected": "confirm_turn_off",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar_layout",
+     "class": "FrameLayout",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_toolbar_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[21,152][116,247]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/fragment_container",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,273][1038,2307]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ScrollView",
+     "bounds": "[42,273][1038,2055]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,273][996,741]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[84,315][996,473]",
+     "package": "com.whatsapp",
+     "text": "Turn off end-to-end encryption for your backup?"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[84,578][996,741]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/confirm_disable_disable_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2055][1038,2181]",
+     "package": "com.whatsapp",
+     "text": "TURN OFF"
+    },
+    {
+     "id": "com.whatsapp:id/confirm_disable_cancel_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2181][1038,2307]",
+     "package": "com.whatsapp",
+     "text": "CANCEL"
+    }
+   ]
+  },
+  {
+   "step": 11,
+   "recorded_activity": "com.whatsapp/.backup.encryptedbackup.EncBackupMainActivity",
+   "expected": "turned_off",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar_layout",
+     "class": "FrameLayout",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/fragment_container",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,273][1038,2307]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ScrollView",
+     "bounds": "[42,273][1038,2181]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,959][996,1495]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/disable_done_image",
+     "class": "ImageView",
+     "bounds": "[84,959][996,1274]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[84,1337][996,1495]",
+     "package": "com.whatsapp",
+     "text": "Your backup is no longer end-to-end encrypted"
+    },
+    {
+     "id": "com.whatsapp:id/disable_done_done_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2181][1038,2307]",
+     "package": "com.whatsapp",
+     "text": "DONE"
+    }
+   ]
+  },
+  {
+   "step": 12,
+   "recorded_activity": "com.whatsapp/.backup.google.SettingsGoogleDrive",
+   "expected": "backup_settings",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar",
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wds_toolbar_nav_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[0,126][126,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[136,157][485,241]",
+     "package": "com.whatsapp",
+     "text": "Chat backup"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/scrollview",
+     "class": "ScrollView",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,273][1080,2328]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/backup_settings_header_view",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,475]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_backup_now_category_title",
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,475]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[42,305][1038,358]",
+     "package": "com.whatsapp",
+     "text": "Backup settings"
+    },
+    {
+     "id": "com.whatsapp:id/sub_header_textview",
+     "class": "TextView",
+     "bounds": "[42,358][1038,464]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_backup_info_box",
+     "class": "LinearLayout",
+     "bounds": "[42,512][1080,832]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,512][426,640]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/local_backup_time",
+     "class": "TextView",
+     "bounds": "[42,512][263,565]",
+     "package": "com.whatsapp",
+     "text": "Local: Never"
+    },
+    {
+     "id": "com.whatsapp:id/gdrive_backup_time",
+     "class": "TextView",
+     "bounds": "[42,576][384,629]",
+     "package": "com.whatsapp",
+     "text": "Last Backup: Never"
+    },
+    {
+     "id": "com.whatsapp:id/google_drive_backup_now_btn",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,682][326,808]",
+     "package": "com.whatsapp",
+     "text": "BACK UP"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,808][1080,832]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_change_account_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,832][1080,1035]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,874][1038,993]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,874][368,935]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,874][368,935]",
+     "package": "com.whatsapp",
+     "text": "Google Account"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,935][396,993]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_manage_google_storage_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1035][1080,1238]",
+     "package": "com.whatsapp",
+     "desc": "Manage Google storage,#.# GB of #.# TB used"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1077][1038,1196]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1077][530,1138]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1077][530,1138]",
+     "package": "com.whatsapp",
+     "text": "Manage Google storage"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1138][470,1196]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/chat_backup_moved_rows",
+     "class": "LinearLayout",
+     "bounds": "[0,1238][1080,2276]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_change_frequency_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1238][1080,1441]",
+     "package": "com.whatsapp",
+     "desc": "Automatic backups,Weekly"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1280][1038,1399]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1280][435,1341]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1280][435,1341]",
+     "package": "com.whatsapp",
+     "text": "Automatic backups"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1341][174,1399]",
+     "package": "com.whatsapp",
+     "text": "Weekly"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_network_settings_view",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1441][1080,1609]",
+     "package": "com.whatsapp",
+     "desc": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1494][870,1555]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1494][559,1555]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1494][559,1555]",
+     "package": "com.whatsapp",
+     "text": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_end_switch_button",
+     "class": "Switch",
+     "bounds": "[870,1483][1038,1567]",
+     "package": "com.whatsapp",
+     "desc": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/include_video_setting",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1609][1080,1812]",
+     "package": "com.whatsapp",
+     "desc": "Include videos in chats,#.# GB to be uploaded"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1651][870,1770]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1651][510,1712]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1651][510,1712]",
+     "package": "com.whatsapp",
+     "text": "Include videos in chats"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1712][464,1770]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_end_switch_button",
+     "class": "Switch",
+     "bounds": "[870,1668][1038,1752]",
+     "package": "com.whatsapp",
+     "desc": "Include videos in chats,#.# GB to be uploaded"
+    },
+    {
+     "id": "com.whatsapp:id/e2e_encryption_section_divider",
+     "class": "View",
+     "bounds": "[0,1844][1080,1845]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/e2e_encryption_header_view",
+     "class": "ViewGroup",
+     "bounds": "[0,1866][1080,2068]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[42,1898][1038,1951]",
+     "package": "com.whatsapp",
+     "text": "End-to-end encryption"
+    },
+    {
+     "id": "com.whatsapp:id/sub_header_textview",
+     "class": "TextView",
+     "bounds": "[42,1951][1038,2057]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_e2e_encryption",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,2068][1080,2276]",
+     "package": "com.whatsapp",
+     "desc": "End-to-end encrypted backup,Off"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,2119][147,2224]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,2110][1038,2234]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[210,2110][827,2176]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[210,2110][827,2176]",
+     "package": "com.whatsapp",
+     "text": "End-to-end encrypted backup"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[210,2176][266,2234]",
+     "package": "com.whatsapp"
+    }
+   ]
+  },
+  {
+   "step": 13,
+   "recorded_activity": "com.whatsapp/.backup.encryptedbackup.EncBackupMainActivity",
+   "expected": "e2e_off",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar_layout",
+     "class": "FrameLayout",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_toolbar_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[21,152][116,247]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/fragment_container",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,273][1038,2307]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ScrollView",
+     "bounds": "[42,273][1038,2055]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,273][996,1360]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enable_info_header_image",
+     "class": "ImageView",
+     "bounds": "[84,336][996,651]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enable_info_title",
+     "class": "TextView",
+     "bounds": "[84,714][996,861]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_enable_list_no_image",
+     "class": "ViewGroup",
+     "bounds": "[84,861][996,1360]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_bottom_sheet_image_item_one",
+     "class": "ImageView",
+     "bounds": "[84,861][147,1010]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_bottom_sheet_list_item_one",
+     "class": "TextView",
+     "bounds": "[210,861][996,1010]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_bottom_sheet_image_item_two",
+     "class": "ImageView",
+     "bounds": "[84,1036][147,1185]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_bottom_sheet_list_item_two",
+     "class": "TextView",
+     "bounds": "[210,1036][996,1185]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_bottom_sheet_image_item_three",
+     "class": "ImageView",
+     "bounds": "[84,1211][147,1360]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_bottom_sheet_list_item_three",
+     "class": "TextView",
+     "bounds": "[210,1211][996,1360]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enable_info_turn_on_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2055][1038,2181]",
+     "package": "com.whatsapp",
+     "text": "USE PASSKEY"
+    },
+    {
+     "id": "com.whatsapp:id/enable_info_more_options_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2181][1038,2307]",
+     "package": "com.whatsapp",
+     "text": "MORE OPTIONS"
+    }
+   ]
+  },
+  {
+   "step": 14,
+   "recorded_activity": "com.whatsapp/.backup.encryptedbackup.EncBackupMainActivity",
+   "expected": "more_options",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/container",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/coordinator",
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/touch_outside",
+     "class": "View",
+     "clickable": true,
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/design_bottom_sheet",
+     "class": "FrameLayout",
+     "bounds": "[0,1722][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ScrollView",
+     "bounds": "[0,1722][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_more_options_bottom_sheet_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1785][1038,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_more_options_toolbar",
+     "class": "ViewGroup",
+     "bounds": "[63,1806][1017,1953]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[105,1837][1017,1921]",
+     "package": "com.whatsapp",
+     "text": "More options"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_more_options_password",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[63,1953][1017,2119]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[105,1974][975,2098]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[105,1974][304,2040]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[105,1974][304,2040]",
+     "package": "com.whatsapp",
+     "text": "Password"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[105,2040][881,2098]",
+     "package": "com.whatsapp",
+     "text": "Create a password to protect your backup."
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_more_options_encryption_key",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[63,2119][1017,2328]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[105,2140][975,2307]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[105,2140][580,2201]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[105,2140][580,2201]",
+     "package": "com.whatsapp",
+     "text": "#-digit encryption key"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[105,2201][975,2307]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wds_bottom_sheet_handle_view",
+     "class": "ImageView",
+     "clickable": true,
+     "bounds": "[498,1722][582,1785]",
+     "package": "com.whatsapp"
+    }
+   ]
+  },
+  {
+   "step": 15,
+   "recorded_activity": "com.whatsapp/.backup.encryptedbackup.EncBackupMainActivity",
+   "expected": "key_intro",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar_layout",
+     "class": "FrameLayout",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_toolbar_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[21,152][116,247]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/fragment_container",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,273][1038,2307]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ScrollView",
+     "bounds": "[42,273][1038,2181]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,273][996,1108]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[84,315][996,399]",
+     "package": "com.whatsapp",
+     "text": "Your encryption key"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_info_info",
+     "class": "TextView",
+     "bounds": "[84,504][996,667]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_key_background",
+     "class": "RelativeLayout",
+     "bounds": "[84,730][996,1108]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_info_middle_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[254,856][825,982]",
+     "package": "com.whatsapp",
+     "text": "Generate your #-digit key"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_info_bottom_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2181][1038,2307]",
+     "package": "com.whatsapp",
+     "text": "GENERATE YOUR #-DIGIT KEY"
+    }
+   ]
+  },
+  {
+   "step": 16,
+   "recorded_activity": "com.whatsapp/.backup.encryptedbackup.EncBackupMainActivity",
+   "expected": "key_shown",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar_layout",
+     "class": "FrameLayout",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_toolbar_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[21,152][116,247]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/fragment_container",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,273][1038,2307]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ScrollView",
+     "bounds": "[42,273][1038,2181]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,273][996,1145]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[84,315][996,399]",
+     "package": "com.whatsapp",
+     "text": "Your encryption key"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_info_info",
+     "class": "TextView",
+     "bounds": "[84,504][996,718]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_key_background",
+     "class": "RelativeLayout",
+     "bounds": "[84,781][996,1145]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_info_encryption_key_container",
+     "class": "FrameLayout",
+     "bounds": "[84,781][996,1145]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_vertical_layout",
+     "class": "LinearLayout",
+     "bounds": "[84,781][996,1145]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,781][996,872]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "bounds": "[84,792][312,861]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[312,792][540,861]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[540,792][768,861]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[768,792][996,861]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,872][996,963]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "bounds": "[84,883][312,952]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[312,883][540,952]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[540,883][768,952]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[768,883][996,952]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,963][996,1054]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "bounds": "[84,974][312,1043]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[312,974][540,1043]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[540,974][768,1043]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[768,974][996,1043]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,1054][996,1145]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "bounds": "[84,1065][312,1134]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[312,1065][540,1134]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[540,1065][768,1134]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[768,1065][996,1134]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_info_bottom_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2181][1038,2307]",
+     "package": "com.whatsapp",
+     "text": "CONTINUE"
+    }
+   ]
+  },
+  {
+   "step": 17,
+   "recorded_activity": "com.whatsapp/.backup.encryptedbackup.EncBackupMainActivity",
+   "expected": "popup",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[565,951][1080,1077]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[565,951][1080,1077]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ListView",
+     "bounds": "[565,951][1080,1077]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[565,951][1080,1077]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "LinearLayout",
+     "bounds": "[565,951][1080,1077]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "RelativeLayout",
+     "bounds": "[607,983][1038,1044]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/title",
+     "class": "TextView",
+     "bounds": "[607,983][1038,1044]",
+     "package": "com.whatsapp",
+     "text": "Copy"
+    }
+   ]
+  },
+  {
+   "step": 18,
+   "recorded_activity": "com.whatsapp/.backup.encryptedbackup.EncBackupMainActivity",
+   "expected": "key_shown",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar_layout",
+     "class": "FrameLayout",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_toolbar_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[21,152][116,247]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/fragment_container",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,273][1038,2307]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ScrollView",
+     "bounds": "[42,273][1038,2181]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,273][996,1145]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[84,315][996,399]",
+     "package": "com.whatsapp",
+     "text": "Your encryption key"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_info_info",
+     "class": "TextView",
+     "bounds": "[84,504][996,718]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_key_background",
+     "class": "RelativeLayout",
+     "bounds": "[84,781][996,1145]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_info_encryption_key_container",
+     "class": "FrameLayout",
+     "bounds": "[84,781][996,1145]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_vertical_layout",
+     "class": "LinearLayout",
+     "bounds": "[84,781][996,1145]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,781][996,872]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "bounds": "[84,792][312,861]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[312,792][540,861]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[540,792][768,861]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[768,792][996,861]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,872][996,963]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "bounds": "[84,883][312,952]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[312,883][540,952]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[540,883][768,952]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[768,883][996,952]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,963][996,1054]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "bounds": "[84,974][312,1043]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[312,974][540,1043]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[540,974][768,1043]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[768,974][996,1043]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,1054][996,1145]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "bounds": "[84,1065][312,1134]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[312,1065][540,1134]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[540,1065][768,1134]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[768,1065][996,1134]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_info_bottom_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2181][1038,2307]",
+     "package": "com.whatsapp",
+     "text": "CONTINUE"
+    }
+   ]
+  },
+  {
+   "step": 19,
+   "recorded_activity": "com.whatsapp/.backup.encryptedbackup.EncBackupMainActivity",
+   "expected": "key_confirm",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar_layout",
+     "class": "FrameLayout",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_toolbar_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[21,152][116,247]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/fragment_container",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,273][1038,2307]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ScrollView",
+     "bounds": "[42,273][1038,2055]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,273][996,1316]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_confirm_title",
+     "class": "TextView",
+     "bounds": "[84,315][996,473]",
+     "package": "com.whatsapp",
+     "text": "Did you save your full #-digit encryption key?"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[84,578][996,741]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_key_background",
+     "class": "RelativeLayout",
+     "bounds": "[84,804][996,1168]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_confirm_encryption_key_container",
+     "class": "FrameLayout",
+     "bounds": "[84,804][996,1168]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_vertical_layout",
+     "class": "LinearLayout",
+     "bounds": "[84,804][996,1168]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,804][996,895]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "bounds": "[84,815][312,884]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[312,815][540,884]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[540,815][768,884]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[768,815][996,884]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,895][996,986]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "bounds": "[84,906][312,975]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[312,906][540,975]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[540,906][768,975]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[768,906][996,975]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,986][996,1077]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "bounds": "[84,997][312,1066]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[312,997][540,1066]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[540,997][768,1066]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[768,997][996,1066]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,1077][996,1168]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "EditText",
+     "bounds": "[84,1088][312,1157]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[312,1088][540,1157]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[540,1088][768,1157]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "EditText",
+     "bounds": "[768,1088][996,1157]",
+     "package": "com.whatsapp",
+     "key_block": true
+    },
+    {
+     "class": "TextView",
+     "bounds": "[84,1210][996,1316]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_confirm_button_confirm",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2055][1038,2181]",
+     "package": "com.whatsapp",
+     "text": "I SAVED MY #-DIGIT KEY"
+    },
+    {
+     "id": "com.whatsapp:id/encryption_key_confirm_button_cancel",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2181][1038,2307]",
+     "package": "com.whatsapp",
+     "text": "CANCEL"
+    }
+   ]
+  },
+  {
+   "step": 20,
+   "recorded_activity": "com.whatsapp/.backup.encryptedbackup.EncBackupMainActivity",
+   "expected": "create",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar_layout",
+     "class": "FrameLayout",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enc_backup_toolbar_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[21,152][116,247]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/fragment_container",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,273][1038,2307]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ScrollView",
+     "bounds": "[42,273][1038,2055]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[84,273][996,1306]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enable_done_image",
+     "class": "ImageView",
+     "bounds": "[84,336][996,651]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[84,714][996,872]",
+     "package": "com.whatsapp",
+     "text": "Create your end-to-end encrypted backup?"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[84,977][996,1089]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[84,1194][996,1306]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/enable_done_create_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2055][1038,2181]",
+     "package": "com.whatsapp",
+     "text": "CREATE"
+    },
+    {
+     "id": "com.whatsapp:id/enable_done_cancel_button",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,2181][1038,2307]",
+     "package": "com.whatsapp",
+     "text": "CANCEL"
+    }
+   ]
+  },
+  {
+   "step": 21,
+   "recorded_activity": "com.whatsapp/.backup.google.SettingsGoogleDrive",
+   "expected": "backup_settings",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar",
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wds_toolbar_nav_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[0,126][126,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[136,157][485,241]",
+     "package": "com.whatsapp",
+     "text": "Chat backup"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/scrollview",
+     "class": "ScrollView",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,273][1080,2328]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/backup_settings_header_view",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,475]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_backup_now_category_title",
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,475]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[42,305][1038,358]",
+     "package": "com.whatsapp",
+     "text": "Backup settings"
+    },
+    {
+     "id": "com.whatsapp:id/sub_header_textview",
+     "class": "TextView",
+     "bounds": "[42,358][1038,464]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_backup_info_box",
+     "class": "LinearLayout",
+     "bounds": "[42,512][1080,804]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,512][426,640]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/local_backup_time",
+     "class": "TextView",
+     "bounds": "[42,512][263,565]",
+     "package": "com.whatsapp",
+     "text": "Local: Never"
+    },
+    {
+     "id": "com.whatsapp:id/gdrive_backup_time",
+     "class": "TextView",
+     "bounds": "[42,576][384,629]",
+     "package": "com.whatsapp",
+     "text": "Last Backup: Never"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,640][1080,804]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,664][1080,706]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/google_drive_progress",
+     "class": "ProgressBar",
+     "bounds": "[42,664][1038,706]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/google_drive_backup_now_btn_info",
+     "class": "TextView",
+     "bounds": "[42,706][1080,755]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,755][292,804]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_change_account_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,804][1080,1007]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,846][1038,965]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,846][368,907]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,846][368,907]",
+     "package": "com.whatsapp",
+     "text": "Google Account"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,907][396,965]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_manage_google_storage_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1007][1080,1210]",
+     "package": "com.whatsapp",
+     "desc": "Manage Google storage,#.# GB of #.# TB used"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1049][1038,1168]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1049][530,1110]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1049][530,1110]",
+     "package": "com.whatsapp",
+     "text": "Manage Google storage"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1110][470,1168]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/chat_backup_moved_rows",
+     "class": "LinearLayout",
+     "bounds": "[0,1210][1080,2248]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_change_frequency_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1210][1080,1413]",
+     "package": "com.whatsapp",
+     "desc": "Automatic backups,Weekly"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1252][1038,1371]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1252][435,1313]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1252][435,1313]",
+     "package": "com.whatsapp",
+     "text": "Automatic backups"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1313][174,1371]",
+     "package": "com.whatsapp",
+     "text": "Weekly"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_network_settings_view",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1413][1080,1581]",
+     "package": "com.whatsapp",
+     "desc": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1466][870,1527]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1466][559,1527]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1466][559,1527]",
+     "package": "com.whatsapp",
+     "text": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_end_switch_button",
+     "class": "Switch",
+     "bounds": "[870,1455][1038,1539]",
+     "package": "com.whatsapp",
+     "desc": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/include_video_setting",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1581][1080,1784]",
+     "package": "com.whatsapp",
+     "desc": "Include videos in chats,#.# GB to be uploaded"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1623][870,1742]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1623][510,1684]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1623][510,1684]",
+     "package": "com.whatsapp",
+     "text": "Include videos in chats"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1684][464,1742]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_end_switch_button",
+     "class": "Switch",
+     "bounds": "[870,1640][1038,1724]",
+     "package": "com.whatsapp",
+     "desc": "Include videos in chats,#.# GB to be uploaded"
+    },
+    {
+     "id": "com.whatsapp:id/e2e_encryption_section_divider",
+     "class": "View",
+     "bounds": "[0,1816][1080,1817]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/e2e_encryption_header_view",
+     "class": "ViewGroup",
+     "bounds": "[0,1838][1080,2040]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[42,1870][1038,1923]",
+     "package": "com.whatsapp",
+     "text": "End-to-end encryption"
+    },
+    {
+     "id": "com.whatsapp:id/sub_header_textview",
+     "class": "TextView",
+     "bounds": "[42,1923][1038,2029]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_e2e_encryption",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,2040][1080,2248]",
+     "package": "com.whatsapp",
+     "desc": "End-to-end encrypted backup,On · #-digit key"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,2091][147,2196]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,2082][1038,2206]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[210,2082][827,2148]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[210,2082][827,2148]",
+     "package": "com.whatsapp",
+     "text": "End-to-end encrypted backup"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[210,2148][513,2206]",
+     "package": "com.whatsapp",
+     "text": "On · #-digit key"
+    }
+   ]
+  },
+  {
+   "step": 22,
+   "recorded_activity": "com.whatsapp/.backup.google.SettingsGoogleDrive",
+   "expected": "dialog",
+   "nodes": [
+    {
+     "class": "AlertDialog",
+     "bounds": "[28,1020][1052,1455]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[91,1020][989,1455]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[91,1020][989,1455]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[91,1020][989,1455]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[91,1020][989,1455]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/parentPanel",
+     "class": "LinearLayoutCompat",
+     "bounds": "[91,1020][989,1455]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/contentPanel",
+     "class": "FrameLayout",
+     "bounds": "[91,1020][989,1255]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/scrollView",
+     "class": "ScrollView",
+     "bounds": "[91,1020][989,1255]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[91,1020][989,1255]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/textSpacerNoTitle",
+     "class": "View",
+     "bounds": "[91,1020][989,1067]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/message",
+     "class": "TextView",
+     "bounds": "[91,1067][989,1255]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/buttonPanel",
+     "class": "ScrollView",
+     "bounds": "[91,1255][989,1455]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[91,1255][989,1455]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/button1",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[758,1292][926,1418]",
+     "package": "com.whatsapp",
+     "text": "OK",
+     "desc": "OK"
+    }
+   ]
+  },
+  {
+   "step": 23,
+   "recorded_activity": "com.whatsapp/.backup.google.SettingsGoogleDrive",
+   "expected": "backup_settings",
+   "nodes": [
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/action_bar_root",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "android:id/content",
+     "class": "FrameLayout",
+     "bounds": "[0,0][1080,2412]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,126][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/toolbar",
+     "class": "ViewGroup",
+     "bounds": "[0,126][1080,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/wds_toolbar_nav_button",
+     "class": "ImageButton",
+     "clickable": true,
+     "bounds": "[0,126][126,273]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "TextView",
+     "bounds": "[136,157][485,241]",
+     "package": "com.whatsapp",
+     "text": "Chat backup"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/scrollview",
+     "class": "ScrollView",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,2349]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[0,273][1080,2328]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/backup_settings_header_view",
+     "class": "FrameLayout",
+     "bounds": "[0,273][1080,475]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_backup_now_category_title",
+     "class": "ViewGroup",
+     "bounds": "[0,273][1080,475]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[42,305][1038,358]",
+     "package": "com.whatsapp",
+     "text": "Backup settings"
+    },
+    {
+     "id": "com.whatsapp:id/sub_header_textview",
+     "class": "TextView",
+     "bounds": "[42,358][1038,464]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_backup_info_box",
+     "class": "LinearLayout",
+     "bounds": "[42,512][1080,832]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,512][426,640]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/local_backup_time",
+     "class": "TextView",
+     "bounds": "[42,512][263,565]",
+     "package": "com.whatsapp",
+     "text": "Local: Never"
+    },
+    {
+     "id": "com.whatsapp:id/gdrive_backup_time",
+     "class": "TextView",
+     "bounds": "[42,576][384,629]",
+     "package": "com.whatsapp",
+     "text": "Last Backup: Never"
+    },
+    {
+     "id": "com.whatsapp:id/google_drive_backup_now_btn",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[42,682][326,808]",
+     "package": "com.whatsapp",
+     "text": "BACK UP"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,808][1080,832]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_change_account_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,832][1080,1035]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,874][1038,993]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,874][368,935]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,874][368,935]",
+     "package": "com.whatsapp",
+     "text": "Google Account"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,935][396,993]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_manage_google_storage_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1035][1080,1238]",
+     "package": "com.whatsapp",
+     "desc": "Manage Google storage,#.# GB of #.# TB used"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1077][1038,1196]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1077][530,1138]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1077][530,1138]",
+     "package": "com.whatsapp",
+     "text": "Manage Google storage"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1138][470,1196]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/chat_backup_moved_rows",
+     "class": "LinearLayout",
+     "bounds": "[0,1238][1080,2276]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_change_frequency_view",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,1238][1080,1441]",
+     "package": "com.whatsapp",
+     "desc": "Automatic backups,Weekly"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1280][1038,1399]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1280][435,1341]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1280][435,1341]",
+     "package": "com.whatsapp",
+     "text": "Automatic backups"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1341][174,1399]",
+     "package": "com.whatsapp",
+     "text": "Weekly"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_network_settings_view",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1441][1080,1609]",
+     "package": "com.whatsapp",
+     "desc": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1494][870,1555]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1494][559,1555]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1494][559,1555]",
+     "package": "com.whatsapp",
+     "text": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_end_switch_button",
+     "class": "Switch",
+     "bounds": "[870,1483][1038,1567]",
+     "package": "com.whatsapp",
+     "desc": "Back up over mobile data"
+    },
+    {
+     "id": "com.whatsapp:id/include_video_setting",
+     "class": "LinearLayout",
+     "clickable": true,
+     "bounds": "[0,1609][1080,1812]",
+     "package": "com.whatsapp",
+     "desc": "Include videos in chats,#.# GB to be uploaded"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[42,1651][870,1770]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[42,1651][510,1712]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[42,1651][510,1712]",
+     "package": "com.whatsapp",
+     "text": "Include videos in chats"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[42,1712][464,1770]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_end_switch_button",
+     "class": "Switch",
+     "bounds": "[870,1668][1038,1752]",
+     "package": "com.whatsapp",
+     "desc": "Include videos in chats,#.# GB to be uploaded"
+    },
+    {
+     "id": "com.whatsapp:id/e2e_encryption_section_divider",
+     "class": "View",
+     "bounds": "[0,1844][1080,1845]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/e2e_encryption_header_view",
+     "class": "ViewGroup",
+     "bounds": "[0,1866][1080,2068]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/header_textview",
+     "class": "TextView",
+     "bounds": "[42,1898][1038,1951]",
+     "package": "com.whatsapp",
+     "text": "End-to-end encryption"
+    },
+    {
+     "id": "com.whatsapp:id/sub_header_textview",
+     "class": "TextView",
+     "bounds": "[42,1951][1038,2057]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/settings_gdrive_e2e_encryption",
+     "class": "Button",
+     "clickable": true,
+     "bounds": "[0,2068][1080,2276]",
+     "package": "com.whatsapp",
+     "desc": "End-to-end encrypted backup,On · #-digit key"
+    },
+    {
+     "id": "com.whatsapp:id/row_addon_start",
+     "class": "ImageView",
+     "bounds": "[42,2119][147,2224]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_content",
+     "class": "LinearLayout",
+     "bounds": "[147,2110][1038,2234]",
+     "package": "com.whatsapp"
+    },
+    {
+     "class": "LinearLayout",
+     "bounds": "[210,2110][827,2176]",
+     "package": "com.whatsapp"
+    },
+    {
+     "id": "com.whatsapp:id/row_text",
+     "class": "TextView",
+     "bounds": "[210,2110][827,2176]",
+     "package": "com.whatsapp",
+     "text": "End-to-end encrypted backup"
+    },
+    {
+     "id": "com.whatsapp:id/row_subtext",
+     "class": "TextView",
+     "bounds": "[210,2176][513,2234]",
+     "package": "com.whatsapp",
+     "text": "On · #-digit key"
+    }
+   ]
+  }
+ ]
+}

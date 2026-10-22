@@ -40,6 +40,8 @@ class DeviceInventory:
         self._conn_lock = threading.Lock()
         self._conn = None
         self._conn_checked_at = 0.0
+        self._stage = None
+        self._stage_since = time.time()
 
         self._serial = None
         self._accounts = []
@@ -57,6 +59,10 @@ class DeviceInventory:
             if self._conn is None or now - self._conn_checked_at >= self._connection_ttl:
                 self._conn = self._check_fn()
                 self._conn_checked_at = time.time()
+                stage = getattr(self._conn, "stage", None)
+                if stage != self._stage:  # how long the user has been on this step (setup guide hints)
+                    self._stage = stage
+                    self._stage_since = self._conn_checked_at
             return self._conn
 
     # ------------------------------------------------------------------ account scan
@@ -96,6 +102,11 @@ class DeviceInventory:
         res = self._connection()
         connected, authorized, err_msg, serial, model = res[:5]
         usb_debugging = getattr(res, "usb_debugging", True)
+        stage = getattr(res, "stage", None) or ("ready" if connected and authorized else
+                                                 "unauthorized" if connected else "unplugged")
+        vendor = getattr(res, "vendor", "")
+        with self._conn_lock:
+            stage_seconds = max(0.0, time.time() - self._stage_since)
         ready = bool(connected and authorized and serial)
 
         with self._lock:
@@ -127,6 +138,9 @@ class DeviceInventory:
                 "connected": connected,
                 "authorized": authorized,
                 "usb_debugging": usb_debugging,
+                "stage": stage,
+                "stage_seconds": round(stage_seconds, 1),
+                "vendor": vendor,
                 "serial": serial,
                 "model": model,
                 "error": err_msg,

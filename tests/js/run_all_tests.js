@@ -19,7 +19,9 @@ const suites = [
     { name: 'Phone Storage Reclaim Lifecycle & Safety Engine', file: 'test_phone_storage_reclaim.js' },
     { name: 'About & Updates (safe notes, opt-in privacy, restart overlay)', file: 'test_update_ui.js' },
     { name: 'Multi-tab consistency & close protection', file: 'test_multi_tab_ui.js' },
-    { name: 'Delete & show in file manager', file: 'test_delete_ui.js' }
+    { name: 'Delete & show in file manager', file: 'test_delete_ui.js' },
+    { name: 'Live connection checklist (setup guide)', file: 'test_connection_checklist.js' },
+    { name: 'Guided WhatsApp key setup panel', file: 'test_wa_guide_ui.js' }
 ];
 
 console.log('======================================================================');

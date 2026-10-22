@@ -76,7 +76,8 @@ class DeviceStatus(tuple):
     for 100% backward compatibility, with an extra attribute usb_debugging (bool).
     """
 
-    def __new__(cls, connected, authorized, error_message, device_serial, model, usb_debugging=True):
+    def __new__(cls, connected, authorized, error_message, device_serial, model, usb_debugging=True,
+                stage=None, vendor=""):
         obj = super().__new__(cls, (connected, authorized, error_message, device_serial, model))
         obj.connected = connected
         obj.authorized = authorized
@@ -84,7 +85,27 @@ class DeviceStatus(tuple):
         obj.device_serial = device_serial
         obj.model = model
         obj.usb_debugging = usb_debugging
+        obj.stage = stage or _default_stage(connected, authorized, usb_debugging)
+        obj.vendor = vendor
         return obj
+
+
+# Where the user is in getting the phone connected (drives the setup guide's checklist)
+STAGE_UNPLUGGED = "unplugged"          # no phone seen at all
+STAGE_USB_ONLY = "usb_only"            # phone on USB, but ADB cannot see it: USB debugging is off
+STAGE_NO_ADB = "no_adb"                # phone on USB, but the ADB program itself is missing
+STAGE_NO_PERMISSION = "no_permission"  # Linux: ADB sees the phone but may not open it (udev rules)
+STAGE_UNAUTHORIZED = "unauthorized"    # waiting for "Allow USB debugging?" on the phone
+STAGE_OFFLINE = "offline"              # ADB sees the phone but it does not answer
+STAGE_READY = "ready"
+
+
+def _default_stage(connected, authorized, usb_debugging):
+    if connected and authorized:
+        return STAGE_READY
+    if connected:
+        return STAGE_UNAUTHORIZED if usb_debugging else STAGE_USB_ONLY
+    return STAGE_UNPLUGGED
 
 
 ANDROID_USB_VIDS = {
@@ -144,13 +165,96 @@ NON_PHONE_PERIPHERAL_KEYWORDS = [
 ]
 
 
+def _android_usb_entry(vid: str, name: str, serial: str = "", instance_id: str = ""):
+    """The detection entry for one USB device, or None when it is not an Android phone."""
+    vid = (vid or "").lower()
+    name_lower = (name or "").lower()
+    # Exclude known PC peripherals, Bluetooth adapters, sound cards, etc.
+    if any(kw in name_lower for kw in NON_PHONE_PERIPHERAL_KEYWORDS):
+        return None
+    vendor = ANDROID_USB_VIDS.get(vid, "")
+    is_phone_name = any(
+        k in name_lower
+        for k in ["android", "pixel", "phone", "mobile", "mtp", "galaxy", "oneplus", "xiaomi", "redmi", "poco"]
+    )
+    if not (vendor or is_phone_name):
+        return None
+    return {
+        "name": name or (f"{vendor} Device" if vendor else "Android Device"),
+        "vendor": vendor,
+        "serial": serial,
+        "instance_id": instance_id,
+    }
+
+
+def parse_linux_usb_devices(sys_root: str = "/sys/bus/usb/devices") -> list[dict]:
+    """Android phones among the USB devices Linux lists in sysfs (no permissions needed)."""
+    def read(path: Path) -> str:
+        try:
+            return path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            return ""
+
+    matches = []
+    root = Path(sys_root)
+    try:
+        entries = sorted(root.iterdir())
+    except OSError:
+        return []
+    for dev in entries:
+        vid = read(dev / "idVendor")
+        if not vid or ":" in dev.name:  # interfaces ("1-2:1.0") have no idVendor of their own
+            continue
+        if read(dev / "bDeviceClass") == "09":  # USB hub
+            continue
+        name = " ".join(x for x in (read(dev / "manufacturer"), read(dev / "product")) if x)
+        entry = _android_usb_entry(vid, name, read(dev / "serial"), dev.name)
+        if entry:
+            matches.append(entry)
+    return matches
+
+
+def parse_macos_ioreg(text: str) -> list[dict]:
+    """Android phones in the output of `ioreg -p IOUSB -l -w0`."""
+    matches = []
+    blocks = re.split(r"\n(?=[ |]*\+-o )", "\n" + (text or ""))
+    for block in blocks:
+        m = re.search(r'"idVendor" = (\d+)', block)
+        if not m:
+            continue
+        if re.search(r'"bDeviceClass" = 9\b', block):  # USB hub
+            continue
+        vid = format(int(m.group(1)), "04x")
+
+        def prop(key):
+            pm = re.search(r'"' + re.escape(key) + r'" = "([^"]*)"', block)
+            return pm.group(1) if pm else ""
+
+        # Older macOS: "USB Vendor Name"; newer: "kUSBVendorString" (same for product / serial)
+        vendor_name = prop("USB Vendor Name") or prop("kUSBVendorString")
+        product_name = prop("USB Product Name") or prop("kUSBProductString")
+        name = " ".join(x for x in (vendor_name, product_name) if x)
+        entry = _android_usb_entry(vid, name, prop("USB Serial Number") or prop("kUSBSerialNumberString"))
+        if entry:
+            matches.append(entry)
+    return matches
+
+
 def detect_usb_android_hardware() -> list[dict]:
     """
-    Directly queries Windows PnP hardware via cfgmgr32 to detect if an Android device
-    is physically connected over USB, even if USB debugging / ADB is currently disabled.
+    Detects an Android phone physically connected over USB, even while USB debugging / ADB is
+    turned off: Windows PnP (cfgmgr32), Linux sysfs or macOS ioreg. No extra tools needed.
     Excludes internal PC components (Bluetooth, Wi-Fi, audio) and USB peripherals.
-    Execution time: <2 ms.
     """
+    if sys.platform.startswith("linux"):
+        return parse_linux_usb_devices()
+    if sys.platform == "darwin":
+        try:
+            res = subprocess.run(["ioreg", "-p", "IOUSB", "-l", "-w0"], capture_output=True,
+                                 text=True, timeout=3, check=False)
+            return parse_macos_ioreg(res.stdout) if res.returncode == 0 else []
+        except Exception:
+            return []
     if sys.platform != "win32":
         return []
 
@@ -210,28 +314,11 @@ def detect_usb_android_hardware() -> list[dict]:
                     ):
                         name = prop_buf.value
 
-            name_lower = name.lower()
-            # Exclude known PC peripherals, Bluetooth adapters, sound cards, etc.
-            if any(kw in name_lower for kw in NON_PHONE_PERIPHERAL_KEYWORDS):
-                continue
-
-            vendor = ANDROID_USB_VIDS.get(vid, "")
-            is_phone_name = any(
-                k in name_lower
-                for k in ["android", "pixel", "phone", "mobile", "mtp", "galaxy", "oneplus", "xiaomi", "redmi", "poco"]
-            )
-            is_android = bool(vendor) or is_phone_name
-            if is_android:
-                parts = dev_id.split("\\")
-                serial = parts[2] if len(parts) > 2 and "&" not in parts[2] else ""
-                matches.append(
-                    {
-                        "name": name or (f"{vendor} Device" if vendor else "Android Device"),
-                        "vendor": vendor,
-                        "serial": serial,
-                        "instance_id": dev_id,
-                    }
-                )
+            parts = dev_id.split("\\")
+            serial = parts[2] if len(parts) > 2 and "&" not in parts[2] else ""
+            entry = _android_usb_entry(vid, name, serial, dev_id)
+            if entry:
+                matches.append(entry)
         return matches
     except Exception:
         return []
@@ -240,8 +327,9 @@ def detect_usb_android_hardware() -> list[dict]:
 def check_adb_device(adb_path=None):
     """
     Checks if an Android device is connected and authorized.
-    First checks ADB daemon. If ADB returns no devices, checks physical Windows USB PnP devices.
-    Returns: DeviceStatus(connected, authorized, error_message, device_serial, model, usb_debugging)
+    First checks ADB daemon. If ADB returns no devices, checks the physical USB devices.
+    Returns: DeviceStatus(connected, authorized, error_message, device_serial, model, usb_debugging),
+    with .stage (STAGE_*) saying which setup step the user is on.
     """
     cmd = find_adb_binary(adb_path)
     device_lines = []
@@ -285,7 +373,11 @@ def check_adb_device(adb_path=None):
                         usb_debugging=True,
                     )
                 elif status == "offline":
-                    return DeviceStatus(True, False, "Device is offline or sleeping.", serial, model, usb_debugging=True)
+                    return DeviceStatus(True, False, "Device is offline or sleeping.", serial, model,
+                                        usb_debugging=True, stage=STAGE_OFFLINE)
+                elif status == "no" and "permission" in dev:
+                    return DeviceStatus(True, False, "ADB is not allowed to open the phone (USB permissions).",
+                                        serial, model, usb_debugging=True, stage=STAGE_NO_PERMISSION)
 
     # 2. ADB found no active devices. Check if phone is physically plugged in via Windows USB PnP!
     usb_hw = detect_usb_android_hardware()
@@ -293,8 +385,13 @@ def check_adb_device(adb_path=None):
         first_dev = usb_hw[0]
         dev_name = first_dev.get("name") or first_dev.get("vendor") or "Android Device"
         serial = first_dev.get("serial") or ""
+        vendor = first_dev.get("vendor") or ""
+        if adb_err.startswith("Failed to execute ADB"):
+            msg = f"Phone connected via USB ({dev_name}), but the ADB program is missing."
+            return DeviceStatus(True, False, msg, serial, dev_name, usb_debugging=False,
+                                stage=STAGE_NO_ADB, vendor=vendor)
         msg = f"Phone connected via USB ({dev_name}), but USB Debugging is turned OFF. Please enable Developer Options > USB Debugging."
-        return DeviceStatus(True, False, msg, serial, dev_name, usb_debugging=False)
+        return DeviceStatus(True, False, msg, serial, dev_name, usb_debugging=False, vendor=vendor)
 
     err = adb_err or "No Android device detected. Please connect phone via USB."
     return DeviceStatus(False, False, err, "", "", usb_debugging=True)

@@ -26,6 +26,7 @@ from core.adb import (
     detect_device_oem,
     disable_developer_options,
     discover_whatsapp_accounts,
+    find_adb_binary,
     get_device_storage_info,
     open_url_on_phone,
     restore_chat_to_phone,
@@ -520,6 +521,7 @@ from core.gallery import (
 )
 
 from core.device_inventory import DeviceInventory
+from core.wa_guide import AdbPhone, WaGuide
 
 # Shared USB connection + WhatsApp account inventory. The lambdas resolve this module's names at
 # call time so the ADB functions stay patchable from tests.
@@ -527,6 +529,35 @@ _device_inventory = DeviceInventory(
     check_fn=lambda: check_adb_device(),
     discover_fn=lambda **kwargs: discover_whatsapp_accounts(**kwargs),
 )
+
+# Guided WhatsApp backup setup (reads the phone's screen, can tap for the user; see core/wa_guide.py)
+_wa_guide_output_dir: Dict[str, Optional[str]] = {"path": None}
+
+
+def _wa_guide_phone():
+    snap = _device_inventory.snapshot()
+    if not (snap["connected"] and snap["authorized"] and snap["serial"]):
+        raise RuntimeError("the phone is not connected, or USB debugging is not allowed")
+    return AdbPhone(find_adb_binary(), snap["serial"])
+
+
+def _wa_guide_save_key(hex_key: str) -> bool:
+    """Saves a key read off the phone's screen, like a key sent from the phone's paste page."""
+    ok, _ = validate_hex_key(hex_key)
+    if not ok:
+        return False
+    cfg = load_config()
+    cfg["hex_key"] = hex_key
+    save_config(cfg)
+    if _wa_guide_output_dir["path"]:
+        try:
+            create_key_file(hex_key, Path(_wa_guide_output_dir["path"]).resolve() / "encrypted_backup.key")
+        except Exception:
+            pass
+    return True
+
+
+_wa_guide = WaGuide(_wa_guide_phone, _wa_guide_save_key)
 
 # Output dirs whose gallery frontend copy was refreshed recently (avoids re-scanning assets on every request)
 _frontend_install_checked: Dict[str, float] = {}
@@ -1135,6 +1166,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "/api/heartbeat",
                     "/api/tab-closed",
                     "/api/import/status",
+                    "/api/wa-guide/status",
                     "/api/update/status",
                 )
             ):
@@ -1310,6 +1342,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "connected": snap["connected"],
                     "authorized": snap["authorized"],
                     "usb_debugging": snap["usb_debugging"],
+                    "stage": snap["stage"],
+                    "stage_seconds": snap["stage_seconds"],
+                    "vendor": snap["vendor"],
                     "serial": snap["serial"],
                     "model": snap["model"],
                     "error": snap["error"],
@@ -1368,6 +1403,11 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             resp["authorized"] = storage.get("authorized", storage.get("success", False))
             resp["storage"] = storage
             self._send_json(200, resp)
+            return
+
+        # /api/wa-guide/status (guided WhatsApp backup setup: current phone screen and next step)
+        if path == "/api/wa-guide/status":
+            self._send_json(200, _wa_guide.status())
             return
 
         # /api/key-status (status of 64-digit key and received key from mobile)
@@ -2005,6 +2045,43 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/phone/clear-received-key":
             _latest_received_key = None
             self._send_json(200, {"status": "success"})
+            return
+
+        # /api/wa-guide/* (guided WhatsApp backup setup; see core/wa_guide.py)
+        if path.startswith("/api/wa-guide/"):
+            body = self._read_json_body() or {}
+            action = path.rsplit("/", 1)[-1]
+            try:
+                if action == "start":
+                    _wa_guide_output_dir["path"] = str(self.output_dir)
+                    cfg = load_config()
+                    package = "com.whatsapp.w4b" if cfg.get("selected_app_type") == "whatsapp_business" else "com.whatsapp"
+                    if body.get("package") in ("com.whatsapp", "com.whatsapp.w4b"):
+                        package = body["package"]
+                    self._send_json(200, _wa_guide.start(body.get("mode", "auto"), package))
+                elif action == "choose":
+                    _wa_guide.choose(body.get("choice"))
+                    self._send_json(200, _wa_guide.status())
+                elif action == "mode":
+                    _wa_guide.set_mode(body.get("mode", "guide"))
+                    self._send_json(200, _wa_guide.status())
+                elif action == "allow-low-storage":
+                    _wa_guide.allow_low_storage()
+                    self._send_json(200, _wa_guide.status())
+                elif action == "key-provided":
+                    hex_key = load_config().get("hex_key", "")
+                    if not hex_key:
+                        self._send_json(400, {"status": "error", "message": "No key is saved yet."})
+                        return
+                    _wa_guide.key_provided(mask_key(hex_key))
+                    self._send_json(200, _wa_guide.status())
+                elif action == "stop":
+                    _wa_guide.stop()
+                    self._send_json(200, _wa_guide.status())
+                else:
+                    self._send_json(404, {"status": "error", "message": "Unknown guide action."})
+            except ValueError as e:
+                self._send_json(400, {"status": "error", "message": str(e)})
             return
 
         # /api/phone/open-key-portal (opens http://localhost:PORT/paste-key on phone via adb reverse)

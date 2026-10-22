@@ -381,6 +381,98 @@
     color: #6ee7b7;
 }
 
+/* --- Live connection checklist (phone tab) --- */
+.tut-check {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+
+.tut-check-mark {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.tut-check-title {
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.tut-check-active .tut-check-mark {
+    border-color: #f59e0b;
+    color: #f59e0b;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
+    animation: pulseAmber 1.6s infinite;
+}
+
+.tut-check-active .tut-check-title {
+    color: var(--text-primary);
+}
+
+.tut-check-done .tut-check-mark {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.5);
+    color: var(--accent);
+}
+
+.tut-check-done .tut-check-title {
+    color: var(--text-secondary);
+}
+
+.tut-check-detail {
+    margin-top: 4px;
+}
+
+.tut-check-substeps {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tut-check-detail strong,
+.tut-check-substeps strong {
+    color: var(--text-primary);
+}
+
+.tut-check-hint {
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.tut-check-hint code,
+.tut-check-detail code {
+    background: rgba(255, 255, 255, 0.08);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    color: #6ee7b7;
+    word-break: break-all;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tut-check-active .tut-check-mark { animation: none; }
+}
+
 /* --- Tutorial 2: WhatsApp Key Carousel Layout --- */
 .tut-story-progress {
     display: flex;
@@ -669,4 +761,178 @@
     justify-content: space-between;
     gap: 12px;
     flex-shrink: 0;
+}
+
+/* --- Guided WhatsApp key setup over USB (key tab, wa-guide.js) --- */
+.wag-panel:empty { display: none; }
+
+.wag-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.wag-card.wag-muted { font-size: 12.5px; }
+.wag-card.wag-muted strong { color: var(--text-primary); }
+
+.wag-card.wag-success {
+    border-color: rgba(16, 185, 129, 0.4);
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.wag-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.wag-masked { font-weight: 500; color: var(--text-muted); font-size: 13px; }
+
+.wag-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.wag-links { gap: 18px; }
+
+.wag-btn { font-size: 13px; padding: 8px 16px; }
+.wag-card .action-btn-primary.wag-btn { background: var(--accent); color: #ffffff; font-weight: 600; align-self: flex-start; }
+
+.wag-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: 12.5px;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.wag-link:hover { color: var(--accent-hover); }
+
+.wag-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.wag-head-actions { display: flex; gap: 16px; }
+
+.wag-live {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+
+.wag-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+}
+
+.wag-dot.action {
+    background: #f59e0b;
+    box-shadow: 0 0 10px #f59e0b;
+    animation: pulseAmber 1.2s infinite;
+}
+
+.wag-now {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+.wag-you { color: #f59e0b; }
+
+.wag-warn {
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: var(--text-primary);
+    font-size: 12.5px;
+}
+
+.wag-key-ok {
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 12.5px;
+}
+
+.wag-steps {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 6px 16px;
+}
+
+.wag-step { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-muted); }
+
+.wag-step-mark {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    flex-shrink: 0;
+}
+
+.wag-step-done { color: var(--text-secondary); }
+.wag-step-done .wag-step-mark { background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.5); color: var(--accent); }
+.wag-step-active { color: var(--text-primary); font-weight: 600; }
+.wag-step-active .wag-step-mark { border-color: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.5); }
+
+.wag-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+
+.wag-choice {
+    text-align: left;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    line-height: 1.45;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.wag-choice strong { color: var(--text-primary); font-size: 13.5px; }
+.wag-choice:hover, .wag-choice.selected { border-color: rgba(16, 185, 129, 0.5); background: rgba(16, 185, 129, 0.06); }
+
+.wag-havekey {
+    border-top: 1px solid var(--border-color);
+    padding-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.wag-havekey-title { font-weight: 600; color: var(--text-primary); }
+.wag-havekey-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.wag-key-input { flex: 1; min-width: 220px; padding: 8px 12px; font-size: 12px; }
+.wag-havekey .wag-link { align-self: flex-start; }
+.wag-key-msg { font-size: 12px; min-height: 16px; }
+.wag-err { color: #f87171; }
+
+@media (prefers-reduced-motion: reduce) {
+    .wag-dot.action { animation: none; }
 }

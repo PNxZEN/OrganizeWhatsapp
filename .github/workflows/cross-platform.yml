@@ -64,6 +64,9 @@ jobs:
         working-directory: tests/js
         run: node run_all_tests.js
 
+      - name: Phone detection runs on this OS (no phone attached)
+        run: python -c "from core.adb import detect_usb_android_hardware as d, check_adb_device as c; print(d()); s = c(); print(s.stage); assert s.stage == 'unplugged', s.stage"
+
   # ------------------------------------------------------------------ macOS / Linux release package
   unix-release:
     name: Release package (${{ matrix.os }})
