@@ -18,6 +18,9 @@ sys.path.insert(0, str(ROOT))
 from core import wa_guide  # noqa: E402
 from core.wa_guide import WaGuide, classify, extract_key, nodes_from_fixture, parse_layout  # noqa: E402
 
+# The fake phone draws every screen at once: no need to wait between repeated taps (one test checks the gap)
+wa_guide.REPEAT_GAP_SECS = 0.01
+
 FIXTURE = json.loads((ROOT / "tests" / "fixtures" / "wa_e2e_setup_android16_wa2.26.40.json").read_text(encoding="utf-8"))
 KEY = "0123456789abcdef" * 4  # made up; the fixture never contained the real one
 
@@ -1276,8 +1279,17 @@ class InterruptionTests(unittest.TestCase):
 
     def test_58_a_menu_still_sliding_in_is_tapped_where_it_ends_up(self):
         phone = BusyPhone(e2e_on=False, when={"menu": lambda p: setattr(p, "menu_moves", 2)})
-        self.finish(phone)
-        self.assertEqual(phone.menu_moves, 0)
+        self.finish(phone)  # finish() fails on any tap at a place the menu has left
+
+    def test_58b_a_screen_that_changed_by_itself_is_read_once_more_before_tapping(self):
+        guide = make_guide(BusyPhone())
+        node = parse_layout(to_xml(MENU))[-1]
+        guide._prev_round = ("home", False)  # the menu opened, but not by the guide (the user did)
+        self.assertIn("again", guide._before_touch(BusyPhone(), "menu", ("tap", node), node.center, parse_layout(to_xml(MENU))))
+        guide._prev_round = ("menu", False)  # the second look shows the same menu: go ahead
+        self.assertEqual(guide._before_touch(BusyPhone(), "menu", ("tap", node), node.center, parse_layout(to_xml(MENU))), "")
+        guide._prev_round = ("home", True)   # the guide's own ⋮ tap opened it
+        self.assertEqual(guide._before_touch(BusyPhone(), "menu", ("tap", node), node.center, parse_layout(to_xml(MENU))), "")
 
     def test_59_guide_mode_never_closes_or_reopens_anything(self):
         # (the shade comes down after the guide has read the Chats screen once)
@@ -1333,7 +1345,150 @@ class InterruptionTests(unittest.TestCase):
         self.assertEqual(classify(parse_layout(to_xml(HOME)), "com.whatsapp/com.whatsapp.voipcalling.VoipActivityV2").name, "wa_call")
 
 
+class SectionPhone(FakePhone):
+    """WhatsApp left on another section (Calls, Updates...) of the bottom tab bar."""
+
+    YOU_LABELS = ("Chats", "Updates", "Communities", "Calls", "You")
+    MENU_LABELS = ("Chats", "Updates", "Communities", "Calls")
+
+    def __init__(self, section="Calls", reports_selected=True, no_chats=False, **kw):
+        super().__init__(e2e_on=False, **kw)
+        self.section = section
+        self.reports_selected = reports_selected
+        self.no_chats = no_chats
+        self.tab_taps = []
+
+    @property
+    def labels(self):
+        return self.YOU_LABELS if self.home_style.startswith("you") else self.MENU_LABELS
+
+    def layout(self):
+        items = super().layout()
+        if self.current not in ("home", "you"):
+            return items
+        if self.current == "home":
+            items = tabs_home(labels=self.labels, overflow=not self.home_style.startswith("you"))
+            if self.section != "Chats" or self.no_chats:
+                items = [i for i in items if "conversations" not in i.get("id", "")]  # Calls has no chat list
+        items = copy.deepcopy(items)
+        if self.reports_selected:
+            open_tab = "You" if self.current == "you" else self.section
+            for i in items:
+                if i.get("id", "").endswith("navigation_bar_item"):
+                    i["selected"] = i.get("desc") == open_tab
+        return items
+
+    def tap(self, x, y):
+        if self.current == "home" and y > 2200:
+            label = self.labels[x * len(self.labels) // 1080]
+            self.tab_taps.append(label)
+            if label == "You":
+                self.current = "you"
+            else:
+                self.section = label
+            self.taps.append(("home", "navigation_bar_item"))
+            return True, ""
+        return super().tap(x, y)
+
+
+class ChatsTabTests(unittest.TestCase):
+    """Calls, Updates or Communities open: the guide goes to Chats (bottom left) first."""
+
+    def run_it(self, phone):
+        st, saved, _ = run_guide(phone)
+        self.assertEqual((st["phase"], saved), ("done", [KEY]), st)
+        return phone.tab_taps
+
+    def test_70_menu_version_from_calls(self):
+        phone = SectionPhone(home="calls_tabs")
+        self.assertEqual(self.run_it(phone), ["Chats"])
+        self.assertIn(("home", "menuitem_overflow"), phone.taps)
+        self.assertLess(phone.taps.index(("home", "navigation_bar_item")), phone.taps.index(("home", "menuitem_overflow")))
+
+    def test_71_you_version_from_calls(self):
+        self.assertEqual(self.run_it(SectionPhone(home="you", section="Calls")), ["Chats", "You"])
+
+    def test_72_you_version_from_updates_without_selection_info(self):
+        self.assertEqual(self.run_it(SectionPhone(home="you", section="Updates", reports_selected=False)), ["Chats", "You"])
+
+    def test_73_already_on_chats_goes_straight_on(self):
+        self.assertEqual(self.run_it(SectionPhone(home="you", section="Chats")), ["You"])
+        self.assertEqual(self.run_it(SectionPhone(home="calls_tabs", section="Chats")), [])
+
+    def test_74_an_empty_chat_list_does_not_loop_on_chats(self):
+        taps = self.run_it(SectionPhone(home="you", section="Chats", reports_selected=False, no_chats=True))
+        self.assertEqual(taps, ["Chats", "You"], "one look at Chats, then on to You")
+
+    def test_75_never_taps_chats_on_the_you_page(self):
+        phone = SectionPhone(home="you", section="Calls")
+        phone.current = "you"  # the user opened You (Chats row still below the fold)
+        screen = classify(parse_layout(to_xml(phone.layout())), "com.whatsapp/.home.ui.HomeActivity")
+        self.assertEqual((screen.name, screen.info["on_you_page"], screen.info["chats_tab_selected"]), ("home", True, False))
+        action, _, _ = make_guide(phone)._plan_home(screen, "")
+        self.assertEqual(action, ("scroll", "you_page"), "scrolls to Chats, no tab tap")
+
+
+class SlowScreenTests(unittest.TestCase):
+    def test_76_a_slow_screen_is_never_tapped_twice(self):
+        """The guide reads the screen soon after a tap; a phone slow to show the result gets no second tap."""
+        from unittest import mock
+
+        class SlowPhone(FakePhone):
+            pending = None
+
+            def tap(self, x, y):
+                if self.current == 2:
+                    self.taps.append((2, "settings_chat"))
+                    self.pending = time.time() + 0.6  # Chats opens 0.6 s later
+                    return True, ""
+                return super().tap(x, y)
+
+            def dump(self):
+                if self.pending and time.time() >= self.pending:
+                    self.pending, self.current = None, "chats"
+                return super().dump()
+
+        phone = SlowPhone(e2e_on=False)
+        with mock.patch.object(wa_guide, "REPEAT_GAP_SECS", 2.0):
+            st, saved, _ = run_guide(phone, timeout=15)
+        self.assertEqual(st["phase"], "done", st)
+        self.assertEqual(phone.taps.count((2, "settings_chat")), 1)
+
+
 class AdbPhoneCommandTests(unittest.TestCase):
+    def test_41_one_adb_call_per_round_and_per_tap(self):
+        from unittest import mock
+        calls = []
+        snapshot_out = ("@@lock\n  mDreamingLockscreen=false\n    isKeyguardShowing=false\n"
+                        "@@power\n  mWakefulness=Awake\n  mLastUserActivityTime=4242 (1s ago)\n"
+                        "@@call\n  mCallState=0\n  mCallState=0\n"
+                        "@@top\n  topResumedActivity=ActivityRecord{1 u0 com.whatsapp/.home.ui.HomeActivity t3}\n@@end\n")
+        windows = ("  Window #3 Window{a u0 NotificationShade}:\n    package=com.android.systemui\n    mViewVisibility=0x0\n"
+                   "      Frames: frame=[0,0][1080,2400]\n  Window #2 Window{b u0 com.whatsapp/.home.ui.HomeActivity}:\n"
+                   "    package=com.whatsapp\n")
+
+        def fake_run(cmd, capture_output, timeout):
+            calls.append(cmd)
+            out = snapshot_out
+            if "@@win" in cmd[-1]:
+                out = ("@@power\n  mLastUserActivityTime=4243\n@@top\n  topResumedActivity=ActivityRecord{1 u0 com.whatsapp/.home.ui.HomeActivity t3}\n"
+                       "@@win\n" + windows + "@@end\n")
+            elif "@@top" in cmd[-1] and "@@lock" not in cmd[-1]:
+                out = "@@power\n  mLastUserActivityTime=4243\n@@top\n@@end\n"
+            return mock.Mock(returncode=0, stdout=out.encode(), stderr=b"")
+
+        phone = wa_guide.AdbPhone("adb", "SER")
+        with mock.patch.object(wa_guide.subprocess, "run", side_effect=fake_run):
+            snap = phone.snapshot()
+            near_top = phone.pre_touch(1020, 200, True)
+            lower = phone.pre_touch(540, 1500, False)
+        self.assertEqual(snap, {"lock": "unlocked", "activity": 4242, "in_call": False,
+                                "foreground": "com.whatsapp/.home.ui.HomeActivity"})
+        self.assertEqual((near_top["activity"], near_top["cover"]), (4243, "NotificationShade"))
+        self.assertEqual(lower["cover"], "", "no window list for spots below the banner area")
+        self.assertEqual(len(calls), 3, "one adb call each")
+        self.assertNotIn("dumpsys window windows", calls[2][-1])
+        self.assertIsNone(wa_guide.parse_snapshot("@@lock\n"), "a cut-short answer is not trusted")
     """The exact adb calls (no phone needed): the layout stays off the phone's storage."""
 
     def test_40_commands(self):

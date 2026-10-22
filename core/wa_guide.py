@@ -32,7 +32,9 @@ UNKNOWN_FALLBACK_SECS = 20.0         # unrecognised screen this long -> manual s
 IDLE_STOP_SECS = 90.0                # nobody polls the status (guide closed) -> stop
 MAX_SESSION_SECS = 30 * 60
 SAME_ACTION_LIMIT = 3                # the same tap on the same screen without effect -> stop tapping
-SETTLE_SECS = 1.2                    # after a tap, let the phone draw the next screen
+SETTLE_SECS = 0.5                    # after a tap, let the phone draw the next screen (the screen read
+                                     # itself also waits until the phone is idle)
+REPEAT_GAP_SECS = 2.0                # the same input again on an unchanged screen: not sooner than this
 BACKUP_WATCH_SECS = 10 * 60          # after "Create": wait this long for the backup file or an error
 UNKNOWN_RECOVER_SECS = 2.5           # a WhatsApp screen that is not part of the setup (a chat, Status...)
 # Interruptions (notifications, the user's own touches, calls, other apps)
@@ -376,8 +378,12 @@ def classify(nodes: List[Node], foreground: str = "") -> Screen:
         overflow = find(nodes, "menuitem_overflow") or find_label(nodes, "More options")
         if overflow and overflow.bounds[1] > 0.3 * screen_size(nodes)[1]:
             overflow = None  # ⋮ is in the top bar
+        # The bottom-left tab is Chats (the chat list); not when it is the You tab (right-to-left layouts)
+        chats_tab = tabs[0] if tabs and tabs[0] is not you_tab and not is_you_tab(nodes, tabs[0]) else None
         return Screen("home", None, "Settings", {
             "you_tab": you_tab,
+            "chats_tab": chats_tab,
+            "chats_tab_selected": tab_selected(nodes, chats_tab) if chats_tab else None,
             "on_you_page": tab_selected(nodes, you_tab) if you_tab else False,
             "chat_rows": any(CHAT_LIST_ID.search(n.rid) for n in wa_nodes if n.rid),
             # A plainly named Settings item (used only right after opening ⋮; never inside a chat row)
@@ -521,6 +527,38 @@ def covering_window(text: str, x: int, y: int, packages=WA_PACKAGES) -> str:
     return ""
 
 
+# One adb round trip per loop instead of four (each costs ~0.1-0.5 s on a phone)
+SNAPSHOT_CMD = ("echo @@lock; dumpsys window | grep -iE 'keyguard|lockscreen'; "
+                "echo @@power; dumpsys power | grep -E 'mWakefulness=|Display Power|mLastUserActivityTime'; "
+                "echo @@call; dumpsys telephony.registry | grep mCallState; "
+                "echo @@top; dumpsys activity activities | grep -E 'ResumedActivity'; echo @@end")
+WINDOWS_GREP = ("dumpsys window windows | grep -E "
+                "'Window #|package=|mViewVisibility|frame=|mFrame=|isVisible=|isOnScreen=|NOT_TOUCHABLE'")
+
+
+def _sections(text: str) -> Dict[str, str]:
+    out, name = {}, None
+    for line in (text or "").splitlines():
+        m = re.match(r"^@@(\w+)\s*$", line.strip())
+        if m:
+            name = m.group(1)
+            out[name] = ""
+        elif name:
+            out[name] += line + "\n"
+    return out
+
+
+def parse_snapshot(text: str) -> Optional[dict]:
+    """Lock state, last touch, call state and foreground app from SNAPSHOT_CMD; None if cut short."""
+    sec = _sections(text)
+    if "end" not in sec:
+        return None
+    return {"lock": parse_lock_state(sec.get("lock", ""), sec.get("power", "")),
+            "activity": parse_user_activity(sec.get("power", "")),
+            "in_call": parse_in_call(sec.get("call", "")),
+            "foreground": parse_foreground(sec.get("top", ""))}
+
+
 def parse_backup_stats(text: str):
     """(newest modification time, its size) from lines of `stat -c '%Y %s'`, or None."""
     best = None
@@ -562,6 +600,23 @@ class AdbPhone:
         _, power = self._run("shell", "dumpsys power | grep -E 'mWakefulness=|Display Power'", timeout=10)
         return parse_lock_state(window, power)
 
+    def snapshot(self) -> Optional[dict]:
+        _, out = self._run("shell", SNAPSHOT_CMD, timeout=20)
+        return parse_snapshot(out)
+
+    def pre_touch(self, x: int, y: int, check_cover: bool) -> Optional[dict]:
+        """Right before a tap: last touch, foreground app and (near the top) what covers (x, y)."""
+        cmd = ("echo @@power; dumpsys power | grep -m1 mLastUserActivityTime; "
+               "echo @@top; dumpsys activity activities | grep -E 'ResumedActivity'; ")
+        if check_cover:
+            cmd += "echo @@win; " + WINDOWS_GREP + "; "
+        _, out = self._run("shell", cmd + "echo @@end", timeout=15)
+        sec = _sections(out)
+        if "end" not in sec:
+            return None
+        return {"activity": parse_user_activity(sec.get("power", "")), "foreground": parse_foreground(sec.get("top", "")),
+                "cover": covering_window(sec.get("win", ""), x, y) if check_cover else ""}
+
     def user_activity(self) -> Optional[int]:
         _, out = self._run("shell", "dumpsys power | grep -m1 mLastUserActivityTime", timeout=10)
         return parse_user_activity(out)
@@ -571,9 +626,7 @@ class AdbPhone:
         return parse_in_call(out)
 
     def covered_at(self, x: int, y: int) -> str:
-        _, out = self._run("shell", "dumpsys window windows | grep -E "
-                                    "'Window #|package=|mViewVisibility|frame=|mFrame=|isVisible=|isOnScreen=|NOT_TOUCHABLE'",
-                           timeout=10)
+        _, out = self._run("shell", WINDOWS_GREP, timeout=10)
         return covering_window(out, x, y)
 
     def collapse_panels(self):
@@ -692,12 +745,16 @@ class WaGuide:
         self._last_poll = now
         self._unknown_since = None
         self._last_action = None
+        self._last_action_at = 0.0
+        self._last_looks = None
         self._same_action = 0
         self._scrolls = {}
         self._you_version = False      # newer WhatsApp: Settings is the bottom-right "You" tab
         self._you_tapped = False
         self._you_taps = 0
         self._you_scrolls = 0
+        self._chats_taps = 0
+        self._on_chats = False         # the guide tapped the Chats tab (and not You since)
         self._menu_taps = 0
         self._menu_failed = False
         self._menu_unrecognised = 0
@@ -711,6 +768,7 @@ class WaGuide:
         self._retry = False
         # Interruptions
         self._foreground = ""
+        self._prev_round = (None, True)  # (screen, whether the guide acted on it); opening WhatsApp counts
         self._activity_base = None     # the phone's "last touched" time, as left by the guide's own input
         self._expect_activity = True   # the guide just touched / opened something: take the new time as its own
         self._last_foreign_touch = None
@@ -780,7 +838,7 @@ class WaGuide:
         if mode == "auto":
             self._last_action, self._same_action = None, 0
             self._scrolls, self._recoveries, self._backs = {}, 0, 0
-            self._you_taps = self._you_scrolls = self._menu_taps = 0
+            self._you_taps = self._you_scrolls = self._menu_taps = self._chats_taps = 0
             self._you_tapped = self._menu_failed = self._handed_over = False
             self._menu_unrecognised = 0
             self._unknown_since = None
@@ -891,27 +949,30 @@ class WaGuide:
         while not self._stop.is_set():
             if self._timed_out():
                 return
-            if phone.lock_state() in ("asleep", "locked"):  # locked half-way: wait, then carry on
+            st = self._state
+            watching = st["mode"] == "auto" and not (st["created"] and not self._retry)
+            snap = self._snapshot(phone, watching)
+            if snap["lock"] in ("asleep", "locked"):  # locked half-way: wait, then carry on
                 if not self._wait_unlocked(phone):
                     return
                 self._set(phase="running")
+                continue
             now = self._clock()
-            st = self._state
-            watching = st["mode"] == "auto" and not (st["created"] and not self._retry)
             if watching:
-                self._track_touches(phone, now)
-                if self._call(phone, "in_call", False):
+                self._track_touches(snap["activity"], now)
+                if snap["in_call"]:
                     self._paused_for = "call"
                     self._set(phase="paused", instruction="Paused during your phone call. The app continues when the call ends.")
                     self._sleep(1.0)
                     continue
-            foreground = phone.foreground()
+            foreground = snap["foreground"] if snap["foreground"] is not None else phone.foreground()
             self._foreground = foreground
             nodes = parse_layout(phone.dump())
             screen = classify(nodes, foreground)
             acted = self._handle(phone, screen, nodes, now)
             if acted:
                 self._expect_activity = True
+            self._prev_round = (screen.name, bool(acted))
             if screen.name not in INTERRUPTION_SCREENS and screen.name != "other_app":
                 self._prev_screen = screen.name
             if self._state["phase"] == "done":
@@ -931,9 +992,17 @@ class WaGuide:
         except Exception:
             return default
 
-    def _track_touches(self, phone, now):
+    def _snapshot(self, phone, watching) -> dict:
+        """Lock state, last touch, call state and foreground app: one adb call when the phone object can."""
+        snap = self._call(phone, "snapshot", None)
+        if snap:
+            return snap
+        return {"lock": phone.lock_state(), "foreground": None,
+                "activity": self._call(phone, "user_activity", None) if watching else None,
+                "in_call": bool(self._call(phone, "in_call", False)) if watching else False}
+
+    def _track_touches(self, act, now):
         """Notices the user touching the phone: its "last touched" time moved without the guide's input."""
-        act = self._call(phone, "user_activity", None)
         if act is None:
             return
         if self._expect_activity or self._activity_base is None:
@@ -1003,33 +1072,37 @@ class WaGuide:
                                               "or press Continue here, and the app carries on where it was.")
         return "wait"
 
-    def _before_touch(self, phone, name, action, point) -> str:
+    def _before_touch(self, phone, name, action, point, nodes) -> str:
         """
-        Right before a tap or swipe: the screen still shows the same thing at the same place,
-        nothing (a notification banner, another app's bubble) is over that spot, and the user is not
-        touching the phone. Returns why the guide waits, or "" to go ahead.
+        Right before a tap or swipe: the screen did not just change by itself (still settling), the
+        same app is in front, nothing (a notification banner) is over that spot near the top, and
+        nobody is touching the phone. One light adb call; returns why the guide waits, or "" to go ahead.
         """
         now = self._clock()
-        act = self._call(phone, "user_activity", None)
+        prev_name, prev_acted = self._prev_round
+        if prev_name is not None and prev_name != name and not prev_acted:
+            # Not the guide's doing (the user, a notification, an animation): look once more first
+            return "Reading the phone\u2019s screen again\u2026"
+        h = screen_size(nodes)[1]
+        near_top = point[1] < 0.45 * h  # where notification banners drop in
+        info = self._call(phone, "pre_touch", None, point[0], point[1], near_top)
+        if info is None:
+            info = {"activity": self._call(phone, "user_activity", None), "foreground": phone.foreground(),
+                    "cover": self._call(phone, "covered_at", "", *point) if near_top else ""}
+        act = info.get("activity")
         if act is not None and self._activity_base is not None and act != self._activity_base:
             self._activity_base, self._last_foreign_touch = act, now
             return WAITING_FOR_USER
-        foreground = phone.foreground()  # a call screen or another app may have come up meanwhile
-        fresh = parse_layout(phone.dump())
-        if classify(fresh, foreground).name != name:
-            return "Reading the phone’s screen again…"
-        if action[0] == "tap":
-            t = action[1]
-            if not any(n.rid == t.rid and n.bounds == t.bounds and n.text == t.text for n in fresh):
-                return "Reading the phone’s screen again…"  # it moved (scrolled, animating, changed)
-        cover = self._call(phone, "covered_at", "", *point)
+        if info.get("foreground") and self._foreground and info["foreground"] != self._foreground:
+            return "Reading the phone\u2019s screen again\u2026"  # a call screen or another app came up
+        cover = info.get("cover") or ""
         if not cover:
             self._covered_since = None
             return ""
         self._covered_since = self._covered_since or now
         if now - self._covered_since < COVER_WAIT_SECS:
             return "Waiting for the notification on the phone to go away… (you can swipe it away)"
-        if re.search(r"(?i)NotificationShade|StatusBar|HeadsUp", cover) and point[1] > 0.35 * screen_size(fresh)[1]:
+        if re.search(r"(?i)NotificationShade|StatusBar|HeadsUp", cover) and point[1] > 0.35 * h:
             return ""  # a banner that stays only covers the top of the screen
         self._covered_since = None
         self._hand_over(f"Something on the phone’s screen ({cover[:40]}) covers WhatsApp.")
@@ -1279,10 +1352,18 @@ class WaGuide:
         you_tab = info.get("you_tab")
         if you_tab:
             self._you_version = True
+        # In Calls, Updates or Communities (left there, or the user went there): back to Chats first,
+        # where both routes start. Never from the You page itself.
+        chats_tab, chats_open = info.get("chats_tab"), info.get("chats_tab_selected")
+        elsewhere = (chats_open is False and not (you_tab and info.get("on_you_page"))) or (
+            chats_open is None and not info.get("chat_rows") and not self._you_tapped and not self._on_chats)
+        if chats_tab and elsewhere and self._chats_taps < (2 if chats_open is False else 1):
+            return ("tap", chats_tab, "chats_tab"), "Tap Chats (bottom left).", "Chats"
+        if you_tab:
             on_page = info.get("on_you_page")
             if on_page is None:
                 # The phone does not say which tab is open: our own tap, or (the user tapped) no chat list
-                on_page = self._you_tapped or not info.get("chat_rows")
+                on_page = self._you_tapped or (not info.get("chat_rows") and not self._on_chats)
             if not on_page:
                 if self._you_taps < 2:
                     return ("tap", you_tab, "you_tab"), "Tap You (bottom right).", "You"
@@ -1309,13 +1390,17 @@ class WaGuide:
     def _act(self, phone, name, action, nodes):
         kind = action[0]
         w, h = screen_size(nodes)
+        signature = (name, kind, action[1].bounds if kind == "tap" and action[1] else None)
+        looks = hash(tuple((n.rid, n.bounds, n.text) for n in nodes))
+        if (signature == self._last_action and looks == self._last_looks and kind != "relaunch"
+                and self._clock() - self._last_action_at < REPEAT_GAP_SECS):
+            return None  # nothing changed yet: the phone may still be drawing that tap's result; never tap twice
         if kind in ("tap", "scroll"):
             point = action[1].center if kind == "tap" else (w // 2, int(h * 0.72))
-            why = self._before_touch(phone, name, action, point)
+            why = self._before_touch(phone, name, action, point, nodes)
             if why:
                 self._set(instruction=why)
                 return None
-        signature = (name, kind, action[1].bounds if kind == "tap" and action[1] else None)
         if signature == self._last_action:
             self._same_action += 1
         else:
@@ -1323,6 +1408,7 @@ class WaGuide:
         if self._same_action > SAME_ACTION_LIMIT and kind != "relaunch":
             self._set(mode="guide", notice="The app could not move forward on this screen. Please tap it yourself.")
             return None
+        self._last_action_at, self._last_looks = self._clock(), looks
         if kind == "relaunch":
             self._recoveries += 1
             phone.open_fresh(self.package)
@@ -1339,8 +1425,11 @@ class WaGuide:
         elif kind == "tap":
             ok, out = phone.tap(*action[1].center)
             if ok and action[2:] == ("you_tab",):
-                self._you_tapped = True
+                self._you_tapped, self._on_chats = True, False
                 self._you_taps += 1
+            if ok and action[2:] == ("chats_tab",):
+                self._on_chats, self._you_tapped = True, False
+                self._chats_taps += 1
             if ok and action[2:] == ("overflow",):
                 self._menu_taps += 1
             if ok and (name == "create" or (self._retry and name == "backup_settings")):
