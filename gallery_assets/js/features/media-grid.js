@@ -118,7 +118,10 @@ function createMediaCard(item, originalIndex) {
         }
     }
     card.className = cardClasses;
-    
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', item.filename || 'Media file');
+
     card.addEventListener('click', (e) => {
         if (e.ctrlKey || e.metaKey || selectModeActive) {
             if (!selectModeActive) {
@@ -402,6 +405,17 @@ function renderGallery(options = {}) {
             }
             groups[monthGroup].push({ item, index });
         });
+        // Groups are drawn one after another, and "load more" continues from filteredMedia's
+        // order: make each group's items contiguous (undated _unmatched media groups by folder,
+        // which the date sort interleaves), so no card is drawn twice or skipped
+        if (monthOrder.length > 1) {
+            const ordered = monthOrder.flatMap(m => groups[m].map(g => g.item));
+            if (ordered.some((item, i) => item !== filteredMedia[i])) {
+                filteredMedia = ordered;
+                let n = 0;
+                monthOrder.forEach(m => groups[m].forEach(g => { g.index = n++; }));
+            }
+        }
 
         for (let i = 0; i < monthOrder.length && renderedCount < limit; i++) {
             const month = monthOrder[i];

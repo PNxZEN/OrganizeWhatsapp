@@ -11,6 +11,7 @@ import sys
 import tarfile
 import textwrap
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 FAKE_APP_MAIN = textwrap.dedent('''
@@ -117,6 +118,8 @@ class FakeGitHub:
         self.api_headers = {}
         self.slow_download = None    # threading.Event the download waits for before finishing
         self.requests = []
+        self.arrivals = []           # (path, time) of each request, as it arrived
+        self.delays = {}             # path -> seconds to wait before answering
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -125,6 +128,9 @@ class FakeGitHub:
 
             def do_GET(self):
                 outer.requests.append(self.path)
+                outer.arrivals.append((self.path, time.time()))
+                if outer.delays.get(self.path):
+                    time.sleep(outer.delays[self.path])
                 if self.path == f"/repos/{outer.repo}/releases/latest":
                     if outer.api_status != 200:
                         self.send_response(outer.api_status)

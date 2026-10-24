@@ -750,7 +750,9 @@ async function startSyncFlow(skipDb = false) {
             body: JSON.stringify({ skip_db_pull: skipDb })
         });
         const res = await resp.json();
-        if (resp.ok || resp.status === 409) {
+        // 409 "busy": this tab's sync is already running. Another account's tab using the phone,
+        // or this tab holding another account's chats, is said as it is
+        if (resp.ok || (resp.status === 409 && res.status === 'busy')) {
             pollSyncModalStatus();
         } else {
             if (label) label.innerText = 'Sync Failed to Start';
@@ -941,12 +943,14 @@ function pollSyncModalStatus() {
                     }
                     if (title) title.innerText = 'Sync Complete';
                     if (label) label.innerText = 'Synchronization Complete';
-                    if (sub) sub.innerText = st.phase_detail || 'All databases decrypted and media files organized.';
+                    const warnings = Array.isArray(st.warnings) ? st.warnings.filter(Boolean) : [];
+                    if (sub) sub.innerText = warnings.length ? warnings.join('\n\n') : (st.phase_detail || 'All databases decrypted and media files organized.');
+                    if (label && warnings.length) label.innerText = 'Synchronization finished: please read';
                     try { localStorage.setItem('wa_sync_completed_once', 'true'); } catch (e) {}
                     updateSyncButtonUI(st);
                     clearInterval(syncPollingTimer);
                     syncPollingTimer = null;
-                    showToast('Synchronization complete!', 'success');
+                    showToast(warnings.length ? 'Sync finished with a warning' : 'Synchronization complete!', warnings.length ? 'warning' : 'success');
                     reloadChatsList(true);
                     const btnSyncDev = document.getElementById('btnSyncCompleteDisableDev');
                     if (btnSyncDev) {

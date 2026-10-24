@@ -97,7 +97,13 @@ function executeShutdown() {
         localStorage.setItem('wa_server_shutdown_event', Date.now().toString());
     } catch (e) {}
 
-    fetch('/api/shutdown', { method: 'POST' }).catch(() => {});
+    // From the first window this quits the whole app: every account's tab (another account's tab
+    // only stops itself)
+    fetch('/api/shutdown', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all_libraries: true })
+    }).catch(() => {});
     renderShutdownScreen(true);
 }
 

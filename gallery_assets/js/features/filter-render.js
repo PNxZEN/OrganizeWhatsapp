@@ -1,6 +1,23 @@
 /* Core filter + sort pipeline
  * Classic script: shares global scope with the other gallery modules (see gallery_assets/README.md). */
 
+// The gallery's media categories. Stickers, GIFs and voice notes have their own, so they can be
+// shown (and selected, recycled or deleted) on their own: "media_kind" comes from WhatsApp's message
+// type and phone folder (core/organizer.py media_kind); older libraries fall back to file names.
+function mediaCategory(item) {
+    const kind = item.media_kind;
+    const name = (item.filename || item.rel_path || '').split('/').pop().toUpperCase();
+    const mime = (item.mime_type || '').toLowerCase();
+    if (kind === 'sticker' || (!kind && (name.startsWith('STK-') || (name.endsWith('.WEBP') && mime === 'image/webp')))) return 'sticker';
+    if (kind === 'gif' || (!kind && (name.endsWith('.GIF') || mime === 'image/gif'))) return 'gif';
+    if (kind === 'voice' || (!kind && name.startsWith('PTT-'))) return 'voice';
+    if (item.is_doc) return 'doc';
+    if (mime.startsWith('image/')) return 'image';
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('audio/')) return 'audio';
+    return 'doc';
+}
+
 // Core filter and render function
 function filterAndRenderMedia(options = {}) {
     if (!activeChat) return;
@@ -106,21 +123,8 @@ function filterAndRenderMedia(options = {}) {
             }
         }
 
-        // Media Type Filter (Multi-select support)
-        const mime = item.mime_type || '';
-        const isDoc = item.is_doc || false;
-        if (!activeTypes.has('all')) {
-            let matchesAny = false;
-            if (activeTypes.has('image') && !isDoc && mime.startsWith('image/')) matchesAny = true;
-            if (activeTypes.has('video') && mime.startsWith('video/')) matchesAny = true;
-            if (activeTypes.has('audio') && mime.startsWith('audio/')) matchesAny = true;
-            if (activeTypes.has('doc')) {
-                if (isDoc || (!mime.startsWith('image/') && !mime.startsWith('video/') && !mime.startsWith('audio/'))) {
-                    matchesAny = true;
-                }
-            }
-            if (!matchesAny) return false;
-        }
+        // Media Type Filter (Multi-select support): one category per item, see mediaCategory()
+        if (!activeTypes.has('all') && !activeTypes.has(mediaCategory(item))) return false;
 
         // Sender filter
         if (selectedSender && selectedSender !== 'all') {
@@ -214,6 +218,8 @@ function filterAndRenderMedia(options = {}) {
     }
 
     renderGallery({ preserveScroll, targetScrollTop });
+    updateCategoryBulkBar();
+    updateFilterChrome();
     saveAppState();
 }
 
@@ -223,4 +229,81 @@ function formatDuration(sec) {
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
     return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
+
+// Stickers, GIFs or voice notes on their own: offer to select or recycle them all at once
+const BULK_CATEGORY_NAMES = { sticker: ['sticker', 'stickers'], gif: ['GIF', 'GIFs'], voice: ['voice note', 'voice notes'] };
+
+function bulkCategoryShown() {
+    if (activeTypes.size !== 1) return null;
+    const only = Array.from(activeTypes)[0];
+    return BULK_CATEGORY_NAMES[only] ? only : null;
+}
+
+function updateCategoryBulkBar() {
+    const bar = document.getElementById('categoryBulkBar');
+    if (!bar) return;
+    const category = bulkCategoryShown();
+    const n = Array.isArray(filteredMedia) ? filteredMedia.length : 0;
+    if (!category || !n || !activeChat) {
+        bar.style.display = 'none';
+        return;
+    }
+    const [one, many] = BULK_CATEGORY_NAMES[category];
+    document.getElementById('categoryBulkText').innerText = `${n} ${n === 1 ? one : many} in this chat`;
+    bar.style.display = 'flex';
+}
+
+async function recycleShownCategory() {
+    const category = bulkCategoryShown();
+    const paths = (filteredMedia || []).map(m => m.rel_path).filter(Boolean);
+    if (!category || !paths.length) return;
+    const [one, many] = BULK_CATEGORY_NAMES[category];
+    if (!confirm(`Move ${paths.length} ${paths.length === 1 ? one : many} to the Recycle Bin? You can undo this or restore them later.`)) return;
+    await recycleMediaFromGallery(paths);
+}
+
+// The filter pane's own state: how many of each category this chat has, the Sent / Received
+// switch (it drives the hidden #directionFilter), and "Clear filters" while any filter is on
+function updateFilterChrome() {
+    const counts = {};
+    for (const m of (activeChat && activeChat.media) || []) {
+        const c = mediaCategory(m);
+        counts[c] = (counts[c] || 0) + 1;
+    }
+    const total = ((activeChat && activeChat.media) || []).length;
+    document.querySelectorAll('.type-filters .filter-btn').forEach(btn => {
+        const type = btn.getAttribute('data-type');
+        const n = type === 'all' ? total : (counts[type] || 0);
+        const badge = btn.querySelector('.seg-count');
+        if (badge) badge.textContent = n ? (n > 999 ? Math.floor(n / 1000) + 'k' : String(n)) : '';
+        btn.classList.toggle('is-empty', type !== 'all' && !n && !activeTypes.has(type));
+    });
+
+    const direction = document.getElementById('directionFilter');
+    document.querySelectorAll('.seg-mini [data-direction]').forEach(b => {
+        b.classList.toggle('active', !!direction && b.getAttribute('data-direction') === direction.value);
+    });
+
+    const clearBtn = document.getElementById('btnClearFilters');
+    if (clearBtn) clearBtn.style.display = (typeof isAnyFilterActive === 'function' && isAnyFilterActive()) ? '' : 'none';
+}
+
+function clearAllMediaFilters() {
+    document.getElementById('searchFilter').value = '';
+    document.getElementById('senderFilter').value = 'all';
+    document.getElementById('directionFilter').value = 'all';
+    for (const id of ['starredFilter', 'forwardedFilter', 'freqForwardedFilter']) {
+        document.getElementById(id).checked = false;
+    }
+    activeTypes = new Set(['all']);
+    updateTypeFilterButtonsUI();
+    const start = document.getElementById('startDateFilter');
+    const end = document.getElementById('endDateFilter');
+    if (typeof clearDateFilter === 'function' && ((start && start.value) || (end && end.value))) {
+        clearDateFilter();  // re-renders
+    } else {
+        filterAndRenderMedia();
+    }
 }

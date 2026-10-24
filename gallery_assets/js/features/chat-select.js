@@ -26,6 +26,29 @@ function toggleSidebarDrawer(open) {
     document.body.classList.toggle('sidebar-open', want);
 }
 
+// Back to "no chat" (browser Back from a chat): the previous chat's cards must not stay on screen,
+// since actions on them could no longer update the view
+function showNoChatSelected() {
+    filteredMedia = [];
+    renderedCount = 0;
+    const container = document.getElementById('galleryContent');
+    if (container) {
+        const pill = document.getElementById('newMediaPill');
+        container.innerHTML = `
+            <div class="empty-state">
+                <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                <h3>No Chat Selected</h3>
+                <p>Select a chat from the sidebar to view its media files.</p>
+            </div>`;
+        if (pill) container.prepend(pill);
+    }
+    for (const id of ['filterPanel', 'btnZipBackup', 'btnReviewDuplicates']) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    }
+    if (typeof resetSelectionUI === 'function') resetSelectionUI();
+}
+
 async function selectChat(chat, pushHistory = true) {
     _activeChatRequestId++;
     const thisRequestId = _activeChatRequestId;
@@ -47,7 +70,7 @@ async function selectChat(chat, pushHistory = true) {
         const metaEl = document.getElementById('currentChatMeta');
         if (titleEl) titleEl.innerText = 'All WhatsApp Media';
         if (metaEl) metaEl.innerText = 'Select a chat from the sidebar or browse recent files';
-        filterAndRenderMedia();
+        showNoChatSelected();
         return;
     }
 

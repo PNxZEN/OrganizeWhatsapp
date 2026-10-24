@@ -150,10 +150,13 @@ def generate_gallery(
     lid_to_phone=None,
     chat_names=None,
     progress=False,
+    analyze_duplicates=True,
 ):
     """
     Generates gallery_data.js and copies gallery.html to the output folder.
     Guarantees thread-safe atomic writes to gallery_data.js.
+    organized_list is the whole library: anything not in it is gone from the gallery
+    (a sync that only has its own files uses merge_into_gallery instead).
     """
     out_path = Path(output_dir).resolve()
     out_path.mkdir(parents=True, exist_ok=True)
@@ -177,7 +180,7 @@ def generate_gallery(
 
     # Only run quality duplicate detection if not already analyzed in Step 5
     already_analyzed = any(item.get("is_duplicate") or item.get("duplicate_primary") for item in organized_list) if organized_list else False
-    if not already_analyzed:
+    if analyze_duplicates and not already_analyzed:
         try:
             from core.duplicates import detect_quality_duplicates
             detect_quality_duplicates(organized_list, out_path)
@@ -233,6 +236,7 @@ def generate_gallery(
             "phash": item.get("phash"),
             "width": item.get("width"),
             "height": item.get("height"),
+            "media_kind": item.get("media_kind"),
             "chat_jid": jid,
         }
         chats_map[jid]["media"].append(media_item)
@@ -363,6 +367,40 @@ def update_media_index_csv(output_dir, rel_path, preview_path, thumb_path=None):
     return False
 
 
+def merge_into_gallery(items, output_dir, contacts=None, lid_to_phone=None, chat_names=None):
+    """
+    The final pass of a sync: puts this run's items into gallery_data.js (new ones added, ones
+    already there updated, e.g. with duplicate flags found at the end) and keeps the rest of the
+    library. A sync only handles the files it transferred: files already on the PC are skipped,
+    so writing its list alone would drop them from the gallery.
+    """
+    data_path = Path(output_dir) / "gallery_data.js"
+    with gallery_data_lock:
+        merged = {}
+        if data_path.is_file():
+            try:
+                parsed = parse_gallery_data_js(data_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError) as e:
+                parsed = None
+                sys.stderr.write(f"[Gallery] Warning: Could not read gallery_data.js: {e}\n")
+            for chat in (parsed or {}).get("chats", []):
+                for media in chat.get("media", []):
+                    if not media.get("rel_path"):
+                        continue
+                    item = dict(media)
+                    item.setdefault("chat_jid", chat.get("jid"))
+                    item["chat_name"] = chat.get("name")
+                    item["chat_archived"] = chat.get("archived", False)
+                    item["chat_last_active_ts"] = chat.get("last_message_ts") or 0
+                    merged[media["rel_path"]] = item
+        for item in items:
+            if item.get("rel_path"):
+                merged[item["rel_path"]] = item
+        generate_gallery(list(merged.values()), output_dir, contacts=contacts, lid_to_phone=lid_to_phone,
+                         chat_names=chat_names, analyze_duplicates=False)
+        return len(merged)
+
+
 def update_gallery_data_live(new_organized, output_dir, contacts=None, lid_to_phone=None, chat_names=None):
     """
     Merges newly organized items into gallery_data.js during live-sync.
@@ -452,6 +490,7 @@ def update_gallery_data_live(new_organized, output_dir, contacts=None, lid_to_ph
                 "phash": item.get("phash"),
                 "width": item.get("width"),
                 "height": item.get("height"),
+                "media_kind": item.get("media_kind"),
                 "chat_jid": jid,
             }
 

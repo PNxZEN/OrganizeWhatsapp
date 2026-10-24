@@ -117,5 +117,97 @@ class PlatformToolsTests(unittest.TestCase):
         self.assertEqual(unmet_requirements(old, new, installed_version=installed), [])
 
 
+@unittest.skipIf(sys.platform == "win32", "the Windows ZIP bundles its tools")
+class AfterUpdateSetupTests(unittest.TestCase):
+    """An in-app update starts the new version directly, not through start_gallery.sh: the server installs what changed."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="wa_after_update_"))
+        (self.tmp / "core").mkdir()
+        (self.tmp / "requirements.txt").write_text("pillow>=10\n-r core/requirements-optional.txt\n")
+        (self.tmp / "core" / "requirements-optional.txt").write_text("imageio-ffmpeg>=0.5.1\n")
+        self.venv = self.tmp / "venv"
+        self.venv.mkdir()
+        self.calls, self.installed, self.logs = [], [], []
+        self.adb = None
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def setup(self, pip_code=0, adb_url="https://dl.google.com/x.zip", install_fails=False):
+        def run(cmd, **kw):
+            self.calls.append(cmd)
+            return types.SimpleNamespace(returncode=pip_code, stdout="", stderr="ERROR: no internet")
+
+        def install():
+            if install_fails:
+                raise RuntimeError("offline")
+            self.installed.append(True)
+
+        return platform_tools.AfterUpdateSetup(self.tmp, venv=self.venv, python="/venv/bin/python", run=run,
+                                               install=install, adb_finder=lambda: self.adb, adb_url=adb_url,
+                                               log=self.logs.append)
+
+    def stamp(self, text=None):
+        path = self.venv / platform_tools.REQUIREMENTS_STAMP
+        if text is not None:
+            path.write_text(text)
+        return path.read_text() if path.exists() else None
+
+    def test_01_checksum_matches_the_launch_scripts(self):
+        data = (self.tmp / "requirements.txt").read_bytes() + (self.tmp / "core" / "requirements-optional.txt").read_bytes()
+        if shutil.which("cksum"):
+            import subprocess
+            real = subprocess.run(["cksum"], input=data, capture_output=True).stdout.decode().split()
+            self.assertEqual(platform_tools.requirements_checksum(self.tmp), " ".join(real[:2]))
+        self.assertEqual(platform_tools.posix_cksum(b""), "4294967295 0")
+
+    def test_02_nothing_happens_when_the_requirements_are_unchanged(self):
+        # install.sh writes the stamp with a newline (`cksum > file`); start_gallery.sh without
+        self.stamp(platform_tools.requirements_checksum(self.tmp) + "\n")
+        setup = self.setup()
+        self.assertFalse(setup.start())
+        self.assertEqual((self.calls, self.installed, setup.snapshot()["state"]), ([], [], ""))
+
+    def test_03_first_start_after_an_update_installs_dependencies_and_adb(self):
+        self.stamp("123 45")  # the previous version's requirements
+        setup = self.setup()
+        self.assertTrue(setup.needed())
+        setup.run()
+        self.assertEqual(self.calls[0][:4], ["/venv/bin/python", "-m", "pip", "install"])
+        self.assertIn(str(self.tmp / "requirements.txt"), self.calls[0])
+        self.assertEqual(self.stamp(), platform_tools.requirements_checksum(self.tmp))
+        self.assertEqual(self.installed, [True])
+        self.assertEqual(setup.snapshot(), {"state": "done", "step": "", "error": ""})
+        self.assertFalse(setup.needed(), "the launch scripts will not reinstall either")
+
+    def test_04_adb_already_there_is_not_downloaded_again(self):
+        self.adb = "/usr/bin/adb"
+        setup = self.setup()
+        setup.run()
+        self.assertEqual(self.installed, [])
+
+    def test_05_failures_are_reported_and_retried_next_start(self):
+        setup = self.setup(pip_code=1, install_fails=True)
+        setup.run()
+        st = setup.snapshot()
+        self.assertEqual(st["state"], "failed")
+        self.assertIn("dependencies could not be installed", st["error"])
+        self.assertIn("ADB could not be downloaded", st["error"])
+        self.assertIn("./install.sh", st["error"])
+        self.assertIsNone(self.stamp(), "no stamp: the next start tries again")
+
+    def test_06_only_inside_the_apps_own_venv(self):
+        self.assertIsNone(platform_tools.app_venv(self.tmp, prefix="/usr"))
+        self.assertEqual(platform_tools.app_venv(self.tmp, prefix=str(self.venv)), self.venv)
+        setup = platform_tools.AfterUpdateSetup(self.tmp, venv=None)
+        self.assertFalse(setup.needed())
+
+    def test_07_server_reports_it(self):
+        import core.server as srv
+        self.assertIn("tools_setup", srv._after_update_setup.snapshot() | {"tools_setup": 1})
+        src = (ROOT / "core" / "server.py").read_text(encoding="utf-8")
+        self.assertIn('"tools_setup": _after_update_setup.snapshot()', src)
+        self.assertIn("_after_update_setup.start()", src)
+
+
 if __name__ == "__main__":
     unittest.main()

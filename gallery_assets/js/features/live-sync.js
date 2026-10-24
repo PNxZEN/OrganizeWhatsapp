@@ -60,7 +60,7 @@ async function checkSyncStatus() {
                 ? ` - <strong>${status.synced_files.toLocaleString()}</strong> / <strong>${status.total_files.toLocaleString()}</strong> files (${status.progress_percent || 0}%)`
                 : '';
             document.getElementById('syncBannerText').innerHTML =
-                `<strong>Syncing:</strong> ${phaseText}${countText}`;
+                `<strong>Syncing:</strong> ${escapeHtml(phaseText)}${countText}`;  // phone file names: never HTML
 
             const spinner = document.getElementById('syncSpinner');
             if (spinner) spinner.style.display = 'block';

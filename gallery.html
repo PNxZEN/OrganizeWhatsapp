@@ -41,6 +41,8 @@
                 <svg class="icon brand-icon" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.896-11.891 3.181.001 6.167 1.24 8.413 3.488 2.248 2.248 3.483 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.993-.001-3.951-.5-5.688-1.448l-6.308 1.654zm6.59-4.846c1.62.963 3.223 1.472 4.881 1.473 5.485.002 9.948-4.461 9.95-9.95.002-2.66-1.033-5.159-2.908-7.038C16.7 1.762 14.202.727 11.536.727c-5.488 0-9.952 4.461-9.955 9.95-.001 1.724.461 3.407 1.34 4.896l-.999 3.65 3.735-.979zm12.355-6.685c-.328-.164-1.942-.958-2.242-1.069-.3-.109-.519-.164-.738.164-.219.328-.848 1.069-1.039 1.288-.19.22-.382.246-.71.082-.328-.164-1.386-.511-2.64-1.63-1.01-.9-1.69-2.013-1.89-2.342-.2-.328-.022-.507.142-.671.148-.148.328-.383.493-.574.164-.19.219-.328.328-.547.11-.219.055-.411-.027-.574-.082-.164-.738-1.777-1.012-2.441-.269-.648-.544-.56-.738-.57-.19-.01-.41-.012-.629-.012s-.574.082-.875.411c-.3.328-1.147 1.12-1.147 2.73s1.175 3.167 1.339 3.386c.164.22 2.313 3.532 5.603 4.954.783.337 1.393.539 1.869.69.787.25 1.5.214 2.064.13.629-.094 1.942-.793 2.215-1.559.273-.766.273-1.422.191-1.559-.082-.137-.3-.22-.628-.383z"/></svg>
                 <span class="brand-name">WhatsApp Organizer</span>
             </div>
+            <!-- Which account this tab shows (each account opens in its own tab) -->
+            <button type="button" class="library-chip" id="libraryChip" style="display:none;" onclick="openAccountSelectorModal()"></button>
             <button class="status-pill" id="deviceStatusPill" onclick="openDeviceModal()">
                 <span class="status-dot dot-none" id="deviceDot"></span>
                 <span id="deviceText">Checking device...</span>
@@ -220,148 +222,186 @@
 
         <!-- Filter Panel -->
         <div class="filter-panel" id="filterPanel" style="display:none;">
-            <div class="filter-row">
-                <!-- Search -->
+            <!-- 1. Search, sort and dates -->
+            <div class="filter-row filter-row-top">
                 <div class="search-wrapper">
                     <svg class="search-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-                    <input type="text" class="search-input" id="searchFilter" placeholder="Search media by date, month, sender, or name...">
+                    <input type="text" class="search-input" id="searchFilter" placeholder="Search by name, sender, date or month..." aria-label="Search media">
                 </div>
+                <div class="filter-top-controls">
+                    <button type="button" class="clear-filters-btn" id="btnClearFilters" style="display:none;" onclick="clearAllMediaFilters()">Clear filters</button>
+                    <label class="select-chip" title="Sort order">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>
+                        <select class="filter-select" id="sortFilter" aria-label="Sort">
+                            <option value="newest">Newest first</option>
+                            <option value="oldest">Oldest first</option>
+                            <option value="largest">Largest first</option>
+                            <option value="smallest">Smallest first</option>
+                        </select>
+                    </label>
+                    <!-- Interactive Date Filter -->
+                    <div class="date-picker-interactive" id="datePickerInteractive">
+                        <button type="button" class="date-filter-btn" id="dateFilterBtn" title="Filter media by date range">
+                            <svg class="icon" viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: currentColor;"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg>
+                            <span id="dateFilterLabel">All Dates</span>
+                            <span id="dateFilterClear" class="date-filter-clear" style="display: none;" title="Clear date filter">&times;</span>
+                        </button>
 
-                <!-- Media Type Filters -->
-                <div class="type-filters">
-                    <button class="filter-btn active" data-type="all">All</button>
-                    <button class="filter-btn" data-type="image">Images</button>
-                    <button class="filter-btn" data-type="video">Videos</button>
-                    <button class="filter-btn" data-type="audio">Audio</button>
-                    <button class="filter-btn" data-type="doc">Documents</button>
-                </div>
-            </div>
+                        <!-- Hidden native inputs for system compatibility -->
+                        <input type="hidden" id="startDateFilter">
+                        <input type="hidden" id="endDateFilter">
 
-            <div class="filter-row">
-                <!-- Senders -->
-                <select class="filter-select" id="senderFilter">
-                    <option value="all">All Senders</option>
-                </select>
-
-                <!-- Sort By -->
-                <select class="filter-select" id="sortFilter">
-                    <option value="newest">Sort: Newest First</option>
-                    <option value="oldest">Sort: Oldest First</option>
-                    <option value="largest">Sort: Largest First</option>
-                    <option value="smallest">Sort: Smallest First</option>
-                </select>
-
-                <!-- Interactive Date Filter -->
-                <div class="date-picker-interactive" id="datePickerInteractive">
-                    <button type="button" class="date-filter-btn" id="dateFilterBtn" title="Filter media by date range">
-                        <svg class="icon" viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: currentColor;"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg>
-                        <span id="dateFilterLabel">All Dates</span>
-                        <span id="dateFilterClear" class="date-filter-clear" style="display: none;" title="Clear date filter">&times;</span>
-                    </button>
-
-                    <!-- Hidden native inputs for system compatibility -->
-                    <input type="hidden" id="startDateFilter">
-                    <input type="hidden" id="endDateFilter">
-
-                    <!-- Popover Dropdown -->
-                    <div class="calendar-popover" id="calendarPopover" style="display: none;">
-                        <!-- View 1: Month Grid View -->
-                        <div id="calViewMonthGrid" class="cal-view">
-                            <div class="cal-header">
-                                <button type="button" class="cal-nav-btn" id="calPrevMonth" title="Previous month">&#x25C0;</button>
-                                <div class="cal-title-group">
-                                    <button type="button" class="cal-title-pill" id="calMonthTitle" title="Click to open Month Slider">
-                                        <span id="calMonthText">January</span> &#x25BE;
-                                    </button>
-                                    <button type="button" class="cal-title-pill" id="calYearTitle" title="Click to open Year Slider">
-                                        <span id="calYearText">2024</span> &#x25BE;
-                                    </button>
+                        <!-- Popover Dropdown -->
+                        <div class="calendar-popover" id="calendarPopover" style="display: none;">
+                            <!-- View 1: Month Grid View -->
+                            <div id="calViewMonthGrid" class="cal-view">
+                                <div class="cal-header">
+                                    <button type="button" class="cal-nav-btn" id="calPrevMonth" title="Previous month">&#x25C0;</button>
+                                    <div class="cal-title-group">
+                                        <button type="button" class="cal-title-pill" id="calMonthTitle" title="Click to open Month Slider">
+                                            <span id="calMonthText">January</span> &#x25BE;
+                                        </button>
+                                        <button type="button" class="cal-title-pill" id="calYearTitle" title="Click to open Year Slider">
+                                            <span id="calYearText">2024</span> &#x25BE;
+                                        </button>
+                                    </div>
+                                    <button type="button" class="cal-nav-btn" id="calNextMonth" title="Next month">&#x25B6;</button>
                                 </div>
-                                <button type="button" class="cal-nav-btn" id="calNextMonth" title="Next month">&#x25B6;</button>
-                            </div>
 
-                            <div class="cal-day-names">
-                                <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
-                            </div>
+                                <div class="cal-day-names">
+                                    <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
+                                </div>
 
-                            <div class="cal-days-grid" id="calDaysGrid">
-                                <!-- Dynamically generated day buttons -->
-                            </div>
+                                <div class="cal-days-grid" id="calDaysGrid">
+                                    <!-- Dynamically generated day buttons -->
+                                </div>
 
-                            <div class="cal-footer">
-                                <button type="button" class="cal-footer-btn" id="calClearBtn">Clear</button>
-                                <div style="display: flex; gap: 6px;">
-                                    <button type="button" class="cal-footer-btn" id="calThisMonthBtn">This Month</button>
-                                    <button type="button" class="cal-footer-btn cal-footer-btn-primary" id="calCloseBtn">Done</button>
+                                <div class="cal-footer">
+                                    <button type="button" class="cal-footer-btn" id="calClearBtn">Clear</button>
+                                    <div style="display: flex; gap: 6px;">
+                                        <button type="button" class="cal-footer-btn" id="calThisMonthBtn">This Month</button>
+                                        <button type="button" class="cal-footer-btn cal-footer-btn-primary" id="calCloseBtn">Done</button>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <!-- View 2: Month Slider View -->
-                        <div id="calViewMonthSlider" class="cal-view cal-slider-view" style="display: none;">
-                            <div class="cal-slider-header">
-                                <button type="button" class="cal-back-btn" id="calBackFromMonthSlider">&#x2190; Back to Calendar</button>
-                                <span class="cal-slider-title">Select Month</span>
+                            <!-- View 2: Month Slider View -->
+                            <div id="calViewMonthSlider" class="cal-view cal-slider-view" style="display: none;">
+                                <div class="cal-slider-header">
+                                    <button type="button" class="cal-back-btn" id="calBackFromMonthSlider">&#x2190; Back to Calendar</button>
+                                    <span class="cal-slider-title">Select Month</span>
+                                </div>
+
+                                <div class="cal-slider-hero">
+                                    <div class="cal-slider-hero-val" id="calMonthSliderVal">January</div>
+                                    <div class="cal-slider-hero-sub" id="calMonthSliderSub">Month 1 of 12</div>
+                                </div>
+
+                                <div class="cal-slider-track-wrap">
+                                    <span class="cal-slider-bound">Jan</span>
+                                    <input type="range" class="cal-range-slider" id="calMonthSlider" min="0" max="11" step="1" value="0">
+                                    <span class="cal-slider-bound">Dec</span>
+                                </div>
+
+                                <!-- Quick month chips -->
+                                <div class="cal-month-chips" id="calMonthChips">
+                                    <!-- 12 month chips (Jan - Dec) -->
+                                </div>
+
+                                <div class="cal-slider-footer">
+                                    <button type="button" class="cal-footer-btn" id="calViewMonthDaysBtn">View Days</button>
+                                    <button type="button" class="cal-footer-btn cal-footer-btn-primary" id="calFilterEntireMonthBtn">Filter Entire Month</button>
+                                </div>
                             </div>
 
-                            <div class="cal-slider-hero">
-                                <div class="cal-slider-hero-val" id="calMonthSliderVal">January</div>
-                                <div class="cal-slider-hero-sub" id="calMonthSliderSub">Month 1 of 12</div>
-                            </div>
+                            <!-- View 3: Year Slider View -->
+                            <div id="calViewYearSlider" class="cal-view cal-slider-view" style="display: none;">
+                                <div class="cal-slider-header">
+                                    <button type="button" class="cal-back-btn" id="calBackFromYearSlider">&#x2190; Back to Calendar</button>
+                                    <span class="cal-slider-title">Select Year</span>
+                                </div>
 
-                            <div class="cal-slider-track-wrap">
-                                <span class="cal-slider-bound">Jan</span>
-                                <input type="range" class="cal-range-slider" id="calMonthSlider" min="0" max="11" step="1" value="0">
-                                <span class="cal-slider-bound">Dec</span>
-                            </div>
+                                <div class="cal-slider-hero">
+                                    <div class="cal-slider-hero-val" id="calYearSliderVal">2024</div>
+                                    <div class="cal-slider-hero-sub" id="calYearSliderSub">Slide or tap a year</div>
+                                </div>
 
-                            <!-- Quick month chips -->
-                            <div class="cal-month-chips" id="calMonthChips">
-                                <!-- 12 month chips (Jan - Dec) -->
-                            </div>
+                                <div class="cal-slider-track-wrap">
+                                    <span class="cal-slider-bound" id="calYearMinBound">2020</span>
+                                    <input type="range" class="cal-range-slider" id="calYearSlider" min="2020" max="2026" step="1" value="2024">
+                                    <span class="cal-slider-bound" id="calYearMaxBound">2026</span>
+                                </div>
 
-                            <div class="cal-slider-footer">
-                                <button type="button" class="cal-footer-btn" id="calViewMonthDaysBtn">View Days</button>
-                                <button type="button" class="cal-footer-btn cal-footer-btn-primary" id="calFilterEntireMonthBtn">Filter Entire Month</button>
-                            </div>
-                        </div>
+                                <!-- Quick year chips -->
+                                <div class="cal-year-chips" id="calYearChips">
+                                    <!-- Dynamic year chips -->
+                                </div>
 
-                        <!-- View 3: Year Slider View -->
-                        <div id="calViewYearSlider" class="cal-view cal-slider-view" style="display: none;">
-                            <div class="cal-slider-header">
-                                <button type="button" class="cal-back-btn" id="calBackFromYearSlider">&#x2190; Back to Calendar</button>
-                                <span class="cal-slider-title">Select Year</span>
-                            </div>
-
-                            <div class="cal-slider-hero">
-                                <div class="cal-slider-hero-val" id="calYearSliderVal">2024</div>
-                                <div class="cal-slider-hero-sub" id="calYearSliderSub">Slide or tap a year</div>
-                            </div>
-
-                            <div class="cal-slider-track-wrap">
-                                <span class="cal-slider-bound" id="calYearMinBound">2020</span>
-                                <input type="range" class="cal-range-slider" id="calYearSlider" min="2020" max="2026" step="1" value="2024">
-                                <span class="cal-slider-bound" id="calYearMaxBound">2026</span>
-                            </div>
-
-                            <!-- Quick year chips -->
-                            <div class="cal-year-chips" id="calYearChips">
-                                <!-- Dynamic year chips -->
-                            </div>
-
-                            <div class="cal-slider-footer">
-                                <button type="button" class="cal-footer-btn" id="calViewYearDaysBtn">View Days</button>
-                                <button type="button" class="cal-footer-btn cal-footer-btn-primary" id="calFilterEntireYearBtn">Filter Entire Year</button>
+                                <div class="cal-slider-footer">
+                                    <button type="button" class="cal-footer-btn" id="calViewYearDaysBtn">View Days</button>
+                                    <button type="button" class="cal-footer-btn cal-footer-btn-primary" id="calFilterEntireYearBtn">Filter Entire Year</button>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- Hide duplicates -->
-                <div id="duplicateFilterControls" style="display: flex; align-items: center; gap: 8px;">
-                    <label class="checkbox-wrapper" id="hideDuplicatesLabel" style="margin: 0;">
+            <!-- 2. Categories, with how many of each this chat has -->
+            <div class="type-filters" role="group" aria-label="Media type">
+                    <button type="button" class="filter-btn active" data-type="all"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z"/></svg><span>All</span><span class="seg-count" data-count-for="all"></span></button>
+                    <button type="button" class="filter-btn" data-type="image"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg><span>Images</span><span class="seg-count" data-count-for="image"></span></button>
+                    <button type="button" class="filter-btn" data-type="video"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg><span>Videos</span><span class="seg-count" data-count-for="video"></span></button>
+                    <button type="button" class="filter-btn" data-type="gif" title="Animated GIFs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.5 9H13v6h-1.5zM9 9H6c-.6 0-1 .5-1 1v4c0 .5.4 1 1 1h3c.6 0 1-.5 1-1v-2H8.5v1.5h-2v-3H10V10c0-.5-.4-1-1-1zm10 1.5V9h-4.5v6H16v-2h2v-1.5h-2v-1z"/></svg><span>GIFs</span><span class="seg-count" data-count-for="gif"></span></button>
+                    <button type="button" class="filter-btn" data-type="sticker" title="Stickers: show them on their own to clear them out at once"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h8l6-6V4c0-1.1-.9-2-2-2zm-4 18v-5.5c0-.28.22-.5.5-.5H20l-6 6zM9 11.5c.83 0 1.5-.67 1.5-1.5S9.83 8.5 9 8.5 7.5 9.17 7.5 10s.67 1.5 1.5 1.5zm6 0c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5-1.5.67-1.5 1.5.67 1.5 1.5 1.5z"/></svg><span>Stickers</span><span class="seg-count" data-count-for="sticker"></span></button>
+                    <button type="button" class="filter-btn" data-type="voice" title="Voice messages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg><span>Voice notes</span><span class="seg-count" data-count-for="voice"></span></button>
+                    <button type="button" class="filter-btn" data-type="audio" title="Music and other audio files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg><span>Audio</span><span class="seg-count" data-count-for="audio"></span></button>
+                    <button type="button" class="filter-btn" data-type="doc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg><span>Documents</span><span class="seg-count" data-count-for="doc"></span></button>
+            </div>
+            <!-- Stickers / GIFs / voice notes shown on their own: clear them out in one go -->
+            <div class="category-bulk-bar" id="categoryBulkBar" style="display:none;">
+                <span id="categoryBulkText"></span>
+                <button type="button" class="bulk-btn" onclick="handleToggleSelectAllMedia()">Select all</button>
+                <button type="button" class="bulk-btn bulk-btn-danger" onclick="recycleShownCategory()">Move all to Recycle Bin</button>
+            </div>
+
+            <!-- 3. Refine: sender, direction and flags -->
+            <div class="filter-row filter-row-refine">
+                <label class="select-chip" title="Sender">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                    <select class="filter-select" id="senderFilter" aria-label="Sender">
+                        <option value="all">All Senders</option>
+                    </select>
+                </label>
+
+                <div class="seg-mini" role="group" aria-label="Sent or received">
+                    <button type="button" class="active" data-direction="all">All</button>
+                    <button type="button" data-direction="sent">Sent</button>
+                    <button type="button" data-direction="received">Received</button>
+                </div>
+                <select id="directionFilter" hidden aria-hidden="true">
+                    <option value="all">All Messages</option>
+                    <option value="sent">Sent by me</option>
+                    <option value="received">Received</option>
+                </select>
+
+                <label class="toggle-chip">
+                    <input type="checkbox" id="starredFilter">
+                    <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>Starred</span>
+                </label>
+                <label class="toggle-chip">
+                    <input type="checkbox" id="forwardedFilter">
+                    <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 9V5l7 7-7 7v-4.1c-5 0-8.5 1.6-11 5.1 1-5 4-10 11-11z"/></svg>Forwarded</span>
+                </label>
+                <label class="toggle-chip" title="Forwarded many times (WhatsApp's double arrow)">
+                    <input type="checkbox" id="freqForwardedFilter">
+                    <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V5l-7 7 7 7v-4.1c0-.1 0-.1 0 0V9zm6 0V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/></svg>Often forwarded</span>
+                </label>
+
+                <div id="duplicateFilterControls" class="dup-controls">
+                    <label class="toggle-chip" id="hideDuplicatesLabel">
                         <input type="checkbox" id="hideDuplicatesFilter" checked>
-                        <span>Hide Duplicates <span id="hiddenDupsCount" style="color: var(--text-muted); font-size: 0.85rem; margin-left: 4px; display: none;">(0 hidden)</span></span>
+                        <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>Hide duplicates<span id="hiddenDupsCount" class="chip-badge" style="display: none;"></span></span>
                     </label>
                     <button type="button" id="btnQuickReviewDups" class="chip-action-btn" style="display:none;" onclick="openDuplicateReviewModal('review')" title="Review detected duplicates and reclaim storage">
                         <svg class="icon" viewBox="0 0 24 24" style="width:13px;height:13px;fill:currentColor;"><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z"/></svg>
@@ -369,36 +409,7 @@
                         <span class="chip-count" id="quickReviewChipCount">0</span>
                     </button>
                 </div>
-            </div>
 
-            <div class="filter-row" style="margin-top: 12px; gap: 16px; align-items: center; flex-wrap: wrap;">
-                <!-- Direction filter -->
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 0.85rem; color: var(--text-muted);">Direction:</span>
-                    <select class="filter-select" id="directionFilter" style="margin: 0; min-width: 140px;">
-                        <option value="all">All Messages</option>
-                        <option value="sent">Sent by me</option>
-                        <option value="received">Received</option>
-                    </select>
-                </div>
-
-                <!-- Starred Only -->
-                <label class="checkbox-wrapper" style="margin: 0;">
-                    <input type="checkbox" id="starredFilter">
-                    <span>Starred Only <span style="color: #eac545;">★</span></span>
-                </label>
-
-                <!-- Forwarded Only -->
-                <label class="checkbox-wrapper" style="margin: 0;">
-                    <input type="checkbox" id="forwardedFilter">
-                    <span>Forwarded Only</span>
-                </label>
-
-                <!-- Frequently Forwarded Only -->
-                <label class="checkbox-wrapper" style="margin: 0;">
-                    <input type="checkbox" id="freqForwardedFilter">
-                    <span>Frequently Forwarded Only</span>
-                </label>
             </div>
         </div>
 
@@ -886,7 +897,7 @@
                         <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
                     </button>
                     <svg class="icon" viewBox="0 0 24 24" style="width:20px;height:20px;fill:var(--accent);"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
-                    <h3>Select WhatsApp Account to Sync</h3>
+                    <h3>WhatsApp Accounts</h3>
                 </div>
                 <button class="modal-close" onclick="closeModal('modalAccountSelector')">&times;</button>
             </div>
@@ -894,8 +905,8 @@
                 <p>Loading accounts...</p>
             </div>
             <div class="modal-footer">
-                <button class="action-btn action-btn-secondary" onclick="closeModal('modalAccountSelector')">Cancel</button>
-                <button class="action-btn action-btn-primary" id="btnConfirmAccountSelection" onclick="confirmAccountSelection()">Save &amp; Select Account</button>
+                <button class="action-btn action-btn-secondary" onclick="closeModal('modalAccountSelector')">Close</button>
+                <button class="action-btn action-btn-primary" id="btnConfirmAccountSelection" onclick="confirmAccountSelection()">Use in This Tab</button>
             </div>
         </div>
     </div>
@@ -1000,7 +1011,7 @@
                         </p>
                         <div id="keyCurrentStatus" style="margin-bottom:12px;font-size:12px;color:var(--text-muted);"></div>
                         <div style="position:relative;margin-bottom:8px;">
-                            <input type="text" id="hexKeyInput" class="key-input" placeholder="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" maxlength="64" spellcheck="false" autocomplete="off" oninput="onKeyInput(this.value)">
+                            <input type="text" id="hexKeyInput" class="key-input" placeholder="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" maxlength="200" spellcheck="false" autocomplete="off" oninput="onKeyInput(this.value)">
                         </div>
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                             <span id="keyCharCount" style="font-size:12px;color:var(--text-muted);">0 / 64 hex characters</span>
@@ -1450,7 +1461,7 @@
             <!-- Body -->
             <div class="tut-modal-body">
                 <!-- Older Backup Import Quick Awareness Banner -->
-                <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px;">
+                <div class="tut-import-banner" style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px;">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <svg class="icon" viewBox="0 0 24 24" style="width: 18px; height: 18px; fill: #60a5fa; flex-shrink: 0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                         <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.4;">
@@ -1575,36 +1586,17 @@
                             <div>
                                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                                     <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);">
-                                        Select Your Phone Brand:
+                                        Your Phone Brand:
                                     </span>
                                     <span id="tutOemSuggestedBadge" style="display:none;font-size:11px;color:var(--accent);background:rgba(16,185,129,0.12);padding:2px 8px;border-radius:9999px;border:1px solid rgba(16,185,129,0.3);">
-                                        Hardware Suggested
+                                        Recognised from your phone
                                     </span>
                                 </div>
 
-                                <!-- OEM Switcher Buttons -->
-                                <div class="tut-oem-bar">
-                                    <button type="button" class="tut-oem-chip active" id="btnOemXiaomi" onclick="switchTutOem('xiaomi', false, true)">
-                                        Xiaomi / Redmi / POCO
-                                    </button>
-                                    <button type="button" class="tut-oem-chip" id="btnOemSamsung" onclick="switchTutOem('samsung', false, true)">
-                                        Samsung Galaxy
-                                    </button>
-                                    <button type="button" class="tut-oem-chip" id="btnOemOneplus" onclick="switchTutOem('oneplus', false, true)">
-                                        OnePlus / OPPO / Realme
-                                    </button>
-                                    <button type="button" class="tut-oem-chip" id="btnOemVivo" onclick="switchTutOem('vivo', false, true)">
-                                        Vivo / iQOO
-                                    </button>
-                                    <button type="button" class="tut-oem-chip" id="btnOemMotorola" onclick="switchTutOem('motorola', false, true)">
-                                        Motorola
-                                    </button>
-                                    <button type="button" class="tut-oem-chip" id="btnOemNothing" onclick="switchTutOem('nothing', false, true)">
-                                        Nothing Phone
-                                    </button>
-                                    <button type="button" class="tut-oem-chip" id="btnOemPixel" onclick="switchTutOem('pixel', false, true)">
-                                        Google Pixel / Stock
-                                    </button>
+                                <!-- Phone brand: picked automatically once the phone is plugged in -->
+                                <div class="tut-brand-row">
+                                    <label for="tutBrandSelect" class="sr-only">Phone brand</label>
+                                    <select id="tutBrandSelect" class="tut-brand-select" onchange="switchTutOem(this.value, false, true)"></select>
                                 </div>
 
                                 <!-- Dynamic OEM Instructions Card -->
@@ -1669,7 +1661,7 @@
                                     <!-- Manual Paste Alternative -->
                                     <div style="margin-top:2px;border-top:1px solid rgba(255,255,255,0.08);padding-top:10px;">
                                         <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Or paste 64-character key directly here:</div>
-                                        <input type="text" id="tutManualKeyInput" class="key-input" placeholder="Paste 64 hex characters..." maxlength="64" spellcheck="false" style="padding:8px 12px;font-size:12px;width:100%;" oninput="onTutManualKeyChange(this.value)">
+                                        <input type="text" id="tutManualKeyInput" class="key-input" placeholder="Paste 64 hex characters..." maxlength="200" spellcheck="false" style="padding:8px 12px;font-size:12px;width:100%;" oninput="onTutManualKeyChange(this.value)">
                                     </div>
                                 </div>
                             </div>

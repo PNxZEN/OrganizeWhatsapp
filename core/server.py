@@ -40,8 +40,9 @@ from core.clean_planner import (
     generate_clean_plan,
     get_active_plan,
 )
-from core.config import find_ffmpeg_binary, is_ffmpeg_available, load_config, mask_key, save_config
+from core.config import active_profile, find_ffmpeg_binary, is_ffmpeg_available, load_config, mask_key, save_config
 from core.decrypt import create_key_file, validate_hex_key
+from core import libraries as _libraries
 from core.gallery import (
     delete_media_permanently,
     empty_recycle_bin,
@@ -55,6 +56,63 @@ _latest_received_key: Optional[str] = None
 _active_backup_cancel = threading.Event()
 _active_restore_cancel = threading.Event()
 _active_clean_cancel = threading.Event()
+
+
+# Files in the output / app folder that a browser must never get: the backup key, settings,
+# decrypted WhatsApp databases (top level or in Databases/; chat folders are never matched, so a
+# received ".db" document still opens in the gallery)
+_PRIVATE_TOP_LEVEL = re.compile(r"(?i)^(config\.json.*|.*\.key|.*\.db(-wal|-shm|-journal)?|.*\.sqlite3?|.*\.crypt\d+|"
+                                r"key|msgstore.*|wa\.db.*|.*\.log)$")
+_PRIVATE_DIRS = {"databases", ".wa_update", "venv", "runtime", "bin", ".git"}
+
+
+def is_private_file(rel_path) -> bool:
+    """rel_path is relative to the folder being served (output folder, or the app folder)."""
+    parts = [p for p in str(rel_path).replace("\\", "/").split("/") if p not in ("", ".")]
+    if not parts:
+        return False
+    if parts[0].lower() in _PRIVATE_DIRS:
+        return True
+    return len(parts) == 1 and bool(_PRIVATE_TOP_LEVEL.match(parts[0]))
+
+
+def _static_path_allowed(url_path: str) -> bool:
+    return not is_private_file(urllib.parse.unquote(url_path))
+
+
+def _request_hostname(netloc: str) -> str:
+    netloc = (netloc or "").rsplit("@", 1)[-1].strip().lower()
+    if netloc.startswith("["):
+        return netloc[1:netloc.find("]")] if "]" in netloc else netloc
+    return netloc.split(":", 1)[0]
+
+
+def _local_hostname(name: str) -> bool:
+    """IP addresses, localhost, and LAN names (no dot, or .local). Not internet domain names:
+    a website can point its own domain at 127.0.0.1 (DNS rebinding) and call this server."""
+    if not name:
+        return True
+    try:
+        import ipaddress
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        pass
+    return name == "localhost" or name.endswith(".localhost") or "." not in name or name.endswith(".local")
+
+
+def request_is_foreign(headers) -> str:
+    """Why a request comes from another website (refused), or "" for the gallery's own pages."""
+    host = headers.get("Host") or ""
+    if not _local_hostname(_request_hostname(host)):
+        return "unexpected host name"
+    origin = headers.get("Origin")
+    if origin is not None:
+        if origin.strip().lower() == "null" or urllib.parse.urlsplit(origin).netloc.lower() != host.strip().lower():
+            return "the request came from another website"
+    if headers.get("Sec-Fetch-Site") == "cross-site" and headers.get("Sec-Fetch-Mode") != "navigate":
+        return "the request came from another website"
+    return ""
 
 
 def is_subpath(child: Path, parent: Path) -> bool:
@@ -546,9 +604,7 @@ def _wa_guide_save_key(hex_key: str) -> bool:
     ok, _ = validate_hex_key(hex_key)
     if not ok:
         return False
-    cfg = load_config()
-    cfg["hex_key"] = hex_key
-    save_config(cfg)
+    save_config({"hex_key": hex_key})
     if _wa_guide_output_dir["path"]:
         try:
             create_key_file(hex_key, Path(_wa_guide_output_dir["path"]).resolve() / "encrypted_backup.key")
@@ -600,6 +656,16 @@ import uuid
 
 _session_manager = SyncSessionManager()
 _sync_cancellation_token = threading.Event()
+# One sync at a time: the check and the start happen together under this lock, and a new sync
+# waits until the previous worker has really stopped (it shares the cancel token and sync_status)
+_sync_start_lock = threading.Lock()
+_sync_worker = {"thread": None}
+_SYNC_STILL_STOPPING = "The previous synchronization is still stopping. Try again in a few seconds."
+
+
+def _sync_worker_alive() -> bool:
+    t = _sync_worker["thread"]
+    return bool(t and t.is_alive())
 _sync_skip_db_token = threading.Event()
 
 # Browser tab lifecycle tracking for graceful auto-shutdown
@@ -702,11 +768,8 @@ def _perform_clean_shutdown(server=None, reason="Server shutdown"):
 
 
 def check_has_local_db(output_dir=None, db_dir=None):
-    """Checks if a previously pulled or existing WhatsApp database exists locally."""
-    dirs_to_check = []
-    if db_dir:
-        dirs_to_check.append(Path(db_dir))
-    dirs_to_check.append(Path("./Databases"))
+    """Checks if a previously pulled or existing WhatsApp database exists locally (this library's)."""
+    dirs_to_check = [Path(db_dir or load_config().get("db_dir") or "./Databases")]
     if output_dir:
         dirs_to_check.append(Path(output_dir) / "Databases")
 
@@ -742,6 +805,7 @@ sync_status = {
     "current_file": None,
     "error": None,
     "can_resume": False,
+    "warnings": [],
 }
 
 
@@ -750,12 +814,17 @@ def _updater_busy_probe():
     busy = []
     if sync_status.get("active"):
         busy.append("phone sync")
+    elif _libraries.phone_lock_holder():
+        busy.append("phone sync in another account's tab")
     if _import_job.is_running():
         busy.append("import of older media")
     return busy
 
 
 _update_manager = UpdateManager(busy_probe=_updater_busy_probe, **_updater_env_overrides())
+# macOS / Linux: the first start after an update installs new dependencies (ffmpeg) and ADB
+from core import platform_tools as _platform_tools  # noqa: E402
+_after_update_setup = _platform_tools.AfterUpdateSetup(venv=_platform_tools.app_venv())
 # Options of the running server, so an update can restart it the same way
 _server_runtime = {"output_dir": "./output", "port": 8000, "idle_timeout": 0, "allow_lan": False}
 _UPDATING_MESSAGE = "The app is installing an update. Please wait a moment."
@@ -784,10 +853,10 @@ def _is_updating() -> bool:
     return activity.maintenance_message() is not None
 
 # Restore any paused session on server startup
-def _restore_paused_session():
+def _restore_paused_session(out_dir=None):
+    """A sync paused in this library (its output folder's .sync_state.sqlite3) can be resumed."""
     try:
-        cfg = load_config()
-        out_dir = cfg.get("output_dir", "./output")
+        out_dir = out_dir or load_config().get("output_dir", "./output")
         target_db = Path(out_dir) / ".sync_state.sqlite3"
         _session_manager.set_db_path(str(target_db))
         _session_manager.recover_abandoned_sessions()
@@ -809,25 +878,86 @@ def _restore_paused_session():
     except Exception:
         pass
 
-_restore_paused_session()
-
-
 _active_runtime_sessions = set()
 
 
-def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None):
-    """Launches the organization pipeline in a separate background thread with session tracking and pause/resume."""
+def library_bound_account(output_dir) -> str:
+    """
+    The account this tab's library belongs to, once it is bound: always for another account's
+    library; for the first library as soon as it holds synced media. "" while it can still be chosen.
+    """
+    cfg = load_config()
+    if active_profile():
+        return active_profile()
+    if (Path(output_dir) / "media_index.csv").is_file():
+        return cfg.get("selected_account_path") or ""
+    return ""
+
+
+def _account_choice_refusal(output_dir, account_path):
+    """Choosing another account for a library that already holds one account's chats is refused."""
+    bound = library_bound_account(output_dir)
+    other = _libraries.library_for(account_path) if not bound else None
+    if other and not other.get("current") and not other.get("primary"):
+        return {"status": "own_library", "account_path": account_path,
+                "message": "This account already has its own library and tab: use Open in a new tab."}
+    if bound and account_path != bound:
+        return {"status": "own_library", "account_path": account_path,
+                "message": "This tab holds another account's chats. Each account opens in its own tab, "
+                           "with its own folder: use Open in a new tab."}
+    return None
+
+
+def _sync_busy_payload() -> dict:
+    """Why a sync could not start: this tab's own sync, or another account's tab using the phone."""
+    holder = _libraries.phone_lock_holder()
+    if holder:
+        return {"status": "phone_busy", "holder": holder.get("label") or "another account",
+                "message": f"The phone is syncing {holder.get('label') or 'another account'} in another tab. "
+                           "This account's sync can start when that one is done."}
+    if _sync_worker_alive() and not sync_status.get("active"):
+        return {"status": "busy", "message": _SYNC_STILL_STOPPING}
+    return {"status": "busy", "message": "Synchronization is already active."}
+
+
+def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None) -> bool:
+    """
+    Launches the organization pipeline in a separate background thread with session tracking and
+    pause/resume. Returns False (and starts nothing) while another sync runs or is still stopping.
+    """
+    try:
+        return _start_background_sync_locked(output_dir, resume_session_id, skip_db_pull)
+    except Exception:
+        # Failed before the worker started: it would never give the phone or the "active" flag back
+        if not _sync_worker_alive():
+            sync_status["active"] = False
+            _libraries.release_phone()
+        raise
+
+
+def _start_background_sync_locked(output_dir, resume_session_id=None, skip_db_pull=None) -> bool:
+    """
+    Launches the organization pipeline in a separate background thread with session tracking and
+    pause/resume. Returns False (and starts nothing) while another sync runs or is still stopping.
+    """
     global sync_status
+    with _sync_start_lock:
+        if sync_status.get("active") or _sync_worker_alive():
+            return False
+        # One sync on the phone at a time, across the accounts' tabs
+        if _libraries.acquire_phone(_libraries.this_library_label(), output_dir):
+            return False
+        sync_status["active"] = True
+        _sync_cancellation_token.clear()
+        _sync_skip_db_token.clear()
     target_db = Path(output_dir) / ".sync_state.sqlite3"
     _session_manager.set_db_path(str(target_db))
-    _sync_cancellation_token.clear()
-    _sync_skip_db_token.clear()
-    sync_status["active"] = True
     sync_status["user_action"] = None
     sync_status["status"] = "syncing"
     sync_status["error"] = None
     sync_status["can_resume"] = False
     sync_status["interrupted_by_device"] = False
+    sync_status["warnings"] = []
     sync_status["phase"] = "database"
     sync_status["phase_label"] = "Connecting to phone over ADB..."
     sync_status["phase_detail"] = "Checking USB connection and scanning WhatsApp accounts"
@@ -969,9 +1099,7 @@ def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None
                 sync_status["interrupted_by_device"] = False
                 sync_status["version"] = sync_status.get("version", 0) + 1
                 try:
-                    c = load_config()
-                    c["last_sync_time"] = time.time()
-                    save_config(c)
+                    save_config({"last_sync_time": time.time()})
                 except Exception:
                     pass
 
@@ -1029,9 +1157,12 @@ def _start_background_sync(output_dir, resume_session_id=None, skip_db_pull=None
                     sync_status["phase_label"] = "Sync interrupted"
         finally:
             sync_status["active"] = False
+            _libraries.release_phone()
 
-    t = threading.Thread(target=_worker, daemon=True)
+    t = threading.Thread(target=_worker, daemon=True, name="sync-worker")
+    _sync_worker["thread"] = t
     t.start()
+    return True
 
 
 def find_open_port(preferred_port=8000, max_attempts=10, host="127.0.0.1"):
@@ -1054,12 +1185,32 @@ def find_open_port(preferred_port=8000, max_attempts=10, host="127.0.0.1"):
     return preferred_port
 
 
+def switch_account_key(account_path):
+    """
+    Each WhatsApp account has its own 64-digit key. Choosing an account loads the key that opened
+    its backup before. Returns "saved" (its key is loaded), "current" (the current key is the one
+    proven for it, or none was proven yet) or "unknown" (the current key belongs to another
+    account; this one's may differ).
+    """
+    cfg = load_config()
+    keys = cfg.get("account_keys") or {}
+    proven_for = cfg.get("hex_key_account")
+    if account_path in keys:
+        if keys[account_path] != cfg.get("hex_key"):
+            save_config({"hex_key": keys[account_path], "hex_key_account": account_path})
+        return "saved"
+    if not proven_for or proven_for == account_path:
+        return "current"
+    return "unknown"
+
+
 def purge_all_backup_keys(output_dir=None, key_file=None):
     """
     Deletes all encrypted_backup.key files across workspace and output folders,
     guaranteeing no trace of the key remains on disk.
     """
-    targets = [
+    # Another account's tab deletes its own key only: the app folder's key files are the first account's
+    targets = [] if active_profile() else [
         "encrypted_backup.key",
         "Backups/encrypted_backup.key",
         "Backups/temp/encrypted_backup.key",
@@ -1084,7 +1235,7 @@ def purge_all_backup_keys(output_dir=None, key_file=None):
             pass
 
     # Targeted search in Backups, Databases, and output
-    for sub in [Path("./Backups"), Path("./Databases")]:
+    for sub in ([] if active_profile() else [Path("./Backups"), Path("./Databases")]):
         if sub.is_dir():
             try:
                 for k in sub.rglob("encrypted_backup.key"):
@@ -1139,17 +1290,39 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         return super().translate_path(path)
 
     def end_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "X-Requested-With, Content-Type, Range")
+        # No Access-Control-Allow-Origin: only the gallery's own pages may read the API (a "*"
+        # here let any website the user visits read the backup key and media, and delete media)
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         super().end_headers()
 
     def do_OPTIONS(self):
-        self.send_response(200)
+        # Only another website sends a preflight (the gallery is same-origin): no CORS grant
+        self.send_response(403)
+        self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def _request_allowed(self) -> bool:
+        """
+        Refuses requests from other websites: a page the user has open could otherwise call this
+        local server. Answers 403 and returns False for them. See request_is_foreign().
+        """
+        why = request_is_foreign(self.headers)
+        if why:
+            self._send_json(403, {"status": "error", "message": f"Refused: {why}."})
+            return False
+        return True
+
+    def do_HEAD(self):
+        if not self._request_allowed():
+            return
+        if not _static_path_allowed(urllib.parse.urlparse(self.path).path):
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        super().do_HEAD()
 
     def log_message(self, format_str, *args):
         # Suppress logging for ping/health/sync-status polling to keep logs clean
@@ -1198,22 +1371,30 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             if content_len <= 0:
                 return {}
             body_bytes = self.rfile.read(content_len)
-            return json.loads(body_bytes.decode("utf-8"))
+            data = json.loads(body_bytes.decode("utf-8"))
+            # Handlers call body.get(...): a JSON list or string would crash them
+            return data if isinstance(data, dict) else None
         except Exception:
             return None
 
     def handle_range_request(self, filepath, range_header):
         """Handles HTTP 206 Partial Content requests for smooth browser video seeking."""
-        match = re.match(r"bytes=(\d+)-(\d*)", range_header)
-        if not match:
+        match = re.match(r"bytes=(\d*)-(\d*)", range_header.strip())
+        if not match or not (match.group(1) or match.group(2)):
             self.send_error(400, "Bad Request (Invalid Range header)")
             return
 
         file_size = os.path.getsize(filepath)
-        start = int(match.group(1))
-        end = int(match.group(2)) if match.group(2) else file_size - 1
+        if match.group(1):
+            start = int(match.group(1))
+            # RFC 7233: an end past the file means "to the end" (players ask for big ranges)
+            end = min(int(match.group(2)), file_size - 1) if match.group(2) else file_size - 1
+        else:
+            # "bytes=-N": the last N bytes (Safari asks for these when seeking)
+            start = max(0, file_size - int(match.group(2)))
+            end = file_size - 1
 
-        if start >= file_size or end >= file_size or start > end:
+        if start >= file_size or start > end:
             self.send_response(416)
             self.send_header("Content-Range", f"bytes */{file_size}")
             self.end_headers()
@@ -1227,7 +1408,6 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
         self.send_header("Content-Length", str(chunk_size))
         self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
         try:
@@ -1246,6 +1426,8 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             pass
 
     def do_GET(self):
+        if not self._request_allowed():
+            return
         parsed_url = urllib.parse.urlparse(self.path)
         path = parsed_url.path
 
@@ -1259,7 +1441,8 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         if path in ("/api/health", "/api/ping"):
             # "app" and "instance" let launchers check it is really this app answering
             self._send_json(200, {"status": "ok", "app": _instance.APP_MARKER, "version": __version__,
-                                  "instance": _instance.INSTANCE_ID})
+                                  "instance": _instance.INSTANCE_ID,
+                                  "library": "account" if active_profile() else "first"})
             return
 
         # /api/version (what is installed, how it was installed, and the outcome of the last update)
@@ -1271,12 +1454,13 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "auto_check_updates": _auto_update_check_enabled(),
                 "auto_check_due": _auto_update_check_due(),
                 "last_update": _update_manager.consume_last_result() if "consume" in urllib.parse.parse_qs(parsed_url.query) else None,
+                "tools_setup": _after_update_setup.snapshot(),
             })
             return
 
         # /api/update/status (progress of a download/installation; polled by the UI)
         if path == "/api/update/status":
-            self._send_json(200, _update_manager.status())
+            self._send_json(200, {**_update_manager.status(), "tools_setup": _after_update_setup.snapshot()})
             return
 
         # /api/sync-status
@@ -1309,6 +1493,23 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 or cfg.get("last_sync_time")
             )
             self._send_json(200, resp_data)
+            return
+
+        # /api/libraries (this tab's library and every other account's)
+        if path == "/api/libraries":
+            cfg = load_config()
+            holder = _libraries.phone_lock_holder()
+            self._send_json(200, {
+                "this": {
+                    "account": library_bound_account(self.output_dir) or cfg.get("selected_account_path") or "",
+                    "bound": bool(library_bound_account(self.output_dir)),
+                    "label": cfg.get("selected_account_label") or "",
+                    "primary": not active_profile(),
+                    "output_dir": str(Path(self.output_dir).resolve()),
+                },
+                "libraries": _libraries.list_libraries(self.output_dir),
+                "phone_busy": ({"label": holder.get("label")} if holder else None),
+            })
             return
 
         # /api/device-status or /api/phone/status
@@ -1354,6 +1555,10 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "selected_account_path": selected_path,
                     "has_selected_account": bool(selected_path and any(acc["path"] == selected_path for acc in accounts)),
                     "has_multiple_accounts": len(accounts) > 1,
+                    "library_bound_account": library_bound_account(self.output_dir),
+                    # accounts whose own key is saved (the keys themselves are never sent)
+                    "keyed_accounts": sorted((cfg.get("account_keys") or {}).keys()),
+                    "tools_setup": _after_update_setup.snapshot(),
                 },
             )
             return
@@ -1475,8 +1680,12 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         if chat_media_match:
             jid = urllib.parse.unquote(chat_media_match.group(1))
             query = urllib.parse.parse_qs(parsed_url.query)
-            offset = int(query.get("offset", [0])[0])
-            limit = int(query["limit"][0]) if "limit" in query else None
+            try:
+                offset = max(0, int(query.get("offset", [0])[0]))
+                limit = int(query["limit"][0]) if "limit" in query else None
+            except ValueError:
+                self._send_json(400, {"error": "offset and limit must be numbers"})
+                return
 
             res = get_chat_media(self.output_dir, jid, offset=offset, limit=limit)
             if res is None:
@@ -1565,13 +1774,17 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 return
 
             clean_rel = rel_path.lstrip("/\\").replace("\\", "/")
+            if is_private_file(clean_rel):
+                self._send_json(404, {"error": "Media file not found"})
+                return
             target_path = (self.output_dir / clean_rel).resolve()
             base_dir = self.output_dir.resolve()
             if not (is_subpath(target_path, base_dir) and target_path.is_file()):
-                # Also check workspace root if server is run from workspace root
+                # Also check the app folder's own media folders (an older layout kept ./Media there).
+                # Never the app folder itself: config.json holds the backup key.
                 ws_root = Path(__file__).resolve().parent.parent
                 alt_path = (ws_root / clean_rel).resolve()
-                if is_subpath(alt_path, ws_root) and alt_path.is_file():
+                if any(is_subpath(alt_path, ws_root / d) for d in ("Media", "output")) and alt_path.is_file():
                     target_path = alt_path
                 else:
                     self._send_json(404, {"error": "Media file not found"})
@@ -1658,8 +1871,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(b"Missing rel_path")
                 return
 
-            actual_path = (self.output_dir / rel_path).resolve()
-            if not actual_path.is_file():
+            actual_path = (self.output_dir / rel_path.lstrip("/\\")).resolve()
+            # Only media inside the library (an absolute path or ../ would reach any file on the PC)
+            if not (is_subpath(actual_path, self.output_dir) and actual_path.is_file()) or is_private_file(rel_path.lstrip("/\\")):
                 self.send_response(404)
                 self.end_headers()
                 self.wfile.write(b"File not found")
@@ -1752,6 +1966,10 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(500, {"status": "error", "message": "Transcode failed"})
             return
 
+        # Static files of the output folder, except private ones (backup key, settings, databases)
+        if not _static_path_allowed(path):
+            self.send_error(404, "File not found")
+            return
         # Check for Range header on media files
         range_header = self.headers.get("Range")
         local_path = self.translate_path(self.path)
@@ -1772,6 +1990,8 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         global _latest_received_key
+        if not self._request_allowed():
+            return
         parsed_url = urllib.parse.urlparse(self.path)
         path = parsed_url.path
 
@@ -1781,6 +2001,10 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             rel_paths = body.get("rel_paths", [])
             if not isinstance(rel_paths, list) or not rel_paths:
                 self._send_json(400, {"status": "error", "message": "rel_paths list is required"})
+                return
+            # A running sync writes its files into the gallery at the end: recycled now, they would come back as broken entries
+            if sync_status.get("active") or _import_job.is_running():
+                self._send_json(409, {"status": "busy", "message": "Wait for the sync or import to finish before moving media to the Recycle Bin."})
                 return
             res = recycle_media_items(str(self.output_dir), rel_paths)
             _bump_library_version()
@@ -1792,6 +2016,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             body = self._read_json_body() or {}
             rel_paths = body.get("rel_paths", [])
             restore_all = body.get("all", False)
+            if sync_status.get("active") or _import_job.is_running():
+                self._send_json(409, {"status": "busy", "message": "Wait for the sync or import to finish before restoring from the Recycle Bin."})
+                return
             res = restore_media_items(str(self.output_dir), rel_paths, restore_all=restore_all)
             _bump_library_version()
             self._send_json(200, res)
@@ -1942,7 +2169,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             try:
                 save_config({"hex_key": found_key})
-                create_key_file(found_key, "encrypted_backup.key")
+                create_key_file(found_key, load_config().get("key_file") or "encrypted_backup.key")
                 self._send_json(200, {
                     "status": "success",
                     "hex_key": found_key,
@@ -1969,7 +2196,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     return
                 # Create encrypted_backup.key file
                 try:
-                    create_key_file(hex_key, "encrypted_backup.key")
+                    create_key_file(hex_key, load_config().get("key_file") or "encrypted_backup.key")
                 except Exception as e:
                     self._send_json(
                         500, {"status": "error", "message": f"Failed to create key file: {e}"}
@@ -2030,9 +2257,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             _latest_received_key = clean_key
             # If auto_save requested (e.g. from mobile /paste-key or tutorial carousel), persist to config
             if body.get("auto_save", False):
-                cfg = load_config()
-                cfg["hex_key"] = clean_key
-                save_config(cfg)
+                save_config({"hex_key": clean_key})
                 out_p = Path(self.output_dir).resolve()
                 try:
                     create_key_file(clean_key, out_p / "encrypted_backup.key")
@@ -2142,10 +2367,10 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             if _is_updating():
                 self._send_json(409, {"status": "updating", "message": _UPDATING_MESSAGE})
                 return
-            if sync_status["active"]:
+            if sync_status["active"] or _sync_worker_alive():
                 self._send_json(
                     409,
-                    {"status": "busy", "message": "Synchronization is already active."},
+                    {"status": "busy", "message": "Synchronization is already active." if sync_status["active"] else _SYNC_STILL_STOPPING},
                 )
                 return
             if _import_job.is_running():
@@ -2192,6 +2417,10 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             body = self._read_json_body() or {}
             skip_db_pull = body.get("skip_db_pull", None)
             account_path = body.get("account_path")
+            refusal = _account_choice_refusal(self.output_dir, account_path) if account_path else None
+            if refusal:
+                self._send_json(409, refusal)
+                return
             if account_path:
                 phone = body.get("phone_number", "")
                 acc_id = Path(account_path).name if "/accounts/" in account_path else "main"
@@ -2208,12 +2437,43 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "selected_app_type": app_type,
                     "selected_account_label": label,
                 })
+                switch_account_key(account_path)
 
-            _start_background_sync(str(self.output_dir), skip_db_pull=skip_db_pull)
+            if not _start_background_sync(str(self.output_dir), skip_db_pull=skip_db_pull):
+                # Two clicks or two tabs at once: the other request started it
+                self._send_json(409, _sync_busy_payload())
+                return
             self._send_json(
                 200,
                 {"status": "started", "message": "Synchronization initiated in background."},
             )
+            return
+
+        # /api/libraries/open (another account's library: its own folder and server, in a new tab)
+        if path == "/api/libraries/open":
+            body = self._read_json_body() or {}
+            account_path = (body.get("account_path") or "").strip()
+            account = next((a for a in _device_inventory.snapshot()["accounts"] if a.get("path") == account_path), None)
+            if not account:
+                known = _libraries.library_for(account_path)
+                if not known:
+                    self._send_json(404, {"status": "error", "message": "That account is not on the connected phone."})
+                    return
+                account = {"path": account_path}
+            try:
+                if not _libraries.library_account():
+                    # The first library has no account yet: it is bound to the one it syncs first
+                    self._send_json(409, {"status": "choose_first", "message":
+                                          "Choose this window's account first: sync it here, then open the others."})
+                    return
+                result = _libraries.open_library(account, idle_timeout=_server_runtime["idle_timeout"],
+                                                 allow_lan=_server_runtime["allow_lan"],
+                                                 preferred_port=int(_server_runtime["port"]) + 1)
+                self._send_json(200, {"status": "success", **result})
+            except ValueError as e:
+                self._send_json(409, {"status": "error", "message": str(e)})
+            except Exception as e:
+                self._send_json(500, {"status": "error", "message": str(e)})
             return
 
         # /api/phone/select-account (save selected WhatsApp or Business account)
@@ -2222,6 +2482,10 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             account_path = (body.get("account_path") or "").strip()
             if not account_path:
                 self._send_json(400, {"status": "error", "message": "account_path is required"})
+                return
+            refusal = _account_choice_refusal(self.output_dir, account_path)
+            if refusal:
+                self._send_json(409, refusal)
                 return
             phone = body.get("phone_number", "")
             acc_id = Path(account_path).name if "/accounts/" in account_path else "main"
@@ -2238,10 +2502,13 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "selected_app_type": app_type,
                 "selected_account_label": label,
             })
+            key_status = switch_account_key(account_path)
             self._send_json(200, {
                 "status": "success",
                 "selected_account_path": account_path,
                 "selected_account_label": label,
+                "key_status": key_status,
+                "masked_key": mask_key(load_config().get("hex_key") or ""),
             })
             return
 
@@ -2437,7 +2704,9 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             body = self._read_json_body() or {}
             skip_db_pull = body.get("skip_db_pull", None)
 
-            _start_background_sync(str(self.output_dir), resume_session_id=paused_sess["session_id"], skip_db_pull=skip_db_pull)
+            if not _start_background_sync(str(self.output_dir), resume_session_id=paused_sess["session_id"], skip_db_pull=skip_db_pull):
+                self._send_json(409, _sync_busy_payload())
+                return
             self._send_json(200, {"status": "resumed", "message": "Resuming synchronization from checkpoint."})
             return
 
@@ -2450,7 +2719,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             if sess_id:
                 _session_manager.cancel_session(sess_id)
             cfg = load_config()
-            _session_manager.cleanup_orphaned_part_files([
+            part_dirs = [
                 cfg.get("db_dir", "./Databases"),
                 cfg.get("media_dir", "./output"),
                 os.path.join(str(self.output_dir), "Databases"),
@@ -2458,8 +2727,18 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "./Databases",
                 "./Media",
                 "./Backups",
-            ])
-            sync_status["active"] = False
+            ]
+            worker = _sync_worker["thread"]
+            if worker and worker.is_alive():
+                # The worker still writes its current file: its temporary files go once it has
+                # stopped, and it clears "active" itself (until then a new sync is refused)
+                def _cleanup_after_stop():
+                    worker.join(timeout=120)
+                    _session_manager.cleanup_orphaned_part_files(part_dirs)
+                threading.Thread(target=_cleanup_after_stop, daemon=True, name="sync-cancel-cleanup").start()
+            else:
+                _session_manager.cleanup_orphaned_part_files(part_dirs)
+                sync_status["active"] = False
             sync_status["status"] = "idle"
             sync_status["phase"] = "idle"
             sync_status["can_resume"] = False
@@ -2589,6 +2868,11 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
         if path.startswith("/api/update/"):
             body = self._read_json_body() or {}
             action = path[len("/api/update/"):]
+            if active_profile() and action in ("download", "apply"):
+                self._send_json(409, {"status": "error", "code": "library_server",
+                                      "message": "Install updates from the app's first window (the first account you synced). "
+                                                 "It closes the other accounts' tabs while it updates."})
+                return
             try:
                 if action == "settings":
                     if not isinstance(body.get("auto_check"), bool):
@@ -2608,6 +2892,7 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                     self._send_json(202, {"status": "started", **_update_manager.start_download()})
                 elif action == "apply":
                     server = self.server
+                    _libraries.stop_other_libraries()  # they run this folder's code too
                     result = _update_manager.apply(
                         lambda: _perform_clean_shutdown(server, reason="Installing an update"),
                         port=server.server_address[1],
@@ -2631,6 +2916,8 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
 
         # /api/shutdown (graceful server shutdown)
         if path == "/api/shutdown":
+            if not active_profile() and (self._read_json_body() or {}).get("all_libraries"):
+                _libraries.stop_other_libraries()
             _perform_clean_shutdown(self.server, reason="Manual exit from UI")
             self._send_json(200, {"status": "shutting_down", "message": "Server shutting down."})
             return
@@ -2678,16 +2965,29 @@ def start_gallery_server(
             webbrowser.open(url)
         return None
 
-    # An update that was cut short (crash, power loss) is rolled back before anything is served
-    try:
-        if recover_interrupted_update(_app_root()):
-            print("[Updater] A previous update was interrupted; the earlier version was restored.")
-        _update_manager.cleanup_stale()
-    except Exception as e:
-        print(f"[Updater] Warning: could not check for an interrupted update: {e}")
+    # The app folder (updates, setup) belongs to the first library's server; another account's
+    # library server only serves its own folder
+    is_library_server = bool(active_profile())
+    if not is_library_server:
+        # An update that was cut short (crash, power loss) is rolled back before anything is served
+        try:
+            if recover_interrupted_update(_app_root()):
+                print("[Updater] A previous update was interrupted; the earlier version was restored.")
+            _update_manager.cleanup_stale()
+        except Exception as e:
+            print(f"[Updater] Warning: could not check for an interrupted update: {e}")
+        _libraries.record_primary_output(out_path)
+
+    # Run here, not on import: only now are this server's folder and account known
+    _restore_paused_session(out_path)
 
     # Auto-synthesize gallery.html and its CSS/JS modules in output directory if missing or outdated
     install_gallery_frontend(out_path)
+    if not is_library_server:
+        try:
+            _after_update_setup.start()  # in the background: the server answers (and passes the update's health check) at once
+        except Exception as e:
+            print(f"[Setup] Could not start the after-update setup: {e}")
 
     # Auto-synthesize initial empty gallery_data.js if missing
     dest_data_js = out_path / "gallery_data.js"

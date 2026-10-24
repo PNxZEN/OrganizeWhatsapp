@@ -163,7 +163,8 @@ function setupLightbox() {
         }
 
         const tutModal = document.getElementById('modalTutorial');
-        if (tutModal && tutModal.classList.contains('open')) {
+        // (not while typing: the arrows move the cursor in the key field)
+        if (tutModal && tutModal.classList.contains('open') && !isUserTyping()) {
             if (activeTutTab === 'phone') {
                 if (e.key === 'ArrowRight') {
                     const isAdbReady = currentDeviceStatus && currentDeviceStatus.connected && currentDeviceStatus.authorized;
@@ -265,7 +266,9 @@ function setupLightbox() {
 
         // 5. Copy Selected Media Paths (Ctrl+C / Cmd+C)
         const isCtrlC = (e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C' || e.code === 'KeyC');
-        if (isCtrlC && !isUserTyping() && !isModalOrLightboxOpen()) {
+        // Highlighted text is copied as usual, never replaced by a file path
+        const hasTextSelection = !!(window.getSelection && String(window.getSelection() || '').trim());
+        if (isCtrlC && !isUserTyping() && !isModalOrLightboxOpen() && !hasTextSelection) {
             if (currentViewMode === 'gallery') {
                 if (selectedFiles && selectedFiles.length > 0) {
                     e.preventDefault();

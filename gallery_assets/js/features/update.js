@@ -123,7 +123,8 @@ function scheduleUpdatePoll() {
     _updatePollTimer = null;
     const state = _updateStatus && _updateStatus.state;
     const working = state === 'downloading' || state === 'verifying' || state === 'staging';
-    if (!working && !(state === 'ready' && isAboutTabVisible())) return;
+    const toolsRunning = !!(_updateStatus && _updateStatus.tools_setup && _updateStatus.tools_setup.state === 'running');
+    if (!working && !((state === 'ready' || toolsRunning) && isAboutTabVisible())) return;
     _updatePollTimer = setTimeout(async () => {
         const before = state;
         await refreshUpdateStatus();
@@ -390,6 +391,11 @@ function renderUpdateUi() {
             : 'Check whether a newer version is available.';
     }
     if (state === 'error' && st.error) { icon = 'alert'; iconClass = 'is-error'; title = 'The update could not be completed'; sub = ''; }
+    // macOS / Linux: the first start after an update installs the new version's tools
+    const tools = st.tools_setup || {};
+    if (tools.state === 'running' && !working) {
+        sub = (sub ? sub + ' ' : '') + 'Finishing the update in the background: installing the video (ffmpeg) and phone (ADB) tools…';
+    }
 
     const icons = {
         check: '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
@@ -412,13 +418,15 @@ function renderUpdateUi() {
     show('updateProgressWrap', working);
     if (working) {
         el('updateProgressBar').style.width = (st.percent || 0) + '%';
-        el('updateProgressDetail').textContent = st.bytes_total
+        // "Connecting to GitHub…" until the first bytes arrive, then the byte count
+        el('updateProgressDetail').textContent = st.bytes_total && st.bytes_done
             ? `${formatBytes(st.bytes_done)} of ${formatBytes(st.bytes_total)} (${Math.floor(st.percent || 0)}%)`
             : (st.message || '');
     }
 
     // errors: the server's explanation first, then request errors
-    const errMsg = (state === 'error' && st.error && st.error.message) || _updateCheckError;
+    const errMsg = (state === 'error' && st.error && st.error.message) || _updateCheckError
+        || (tools.state === 'failed' && tools.error) || '';
     const errEl = el('updateError');
     errEl.style.display = errMsg ? '' : 'none';
     errEl.textContent = errMsg || '';

@@ -130,11 +130,11 @@ class TestAlreadyPulledRoots(unittest.TestCase):
     def test_10_nested_media_folder_is_covered_by_output(self):
         self.assertEqual(already_pulled_roots("./output/Media"), [str((self.dir / "output").resolve())])
 
-    def test_11_separate_output_is_walked_too(self):
+    def test_11_separate_output_is_walked_alone(self):
+        # Another account's library: ./output's files are the first account's, not this one's
         other = self.dir / "elsewhere"
         other.mkdir()
-        self.assertEqual(sorted(already_pulled_roots(str(other))),
-                         sorted([str((self.dir / "output").resolve()), str(other.resolve())]))
+        self.assertEqual(already_pulled_roots(str(other)), [str(other.resolve())])
 
 
 if __name__ == "__main__":

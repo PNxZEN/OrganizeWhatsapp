@@ -7,11 +7,12 @@
    ========================================================================== */
 let activeTutTab = 'phone';
 let activeTutSlide = 0;
-let activeTutOem = 'xiaomi';
+let activeTutOem = 'generic';  // until the phone is recognised or the user picks a brand
 let tutDevicePollInterval = null;
 let tutKeyStatusPollTimer = null;
 let tutOemDetected = false;
 let tutUserManuallySelectedOem = false;
+let tutDetectedModel = '';  // the model name USB detection found (before ADB can read it)
 let tutHasAutoSwitchedToKey = false;
 let tutUserManuallySelectedTab = false;
 
@@ -121,58 +122,98 @@ const TUTORIAL_SLIDES_DATA = [
     }
 ];
 
-const OEM_INSTRUCTIONS = {
-    xiaomi: [
-        { num: '1', title: 'Open About Phone', text: 'Go to <strong>Settings &gt; About phone</strong>.' },
-        { num: '2', title: 'Tap OS / MIUI Version 7 Times', text: 'Rapidly tap <strong>OS Version</strong> (or <strong>MIUI Version</strong>) 7 times until you see "You are now a developer!".' },
-        { num: '3', title: 'Open Developer Options', text: 'Return to <strong>Settings &gt; Additional settings &gt; Developer options</strong>.' },
-        { num: '4', title: 'Enable USB Debugging', text: 'Turn ON <strong>USB Debugging</strong>.' },
-        { num: '5', title: 'Xiaomi Special Permissions', text: 'Also enable <strong>"Install via USB"</strong> and <strong>"USB debugging (Security settings)"</strong> if available on your MIUI/HyperOS device.' },
-        { num: '6', title: 'Allow PC Connection', text: 'Connect USB cable to PC. When the phone prompts "Allow USB debugging?", check <strong>"Always allow from this computer"</strong> and tap <strong>OK</strong>.' }
-    ],
-    samsung: [
-        { num: '1', title: 'Open Software Information', text: 'Go to <strong>Settings &gt; About phone &gt; Software information</strong>.' },
-        { num: '2', title: 'Tap Build Number 7 Times', text: 'Tap <strong>Build number</strong> 7 times (enter your lock screen PIN if requested).' },
-        { num: '3', title: 'Open Developer Options', text: 'Return to main <strong>Settings</strong> and scroll to the very bottom to find <strong>Developer options</strong>.' },
-        { num: '4', title: 'Enable USB Debugging', text: 'Toggle the switch for <strong>USB debugging</strong> to <strong>ON</strong>.' },
-        { num: '5', title: 'Authorize USB on Phone', text: 'Plug in the USB cable. Check <strong>"Always allow from this computer"</strong> on the pop-up and tap <strong>Allow</strong>.' }
-    ],
-    oneplus: [
-        { num: '1', title: 'Open Version Info', text: 'Go to <strong>Settings &gt; About device &gt; Version</strong>.' },
-        { num: '2', title: 'Tap Build Number 7 Times', text: 'Tap <strong>Build number</strong> 7 times until Developer mode is unlocked.' },
-        { num: '3', title: 'Open Developer Options', text: 'Go back to <strong>Settings &gt; Additional settings</strong> (or <strong>System settings</strong>) <strong>&gt; Developer options</strong>.' },
-        { num: '4', title: 'Enable USB Debugging', text: 'Turn ON <strong>USB debugging</strong>.' },
-        { num: '5', title: 'Authorize USB on Phone', text: 'Plug in USB cable. When prompted, check <strong>"Always allow from this computer"</strong> and tap <strong>Allow</strong>.' }
-    ],
-    vivo: [
-        { num: '1', title: 'Open Software Information', text: 'Go to <strong>Settings &gt; About phone &gt; Software information</strong> (or <strong>More settings &gt; About phone</strong>).' },
-        { num: '2', title: 'Tap Build Number 7 Times', text: 'Tap <strong>Build number</strong> (or <strong>Software version</strong>) 7 times rapidly until "You are now a developer" appears.' },
-        { num: '3', title: 'Open Developer Options', text: 'Return to <strong>Settings &gt; System management</strong> (or <strong>System / More settings</strong>) <strong>&gt; Developer options</strong>.' },
-        { num: '4', title: 'Enable USB Debugging', text: 'Turn ON <strong>USB debugging</strong>.' },
-        { num: '5', title: 'Authorize USB on Phone', text: 'Connect USB cable to PC. When prompted "Allow USB debugging?", check <strong>"Always allow from this computer"</strong> and tap <strong>Allow</strong> (or <strong>OK</strong>).' }
-    ],
-    motorola: [
-        { num: '1', title: 'Open About Phone', text: 'Go to <strong>Settings &gt; About phone</strong>.' },
-        { num: '2', title: 'Tap Build Number 7 Times', text: 'Scroll to the very bottom and tap <strong>Build number</strong> 7 times (enter your PIN or pattern if prompted).' },
-        { num: '3', title: 'Open Developer Options', text: 'Return to <strong>Settings &gt; System &gt; Developer options</strong> (or <strong>Advanced &gt; Developer options</strong>).' },
-        { num: '4', title: 'Enable USB Debugging', text: 'Toggle <strong>USB debugging</strong> to <strong>ON</strong>.' },
-        { num: '5', title: 'Authorize USB on Phone', text: 'Connect USB cable to PC. Check <strong>"Always allow from this computer"</strong> on the prompt and tap <strong>Allow</strong>.' }
-    ],
-    nothing: [
-        { num: '1', title: 'Open Software Info', text: 'Go to <strong>Settings &gt; About phone &gt; Software info</strong>.' },
-        { num: '2', title: 'Tap Build Number 7 Times', text: 'Tap <strong>Build number</strong> 7 times until you see "You are now in Developer mode!".' },
-        { num: '3', title: 'Open Developer Options', text: 'Return to <strong>Settings &gt; System &gt; Developer options</strong>.' },
-        { num: '4', title: 'Enable USB Debugging', text: 'Turn ON the <strong>USB debugging</strong> toggle.' },
-        { num: '5', title: 'Authorize USB on Phone', text: 'Connect USB cable to PC. Check <strong>"Always allow from this computer"</strong> and tap <strong>Allow</strong>.' }
-    ],
-    pixel: [
-        { num: '1', title: 'Open About Phone', text: 'Go to <strong>Settings &gt; About phone</strong>.' },
-        { num: '2', title: 'Tap Build Number 7 Times', text: 'Scroll to the bottom and tap <strong>Build number</strong> 7 times until unlocked.' },
-        { num: '3', title: 'Open Developer Options', text: 'Return to <strong>Settings &gt; System &gt; Developer options</strong>.' },
-        { num: '4', title: 'Enable USB Debugging', text: 'Turn ON <strong>USB debugging</strong>.' },
-        { num: '5', title: 'Authorize USB on Phone', text: 'Plug in USB cable. Check <strong>"Always allow from this computer"</strong> and tap <strong>Allow</strong>.' }
-    ]
-};
+// How to turn on USB debugging, per brand. Checked against current sources (October 2026): the
+// brands' own help pages where they exist (Samsung, Google, Asus, Huawei, Honor), otherwise recent
+// guides. Menu paths move between OS versions, so where sources disagree both are named, and every
+// brand gets the "search Settings" tip and a web search for the exact model.
+// Keys match core/adb.py BRAND_KEYWORDS (the phone's USB vendor picks the brand automatically).
+const brandPath = (path) => `<strong>${path}</strong>`;
+const PHONE_BRANDS = [
+    { key: 'samsung', label: 'Samsung Galaxy', search: 'Samsung Galaxy', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › About phone › Software information')} and tap ${brandPath('Build number')} 7 times. Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go back to ${brandPath('Settings')}: ${brandPath('Developer options')} is now at the very bottom.` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }],
+      note: `USB debugging greyed out or switching itself off? Turn off ${brandPath('Auto Blocker')} (Settings › Security and privacy › Auto Blocker). It blocks commands over USB cables.` },
+    { key: 'xiaomi', label: 'Xiaomi / Redmi / POCO', search: 'Xiaomi HyperOS', steps: [
+        { title: 'Tap OS version 7 times', text: `Open ${brandPath('Settings › About phone')} and tap ${brandPath('OS version')} (HyperOS) or ${brandPath('MIUI version')} 7 times, until it says you are a developer. Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › Additional settings › Developer options')}.` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and confirm.` }],
+      note: `For "Do it for me" (the app tapping on the phone) also turn on ${brandPath('USB debugging (Security settings)')} in Developer options. Xiaomi only allows it when you are signed in to a Xiaomi account and a SIM card is in; restart the phone afterwards.` },
+    { key: 'oneplus', label: 'OnePlus', search: 'OnePlus OxygenOS', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › About device › Version')} and tap ${brandPath('Build number')} 7 times. Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › System settings › Developer options')} (older OxygenOS: ${brandPath('Settings › Additional settings')}).` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }] },
+    { key: 'oppo', label: 'OPPO', search: 'OPPO ColorOS', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › About device › Version')} and tap ${brandPath('Build number')} 7 times. Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › System settings › Developer options')} (on some models: ${brandPath('Settings › Additional settings')}).` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }] },
+    { key: 'realme', label: 'realme', search: 'realme UI', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › About device')} (or About phone) › ${brandPath('Version')} and tap ${brandPath('Build number')} 7 times. Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › Additional settings › Developer options')} (newer realme UI: ${brandPath('Settings › System settings')}).` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }] },
+    { key: 'vivo', label: 'vivo / iQOO', search: 'vivo Funtouch OS', steps: [
+        { title: 'Tap Software version 7 times', text: `Open ${brandPath('Settings › About phone')} and tap ${brandPath('Software version')} 7 times (some models need a few more). Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › System management › Developer options')} (on some models: ${brandPath('Settings › System')} or ${brandPath('More settings')}).` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }] },
+    { key: 'motorola', label: 'Motorola / Lenovo', search: 'Motorola', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › About phone')} and tap ${brandPath('Build number')} 7 times (at the bottom). Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › System › Developer options')}.` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }] },
+    { key: 'pixel', label: 'Google Pixel', search: 'Google Pixel', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › About phone')} and tap ${brandPath('Build number')} 7 times (at the bottom). Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › System › Developer options')}.` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }] },
+    { key: 'nothing', label: 'Nothing / CMF', search: 'Nothing Phone', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › About phone')}, tap the ${brandPath('Nothing OS')} tile at the top, then tap ${brandPath('Build number')} 7 times. Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › System › Developer options')}.` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }] },
+    { key: 'honor', label: 'Honor', search: 'Honor MagicOS', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › About phone')} and tap ${brandPath('Build number')} 7 times (on some versions: tap the ${brandPath('Version')} number). Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › System & updates › Developer options')}.` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }],
+      note: `When you plug in the cable, choose ${brandPath('File transfer')} in the USB notification.` },
+    { key: 'huawei', label: 'Huawei', search: 'Huawei HarmonyOS EMUI', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › About phone')} and tap ${brandPath('Build number')} (EMUI) or ${brandPath('HarmonyOS version')} 7 times. Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › System & updates › Developer options')} (or ${brandPath('Settings › System')}).` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }],
+      note: `When you plug in the cable, choose ${brandPath('Transfer files')} in the USB notification (Huawei's own advice; with "Charge only" the phone is not found).` },
+    { key: 'transsion', label: 'Tecno / Infinix / itel', search: 'Tecno Infinix', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › My phone')} (or About phone) and tap ${brandPath('Build number')} 7 times. Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › System › Developer options')} (on some models: ${brandPath('Additional settings')}).` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }],
+      note: `If Developer options also has ${brandPath('USB debugging (Security settings)')}, turn it on for "Do it for me".` },
+    { key: 'sony', label: 'Sony Xperia', search: 'Sony Xperia', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › About phone')} and tap ${brandPath('Build number')} 7 times. Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › System › Developer options')}.` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }] },
+    { key: 'asus', label: 'Asus / ROG Phone', search: 'Asus Zenfone', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › About phone › Software information')} and tap ${brandPath('Build number')} 7 times. Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › System › Developer options')}.` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }] },
+    { key: 'nokia', label: 'Nokia / HMD', search: 'Nokia', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › About phone')} and tap ${brandPath('Build number')} 7 times. Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Go to ${brandPath('Settings › System › Developer options')}.` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }] },
+    { key: 'generic', label: 'Other brand / not listed', search: 'Android', steps: [
+        { title: 'Tap Build number 7 times', text: `Open ${brandPath('Settings › About phone')} and tap ${brandPath('Build number')} 7 times (it may be under Software information or Version). Enter your PIN if asked.` },
+        { title: 'Open Developer options', text: `Look in ${brandPath('Settings › System')} (or Additional settings, or at the bottom of Settings) for ${brandPath('Developer options')}.` },
+        { title: 'Turn on USB debugging', text: `Turn on ${brandPath('USB debugging')} and tap OK.` }] },
+];
+const PHONE_BRAND_BY_KEY = Object.fromEntries(PHONE_BRANDS.map(b => [b.key, b]));
+
+function phoneBrand(key) {
+    return PHONE_BRAND_BY_KEY[key] || PHONE_BRAND_BY_KEY.generic;
+}
+
+// A web search for this exact phone, for when the steps above look different on it
+function usbDebuggingSearchUrl(brandKey, model) {
+    const brand = phoneBrand(brandKey);
+    const what = [brand.key === 'generic' ? '' : brand.search, model || ''].filter(Boolean).join(' ') || 'Android phone';
+    return 'https://www.google.com/search?q=' + encodeURIComponent(`how to turn on USB debugging ${what}`);
+}
+
+// Older name, still used by some callers: brand -> its steps
+const OEM_INSTRUCTIONS = Object.fromEntries(PHONE_BRANDS.map(b => [b.key, b.steps]));
 
 function handleTutImgError(img) {
     // If WebP is served via static file protocol or missing, try core assets once.
@@ -209,7 +250,7 @@ async function openTutorialModal(tab = null, slide = 0) {
     tutOemDetected = false;
     preloadTutorialImages();
     initTutStoryBars();
-    renderTutOemContent(activeTutOem);
+    switchTutOem(rememberedTutBrand() || activeTutOem);
 
     if (tab) {
         switchTutTab(tab, true);
@@ -231,6 +272,7 @@ async function openTutorialModal(tab = null, slide = 0) {
             const r = await fetch('/api/phone/oem');
             if (r.ok) {
                 const info = await r.json();
+                if (info && info.model) tutDetectedModel = info.model;
                 if (info && info.oem_key && info.oem_key !== 'generic' && !tutUserManuallySelectedOem) {
                     tutOemDetected = true;
                     switchTutOem(info.oem_key, true, false);
@@ -281,18 +323,32 @@ function switchTutTab(tab, isUserAction = true) {
     if (typeof waGuideOnTabShown === 'function') waGuideOnTabShown(tab);
 }
 
+function fillTutBrandSelect(select) {
+    select.innerHTML = PHONE_BRANDS.map(b => `<option value="${b.key}">${escapeHtml(b.label)}</option>`).join('');
+}
+
+function rememberedTutBrand() {
+    try {
+        const key = localStorage.getItem('tutPhoneBrand');
+        return PHONE_BRAND_BY_KEY[key] ? key : null;
+    } catch (e) {
+        return null;
+    }
+}
+
 function switchTutOem(oemKey, isHardwareAuto = false, isUserManual = false) {
     if (isUserManual) {
         tutUserManuallySelectedOem = true;
     }
-    activeTutOem = oemKey;
-    ['xiaomi', 'samsung', 'oneplus', 'vivo', 'motorola', 'nothing', 'pixel'].forEach(k => {
-        const btn = document.getElementById('btnOem' + k.charAt(0).toUpperCase() + k.slice(1));
-        if (btn) {
-            if (k === oemKey) btn.classList.add('active');
-            else btn.classList.remove('active');
-        }
-    });
+    activeTutOem = PHONE_BRAND_BY_KEY[oemKey] ? oemKey : 'generic';
+    const select = document.getElementById('tutBrandSelect');
+    if (select) {
+        if (!select.options.length) fillTutBrandSelect(select);
+        select.value = activeTutOem;
+    }
+    if (isUserManual) {
+        try { localStorage.setItem('tutPhoneBrand', activeTutOem); } catch (e) {}
+    }
 
     const badge = document.getElementById('tutOemSuggestedBadge');
     if (badge) {
@@ -329,9 +385,8 @@ function buildConnectionChecklist(st, oemKey, os) {
     const stage = connectionStageOf(st);
     const level = CONNECTION_STAGE_ORDER[stage];
     const secs = Number(st.stage_seconds) || 0;
-    const brandSteps = (OEM_INSTRUCTIONS[oemKey] || OEM_INSTRUCTIONS.xiaomi)
-        .slice(0, -1)  // the last step of every brand is "Allow", which is checklist step 3
-        .filter(s => !/special permissions/i.test(s.title));  // not needed to back up or clean
+    const brand = phoneBrand(oemKey);
+    const brandSteps = brand.steps;  // "Allow" is checklist step 3, not repeated here
     const phoneName = st.model || st.vendor || '';
 
     const steps = [
@@ -345,8 +400,10 @@ function buildConnectionChecklist(st, oemKey, os) {
         {
             key: 'debugging',
             title: level >= 2 ? 'USB debugging is on' : 'Turn on USB debugging',
-            detail: 'Do this once on your phone:',
+            detail: brand.key === 'generic' ? 'Do this once on your phone:' : `Do this once on your ${escapeHtml(brand.label)} phone:`,
             substeps: brandSteps,
+            note: brand.note || '',
+            more: `Can't find it? Search your phone's Settings for <strong>Developer options</strong>, or <a href="${escapeHtml(usbDebuggingSearchUrl(brand.key, st.model))}" target="_blank" rel="noopener noreferrer">search the web for your ${escapeHtml(st.model || (brand.key === 'generic' ? 'phone' : brand.label))}</a>.`,
             hint: ''
         },
         {
@@ -375,7 +432,10 @@ function buildConnectionChecklist(st, oemKey, os) {
             + (os === 'windows' && /samsung/i.test(st.vendor || st.model || '') ? ' Samsung phones on Windows may also need the Samsung USB Driver.' : '');
     }
     if (stage === 'no_adb') {
-        steps[1].hint = os === 'windows'
+        const setup = st.tools_setup || {};
+        steps[1].hint = setup.state === 'running'
+            ? 'Setting up the phone tool (ADB) for this version. This takes a minute, once.'
+            : os === 'windows'
             ? 'The phone tool (ADB) is missing from this app folder. Download the Windows ZIP again and extract it fully.'
             : 'The phone tool (ADB) is missing. Run <code>./install.sh</code> again in the app folder.';
     }
@@ -394,12 +454,16 @@ function buildConnectionChecklist(st, oemKey, os) {
 function renderTutOemContent(oemKey) {
     const container = document.getElementById('tutOemContent');
     if (!container) return;
-    const model = buildConnectionChecklist(currentDeviceStatus, oemKey, clientOsName());
+    const st = Object.assign({}, currentDeviceStatus);
+    if (!st.model && tutDetectedModel && connectionStageOf(st) !== 'unplugged') st.model = tutDetectedModel;
+    const model = buildConnectionChecklist(st, oemKey, clientOsName());
     const html = model.steps.map((step, i) => {
         const mark = step.state === 'done' ? '&#10003;' : String(i + 1);
         const sub = step.open && step.substeps.length ? `
                     <ol class="tut-check-substeps">${step.substeps.map(s => `<li>${s.text}</li>`).join('')}</ol>` : '';
-        const detail = step.open ? `<div class="tut-check-detail">${step.detail}</div>${sub}` : '';
+        const extra = step.open ? (step.note ? `<div class="tut-check-note">${step.note}</div>` : '')
+            + (step.more ? `<div class="tut-check-more">${step.more}</div>` : '') : '';
+        const detail = step.open ? `<div class="tut-check-detail">${step.detail}</div>${sub}${extra}` : '';
         const hint = step.hint ? `<div class="tut-check-hint">${step.hint}</div>` : '';
         return `
                 <div class="tut-check tut-check-${step.state}" data-step="${step.key}">
@@ -482,8 +546,11 @@ async function tutPollDeviceStatus() {
     renderTutOemContent(activeTutOem);
 
     // Hardware suggested brand detection if plugged in and user hasn't manually selected
-    if (isHttpServer && !tutUserManuallySelectedOem && !tutOemDetected && (st.connected || st.authorized)) {
+    // The brand is known from USB before USB debugging is on, which is when its steps are needed
+    if (isHttpServer && !tutUserManuallySelectedOem && !tutOemDetected
+        && (st.connected || st.authorized || connectionStageOf(st) === 'usb_only')) {
         fetch('/api/phone/oem').then(r => r.json()).then(info => {
+            if (info && info.model) tutDetectedModel = info.model;
             if (info && info.oem_key && info.oem_key !== 'generic' && !tutUserManuallySelectedOem) {
                 tutOemDetected = true;
                 switchTutOem(info.oem_key, true, false);

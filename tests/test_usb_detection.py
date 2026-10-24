@@ -141,3 +141,40 @@ class StageTimerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BrandDetectionTests(unittest.TestCase):
+    """The setup guide shows the right USB debugging steps: brand from ADB, or from USB before ADB works."""
+
+    def test_brand_keys(self):
+        from core.adb import brand_key
+        cases = {
+            ("Xiaomi", "Redmi", "23129RAA4G"): "xiaomi", ("Xiaomi", "POCO"): "xiaomi", ("samsung", "SM-S911B"): "samsung",
+            ("OnePlus", "CPH2581"): "oneplus", ("realme", "RMX3771"): "realme", ("OPPO", "CPH2305"): "oppo",
+            ("vivo", "iQOO", "I2220"): "vivo", ("HONOR", "PGT-N19"): "honor", ("HUAWEI", "ELS-NX9"): "huawei",
+            ("motorola", "moto g84 5G"): "motorola", ("Nothing", "A065"): "nothing", ("Google", "Pixel 8"): "pixel",
+            ("TECNO", "CK7n"): "transsion", ("INFINIX",): "transsion", ("Sony", "XQ-DQ72"): "sony",
+            ("asus", "ASUS_AI2302"): "asus", ("HMD Global", "Nokia G42 5G"): "nokia",
+            ("Fairphone", "FP5"): "generic", ("",): "generic",
+        }
+        for texts, key in cases.items():
+            self.assertEqual(brand_key(*texts), key, texts)
+
+    def test_brand_from_usb_before_usb_debugging(self):
+        from core import adb
+        with mock.patch.object(adb, "check_adb_device", return_value=mock.Mock(connected=False, authorized=False)), \
+                mock.patch.object(adb, "detect_usb_android_hardware", return_value=[{"vendor": "HONOR", "name": "Magic6 Pro"}]):
+            info = adb.detect_device_oem()
+        self.assertEqual((info["oem_key"], info["confidence"]), ("honor", "suggested"))
+
+    def test_brand_from_adb_tells_sub_brands_apart(self):
+        from core import adb
+        props = {"ro.product.manufacturer": "Xiaomi", "ro.product.brand": "POCO", "ro.product.model": "23049PCD8G"}
+
+        def run(cmd, **kw):
+            return mock.Mock(stdout=props.get(cmd[-1].split()[-1], ""), returncode=0)
+
+        with mock.patch.object(adb, "check_adb_device", return_value=mock.Mock(connected=True, authorized=True)), \
+                mock.patch.object(adb.subprocess, "run", side_effect=run):
+            info = adb.detect_device_oem()
+        self.assertEqual((info["oem_key"], info["brand"], info["confidence"]), ("xiaomi", "Xiaomi", "high"))

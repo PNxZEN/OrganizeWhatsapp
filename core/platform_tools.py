@@ -13,6 +13,9 @@ Run by the launch scripts with the app's venv Python:
     python -m core.platform_tools --setup   download ADB if missing, then report
     python -m core.platform_tools           report only (no network)
 
+After an in-app update the new version is started directly (not through start_gallery.sh), so the
+server does the same on its first start when the requirements changed: see AfterUpdateSetup.
+
 Standard library only, so it also works before the dependencies are installed.
 """
 
@@ -22,9 +25,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.request
 import zipfile
 from pathlib import Path
+from typing import Optional
 
 APP_ROOT = Path(__file__).resolve().parent.parent
 PLATFORM_TOOLS_URLS = {
@@ -120,6 +125,140 @@ def install_adb(app_root: Path = APP_ROOT, url=None) -> Path:
         return final / "adb"
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+# ---------------------------------------------------------------- dependencies after an update
+
+REQUIREMENT_FILES = ("requirements.txt", "core/requirements-optional.txt")
+REQUIREMENTS_STAMP = ".requirements.cksum"   # written by install.sh / start_gallery.sh, same format
+PIP_TIMEOUT_SECS = 15 * 60
+
+
+def _crc_table():
+    table = []
+    for i in range(256):
+        c = i << 24
+        for _ in range(8):
+            c = ((c << 1) ^ 0x04C11DB7) if c & 0x80000000 else (c << 1)
+        table.append(c & 0xFFFFFFFF)
+    return table
+
+
+_CRC_TABLE = _crc_table()
+
+
+def posix_cksum(data: bytes) -> str:
+    """What `cksum` prints for these bytes on stdin ("CRC LENGTH"), as the launch scripts store it."""
+    crc = 0
+    for b in data:
+        crc = ((crc << 8) & 0xFFFFFFFF) ^ _CRC_TABLE[((crc >> 24) ^ b) & 0xFF]
+    n = len(data)
+    while n:
+        crc = ((crc << 8) & 0xFFFFFFFF) ^ _CRC_TABLE[((crc >> 24) ^ (n & 0xFF)) & 0xFF]
+        n >>= 8
+    return f"{(~crc) & 0xFFFFFFFF} {len(data)}"
+
+
+def requirements_checksum(app_root: Path = APP_ROOT) -> str:
+    """`cat requirements.txt core/requirements-optional.txt | cksum`, like the launch scripts."""
+    data = b""
+    for name in REQUIREMENT_FILES:
+        try:
+            data += (app_root / name).read_bytes()
+        except OSError:
+            pass
+    return posix_cksum(data)
+
+
+def app_venv(app_root: Path = APP_ROOT, prefix: Optional[str] = None) -> Optional[Path]:
+    """The app's own venv when this Python runs from it (the macOS / Linux install), else None."""
+    venv = app_root / "venv"
+    try:
+        if Path(prefix or sys.prefix).resolve() == venv.resolve():
+            return venv
+    except OSError:
+        pass
+    return None
+
+
+class AfterUpdateSetup:
+    """
+    The first start after an update installs what the new version needs, in the background:
+    its Python dependencies (pip, only when requirements.txt changed) and then ADB if it is missing.
+    Nothing happens (and nothing goes online) when the requirements are unchanged.
+    """
+
+    def __init__(self, app_root: Path = APP_ROOT, venv: Optional[Path] = None, python: str = sys.executable,
+                 run=subprocess.run, install=None, adb_finder=None, adb_url=None, log=print):
+        self.app_root = app_root
+        self.venv = venv
+        self.python = python
+        self._run = run
+        self._install = install or (lambda: install_adb(app_root))
+        self._find_adb = adb_finder or (lambda: find_adb(app_root))
+        self._adb_url = adb_url if adb_url is not None else platform_tools_url()
+        self._log = log
+        self._lock = threading.Lock()
+        self.state = {"state": "", "step": "", "error": ""}
+        self._thread = None
+
+    def needed(self) -> bool:
+        if self.venv is None or sys.platform == "win32":
+            return False
+        try:
+            stamp = (self.venv / REQUIREMENTS_STAMP).read_text(encoding="utf-8").strip()
+        except OSError:
+            stamp = ""
+        return stamp != requirements_checksum(self.app_root)
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            return dict(self.state)
+
+    def _set(self, **kw):
+        with self._lock:
+            self.state.update(kw)
+
+    def start(self) -> bool:
+        if not self.needed():
+            return False
+        self._set(state="running", step="dependencies", error="")
+        self._thread = threading.Thread(target=self.run, daemon=True, name="after-update-setup")
+        self._thread.start()
+        return True
+
+    def run(self):
+        problems = []
+        checksum = requirements_checksum(self.app_root)
+        self._log("[Setup] First start after an update: installing what this version needs ...")
+        try:
+            result = self._run([self.python, "-m", "pip", "install", "-q", "--disable-pip-version-check",
+                                "--no-warn-script-location", "-r", str(self.app_root / "requirements.txt")],
+                               cwd=str(self.app_root), capture_output=True, text=True, timeout=PIP_TIMEOUT_SECS)
+            if result.returncode == 0:
+                (self.venv / REQUIREMENTS_STAMP).write_text(checksum, encoding="utf-8")
+                import importlib
+                importlib.invalidate_caches()  # newly installed packages (imageio-ffmpeg) import at once
+                self._log("[Setup] Dependencies ready.")
+            else:
+                tail = ((result.stderr or "") + (result.stdout or "")).strip().splitlines()[-3:]
+                problems.append("the dependencies could not be installed (" + " ".join(tail)[:300] + ")")
+        except (OSError, subprocess.SubprocessError) as e:
+            problems.append(f"the dependencies could not be installed ({e})")
+        self._set(step="adb")
+        if not self._find_adb() and self._adb_url:
+            try:
+                self._log("[Setup] Downloading Google's Android platform-tools (ADB) for USB phone sync ...")
+                self._install()
+                self._log("[Setup] ADB ready.")
+            except Exception as e:  # everything except phone sync still works
+                problems.append(f"ADB could not be downloaded ({e})")
+        if problems:
+            message = "; ".join(problems) + ". Run ./install.sh in the app folder to finish."
+            self._log("[Setup] " + message[0].upper() + message[1:])
+            self._set(state="failed", step="", error=message[0].upper() + message[1:])
+        else:
+            self._set(state="done", step="", error="")
 
 
 def find_ffmpeg():

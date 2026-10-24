@@ -9,19 +9,10 @@ function updateDuplicateCountBadgesUI() {
     const hideDuplicates = filter ? filter.checked : true;
     const count = (window._currentChatDupSet ? window._currentChatDupSet.size : 0);
     if (badge) {
-        if (count === 0) {
-            badge.innerText = '(No duplicates)';
-            badge.style.color = 'var(--text-muted)';
-            badge.style.display = 'inline';
-        } else if (hideDuplicates) {
-            badge.innerText = `(${count} hidden)`;
-            badge.style.color = 'var(--accent)';
-            badge.style.display = 'inline';
-        } else {
-            badge.innerText = `(${count} duplicates)`;
-            badge.style.color = 'var(--text-muted)';
-            badge.style.display = 'inline';
-        }
+        // A small count on the "Hide duplicates" chip (none: the chip is greyed out instead)
+        badge.innerText = count ? String(count) : '';
+        badge.title = count ? (hideDuplicates ? `${count} duplicates hidden` : `${count} duplicates shown`) : '';
+        badge.style.display = count ? 'inline-flex' : 'none';
     }
 }
 

@@ -273,6 +273,31 @@ class TestDownload(UpdaterTestBase):
         st = self.download()
         self.assertEqual(st["error"]["code"], "checksum_mismatch")
 
+    def test_24b_checksum_file_does_not_delay_the_download(self):
+        """Each request to GitHub costs seconds on a slow network: the .sha256 file comes in alongside."""
+        self.github.publish("1.1.0")
+        name = "WhatsAppMediaOrganizer-v1.1.0-Unix-Source.tar.gz"
+        self.github.delays[f"/dl/{name}.sha256"] = 1.0
+        st = self.download()
+        self.assertEqual(st["state"], STATE_READY, st)
+        when = dict(self.github.arrivals)
+        self.assertLess(abs(when[f"/dl/{name}"] - when[f"/dl/{name}.sha256"]), 0.5, "fetched in parallel")
+
+    def test_24c_progress_says_connecting_until_the_first_bytes(self):
+        self.github.publish("1.1.0")
+        name = "WhatsAppMediaOrganizer-v1.1.0-Unix-Source.tar.gz"
+        self.github.delays[f"/dl/{name}"] = 0.6
+        self.manager.start_download()
+        deadline = time.time() + 3
+        messages = set()
+        while time.time() < deadline:
+            st = self.manager.status()
+            messages.add(st["message"])
+            if st["state"] in (STATE_READY, STATE_ERROR):
+                break
+            time.sleep(0.02)
+        self.assertIn("Connecting to GitHub\u2026", messages)
+
     def test_25_package_with_wrong_version_is_rejected(self):
         self.github.publish("1.1.0", archive=build_archive("1.1.0", make_app_files("1.0.7")))
         st = self.download()

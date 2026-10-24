@@ -229,7 +229,12 @@ def main():
         help="Live pipeline: pull Databases first, open gallery immediately, then pull Media in background",
     )
 
+    ap.add_argument("--profile", help=argparse.SUPPRESS)  # the account a library server serves (core.libraries)
+
     args = ap.parse_args()
+    if args.profile:
+        from core.config import set_active_profile
+        set_active_profile(args.profile)
 
     # Zero-terminal default: if no arguments given and output folder exists, start server
     if len(sys.argv) == 1 and Path(args.output).is_dir():

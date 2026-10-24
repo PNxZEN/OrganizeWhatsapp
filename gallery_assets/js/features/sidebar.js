@@ -146,6 +146,10 @@ function renderSidebar(preserveScroll = true) {
         const item = document.createElement('div');
         item.className = `chat-item glass ${activeClass} ${isTargetSelected ? 'reclaim-selected' : ''}`;
         item.dataset.jid = chat.jid;
+        // Reachable by keyboard (Tab, then Enter / Space: see the keydown handler in app.js)
+        item.tabIndex = 0;
+        item.setAttribute('role', 'button');
+        item.setAttribute('aria-label', `Open chat ${displayName}`);
 
         let cbHtml = '';
         if (isReclaimMode) {

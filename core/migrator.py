@@ -271,7 +271,27 @@ def validate_paths(source_dir: str, target_dir: str) -> Tuple[bool, str, Optiona
     if any(_same_folder(tgt_path, parent) for parent in src_path.parents) or src_path.is_relative_to(tgt_path):
         return False, "The selected folder is inside the current output folder. Choose an older output folder instead.", None, None
 
+    other = _other_account_library(src_path, tgt_path)
+    if other:
+        return False, (f"This folder is the library of {other}, another WhatsApp account. Each account keeps "
+                       "its own library so their chats never mix: open it from Accounts instead."), None, None
+
     return True, "", src_path, tgt_path
+
+
+def _other_account_library(src_path: Path, tgt_path: Path) -> Optional[str]:
+    """The label of the account whose library src_path is, when that is not tgt_path's library."""
+    try:
+        from core.libraries import list_libraries
+        for lib in list_libraries(tgt_path):
+            out = Path(lib.get("output_dir") or "")
+            if lib.get("current") or not out.exists():
+                continue
+            if _same_folder(src_path, out):
+                return lib.get("label") or "another account"
+    except Exception:
+        pass
+    return None
 
 
 def _same_folder(a: Path, b: Path) -> bool:
@@ -1025,8 +1045,9 @@ def execute_import_folder(
             try:
                 from core.config import save_config, mask_key
                 from core.decrypt import create_key_file
-                save_config({"hex_key": found_key})
-                create_key_file(found_key, "encrypted_backup.key")
+                from core.config import load_config
+                save_config({"hex_key": found_key})  # this tab's account (see core.config profiles)
+                create_key_file(found_key, load_config().get("key_file") or "encrypted_backup.key")
                 imported_key = True
                 masked_key = mask_key(found_key)
                 logger.info(f"[Migrator] Successfully imported backup key from source ({masked_key})")

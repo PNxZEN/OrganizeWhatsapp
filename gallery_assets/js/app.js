@@ -4,6 +4,7 @@
 // Initialize App (Fast Hybrid Loader)
 window.addEventListener('DOMContentLoaded', async () => {
     checkDeviceStatus();
+    initLibraryIdentity();
     // Hidden tabs check the phone rarely: one visible tab is enough to keep the status fresh
     let _lastDevicePoll = 0;
     _devicePollTimer = setInterval(() => {
@@ -80,4 +81,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 
 window.addEventListener('unhandledrejection', (event) => {
     console.error('[Gallery] Unhandled Promise Rejection:', event.reason);
+});
+
+// Enter / Space on a focused chat or media card acts like a click (they are role="button" divs)
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const el = document.activeElement;
+    if (!el || !el.matches || !el.matches('.chat-item[role="button"], .media-card[role="button"]')) return;
+    if (typeof isModalOrLightboxOpen === 'function' && isModalOrLightboxOpen()) return;
+    e.preventDefault();
+    el.click();
 });

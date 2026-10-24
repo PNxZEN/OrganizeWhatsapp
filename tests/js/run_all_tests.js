@@ -21,7 +21,8 @@ const suites = [
     { name: 'Multi-tab consistency & close protection', file: 'test_multi_tab_ui.js' },
     { name: 'Delete & show in file manager', file: 'test_delete_ui.js' },
     { name: 'Live connection checklist (setup guide)', file: 'test_connection_checklist.js' },
-    { name: 'Guided WhatsApp key setup panel', file: 'test_wa_guide_ui.js' }
+    { name: 'Guided WhatsApp key setup panel', file: 'test_wa_guide_ui.js' },
+    { name: 'Media categories (stickers, GIFs, voice notes)', file: 'test_media_categories.js' }
 ];
 
 console.log('======================================================================');

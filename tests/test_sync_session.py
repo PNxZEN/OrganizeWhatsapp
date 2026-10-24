@@ -82,8 +82,9 @@ class TestSyncSessionManager(unittest.TestCase):
 
     def test_atomic_staging_cleanup(self):
         # Create dummy partial files
-        part1 = Path(self.test_dir) / "test1.jpg.part_sess123"
-        part2 = Path(self.test_dir) / "test2.mp4.part_sess123"
+        # staging names: <file>.part_<first 8 characters of the session id>
+        part1 = Path(self.test_dir) / "test1.jpg.part_1b4e28ba"
+        part2 = Path(self.test_dir) / "test2.mp4.part_session_"
         real_file = Path(self.test_dir) / "real.jpg"
 
         part1.write_bytes(b"partial content 1")

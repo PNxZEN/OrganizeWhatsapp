@@ -64,6 +64,15 @@ function setupFilterListeners() {
     forwarded.addEventListener('change', apply);
     freqForwarded.addEventListener('change', apply);
 
+    // Sent / Received switch: sets the hidden select its listeners already watch
+    document.querySelectorAll('.seg-mini [data-direction]').forEach(b => {
+        b.addEventListener('click', () => {
+            if (direction.value === b.getAttribute('data-direction')) return;
+            direction.value = b.getAttribute('data-direction');
+            direction.dispatchEvent(new Event('change'));
+        });
+    });
+
     const buttons = document.querySelectorAll('.type-filters .filter-btn');
     buttons.forEach(btn => {
         btn.addEventListener('click', (e) => {

@@ -30,7 +30,7 @@ async function cancelActiveBackup() {
     const zipBtnText = document.getElementById('btnZipBackupText');
     if (zipBtn) {
         zipBtn.disabled = false;
-        if (zipBtnText) zipBtnText.innerText = 'Backup Chat';
+        if (zipBtnText) zipBtnText.innerText = 'Export ZIP';
     }
     const actionSelectedBtn = document.getElementById('btnActionSelected');
     const label = document.getElementById('btnActionSelectedText');
@@ -187,7 +187,7 @@ async function handleBackupChat() {
         window._activeBackupAbortController = null;
         if (zipBtn) {
             zipBtn.disabled = false;
-            if (zipBtnText) zipBtnText.innerText = 'Backup Chat';
+            if (zipBtnText) zipBtnText.innerText = 'Export ZIP';
         }
         if (btnCancelBackupChat) {
             btnCancelBackupChat.style.display = 'none';

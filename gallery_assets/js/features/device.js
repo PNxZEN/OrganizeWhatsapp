@@ -334,7 +334,7 @@ function renderDeviceModalBody() {
                                     </span>
                                     <strong style="font-size:14px;color:var(--text-primary);">${escapeHtml(phoneOrId)}</strong>
                                 </div>
-                                ${hasMulti ? `<button class="action-btn" style="font-size:11px;padding:4px 10px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);" onclick="openAccountSelectorModal()">Switch Account</button>` : ''}
+                                ${hasMulti || ((_librariesInfo && _librariesInfo.libraries) || []).length > 1 ? `<button class="action-btn" style="font-size:11px;padding:4px 10px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);" onclick="openAccountSelectorModal()">Accounts</button>` : ''}
                             </div>
                             <div style="font-size:12px;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:12px;margin-top:6px;">
                                 <span><strong>Backup:</strong> ${escapeHtml(selAcc.latest_db_file || 'msgstore.db')} (${escapeHtml(selAcc.latest_backup_str || 'N/A')} • ${escapeHtml(selAcc.size_str || '0 MB')})</span>
@@ -454,74 +454,186 @@ function renderDeviceModalBody() {
     }
 }
 
-function openAccountSelectorModal() {
+// --- WhatsApp accounts: one library each (own folder, key and browser tab) --------------------
+
+let _librariesInfo = null;
+
+async function loadLibrariesInfo() {
+    try {
+        const resp = await fetch('/api/libraries');
+        if (resp.ok) _librariesInfo = await resp.json();
+    } catch (e) {}
+    return _librariesInfo;
+}
+
+// The browser tab of an account: opening it again from any tab goes to that tab
+function accountTabName(path) {
+    let h = 7;
+    for (const c of String(path || '')) h = ((h * 31) + c.charCodeAt(0)) >>> 0;
+    return 'wa_account_' + h.toString(36);
+}
+
+async function initLibraryIdentity() {
+    const info = await loadLibrariesInfo();
+    if (!info || !info.this) return;
+    const me = info.this;
+    if (me.bound && me.account) window.name = accountTabName(me.account);
+    const several = (info.libraries || []).length > 1 || !me.primary;
+    const chip = document.getElementById('libraryChip');
+    if (chip) {
+        chip.style.display = several && me.label ? 'inline-flex' : 'none';
+        chip.textContent = me.label || '';
+        chip.title = `This tab shows ${me.label || 'this account'} only. Folder: ${me.output_dir}`;
+    }
+    if (several && me.label) document.title = `${me.label} · WhatsApp Organizer`;
+}
+
+async function openAccountSelectorModal() {
     renderAccountSelectorModalBody();
     openModal('modalAccountSelector');
+    await loadLibrariesInfo();
+    renderAccountSelectorModalBody();
+}
+
+function _accountTitle(acc) {
+    const isBiz = acc.app_type === 'whatsapp_business';
+    const hasValidPhone = acc.phone_number && !['whatsapp', 'whatsapp business', 'unknown'].includes(String(acc.phone_number).toLowerCase());
+    if (hasValidPhone) return acc.push_name ? `${acc.phone_number} (${acc.push_name})` : acc.phone_number;
+    if (acc.account_id && acc.account_id !== 'main') return `Account ${acc.account_id}`;
+    return isBiz ? 'Business Account' : 'Primary Account';
+}
+
+function _pill(text, color, bg) {
+    return `<span style="font-size:11px;color:${color};background:${bg};padding:2px 8px;border-radius:10px;font-weight:600;white-space:nowrap;">${escapeHtml(text)}</span>`;
 }
 
 function renderAccountSelectorModalBody() {
     const body = document.getElementById('modalAccountSelectorBody');
     if (!body) return;
-    const accounts = (currentDeviceStatus && currentDeviceStatus.accounts) ? currentDeviceStatus.accounts : [];
-    if (!accounts.length) {
-        body.innerHTML = `
-                    <p style="color:var(--text-secondary);font-size:13px;">
-                        No active WhatsApp accounts detected on the connected device.
-                    </p>
-                `;
+    const phoneAccounts = (currentDeviceStatus && currentDeviceStatus.accounts) ? currentDeviceStatus.accounts : [];
+    const info = _librariesInfo || { this: {}, libraries: [] };
+    const me = info.this || {};
+    const libs = info.libraries || [];
+    const libByAccount = {};
+    libs.forEach(l => { if (l.account) libByAccount[l.account] = l; });
+    const thisBound = Boolean(me.bound);
+    const keyed = (currentDeviceStatus && currentDeviceStatus.keyed_accounts) || [];
+
+    // The phone's accounts, then libraries of accounts that are not on the connected phone
+    const rows = phoneAccounts.map(a => ({ acc: a, onPhone: true }));
+    libs.forEach(l => {
+        if (l.account && !phoneAccounts.some(a => a.path === l.account)) {
+            rows.push({ acc: { path: l.account, label: l.label }, onPhone: false });
+        }
+    });
+
+    const btnConfirm = document.getElementById('btnConfirmAccountSelection');
+    if (btnConfirm) btnConfirm.style.display = thisBound ? 'none' : 'inline-block';
+
+    if (!rows.length) {
+        body.innerHTML = `<p style="color:var(--text-secondary);font-size:13px;">No WhatsApp accounts detected on the connected device.</p>`;
         return;
     }
 
-    const currentSelectedPath = (currentDeviceStatus && currentDeviceStatus.selected_account_path) ||
-        (currentDeviceStatus && currentDeviceStatus.selected_account && currentDeviceStatus.selected_account.path) ||
-        accounts[0].path;
+    const currentSelectedPath = me.account ||
+        (currentDeviceStatus && (currentDeviceStatus.selected_account_path ||
+            (currentDeviceStatus.selected_account && currentDeviceStatus.selected_account.path))) ||
+        (phoneAccounts[0] && phoneAccounts[0].path);
 
     let html = `
-                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
-                    Multiple WhatsApp installations or accounts were found on your device. Choose which account to synchronize:
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;line-height:1.5;">
+                    Each WhatsApp account has its own library, so chats never mix: its own folder, its own 64-digit
+                    backup key and its own browser tab.
+                    ${thisBound ? '' : '<strong>Choose the account for this tab</strong>, then open the others in their own tabs.'}
                 </p>
-                <div style="display:flex;flex-direction:column;gap:10px;">
+                <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px;">Only one tab syncs the phone at a time.</p>
             `;
+    if (info.phone_busy) {
+        html += `<div style="margin-bottom:12px;padding:10px 12px;border-radius:8px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);font-size:12px;color:#fbbf24;">
+                    The phone is syncing ${escapeHtml(info.phone_busy.label || 'another account')} in another tab.
+                 </div>`;
+    }
+    html += `<div style="display:flex;flex-direction:column;gap:10px;">`;
 
-    accounts.forEach((acc) => {
-        const isSelected = (acc.path === currentSelectedPath);
-        const isBiz = acc.app_type === 'whatsapp_business';
+    rows.forEach(({ acc, onPhone }) => {
+        const lib = libByAccount[acc.path];
+        const isThis = (thisBound && acc.path === me.account) || (lib && lib.current);
+        const isBiz = acc.app_type === 'whatsapp_business' || /w4b|WhatsApp Business/.test(acc.path || '');
         const badgeColor = isBiz ? '#3b82f6' : 'var(--accent)';
         const badgeBg = isBiz ? 'rgba(59,130,246,0.15)' : 'rgba(16,185,129,0.15)';
-        const badgeText = isBiz ? 'WhatsApp Business' : 'WhatsApp';
-        const hasValidPhone = acc.phone_number && !['whatsapp', 'whatsapp business', 'unknown'].includes(acc.phone_number.toLowerCase());
-        const phoneOrId = hasValidPhone ? (acc.push_name ? `${acc.phone_number} (${acc.push_name})` : acc.phone_number) : (acc.account_id !== 'main' ? `Account ${acc.account_id}` : (isBiz ? 'Business Account' : 'Primary Account'));
-        const isRec = Boolean(acc.is_active_recommendation);
+        const title = onPhone ? _accountTitle(acc) : (acc.label || acc.path);
+        const selectable = !thisBound && onPhone;
+        const pills = [];
+        if (isThis) pills.push(_pill('This tab', 'var(--accent)', 'rgba(16,185,129,0.12)'));
+        else if (lib && lib.running) pills.push(_pill('Open in its tab', 'var(--text-secondary)', 'rgba(255,255,255,0.08)'));
+        if (keyed.includes(acc.path)) pills.push(_pill('Key saved', 'var(--text-secondary)', 'rgba(255,255,255,0.08)'));
+        if (onPhone && acc.is_active_recommendation && !thisBound) pills.push(_pill('Freshest backup', 'var(--accent)', 'rgba(16,185,129,0.12)'));
+        if (!onPhone) pills.push(_pill('Not on this phone', '#fbbf24', 'rgba(245,158,11,0.12)'));
 
+        let action = '';
+        if (!isThis && (thisBound || lib)) {
+            const label = lib && lib.running ? 'Go to its tab' : 'Open in new tab';
+            action = `<button type="button" class="action-btn action-btn-secondary" style="font-size:12px;padding:6px 12px;white-space:nowrap;"
+                         data-account="${escapeHtml(acc.path)}" onclick="event.preventDefault();openAccountInNewTab(this.dataset.account, this)">${label}</button>`;
+        }
+        const folder = lib ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;word-break:break-all;">Folder: ${escapeHtml(lib.output_dir)}</div>`
+            : (thisBound ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Gets its own folder beside this one</div>` : '');
+        const tag = selectable ? 'label' : 'div';
         html += `
-                    <label style="display:block;padding:12px 14px;background:rgba(255,255,255,0.03);border:1px solid ${isSelected ? 'var(--accent)' : 'rgba(255,255,255,0.1)'};border-radius:8px;cursor:pointer;transition:border-color 0.2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='rgba(255,255,255,0.1)'">
+                    <${tag} style="display:block;padding:12px 14px;background:rgba(255,255,255,0.03);border:1px solid ${isThis || (selectable && acc.path === currentSelectedPath) ? 'var(--accent)' : 'rgba(255,255,255,0.1)'};border-radius:8px;${selectable ? 'cursor:pointer;' : ''}">
                         <div style="display:flex;align-items:flex-start;gap:12px;">
-                            <input type="radio" name="accSelectionRadio" value="${escapeHtml(acc.path)}" data-phone="${escapeHtml(acc.phone_number || '')}" ${isSelected ? 'checked' : ''} style="margin-top:3px;accent-color:var(--accent);">
-                            <div style="flex:1;">
-                                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-                                    <div style="display:flex;align-items:center;gap:8px;">
-                                        <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;background:${badgeBg};color:${badgeColor};border:1px solid ${badgeColor}40;">
-                                            ${badgeText}
-                                        </span>
-                                        <strong style="font-size:14px;color:var(--text-primary);">${escapeHtml(phoneOrId)}</strong>
-                                    </div>
-                                    ${isRec ? `<span style="font-size:11px;color:var(--accent);background:rgba(16,185,129,0.12);padding:2px 8px;border-radius:10px;font-weight:600;">Recommended (Freshest)</span>` : ''}
+                            ${selectable ? `<input type="radio" name="accSelectionRadio" value="${escapeHtml(acc.path)}" data-phone="${escapeHtml(acc.phone_number || '')}" ${acc.path === currentSelectedPath ? 'checked' : ''} style="margin-top:3px;accent-color:var(--accent);">` : ''}
+                            <div style="flex:1;min-width:0;">
+                                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;background:${badgeBg};color:${badgeColor};border:1px solid ${badgeColor}40;">${isBiz ? 'WhatsApp Business' : 'WhatsApp'}</span>
+                                    <strong style="font-size:14px;color:var(--text-primary);">${escapeHtml(title)}</strong>
+                                    ${pills.join('')}
                                 </div>
-                                <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;display:flex;flex-wrap:wrap;gap:12px;">
+                                ${onPhone ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:6px;display:flex;flex-wrap:wrap;gap:12px;">
                                     <span><strong>Backup:</strong> ${escapeHtml(acc.latest_db_file || 'msgstore.db')} (${escapeHtml(acc.latest_backup_str || 'N/A')})</span>
                                     <span><strong>Size:</strong> ${escapeHtml(acc.size_str || '0 MB')}</span>
-                                </div>
-                                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;word-break:break-all;font-family:monospace;">
-                                    ${escapeHtml(acc.path)}
-                                </div>
+                                </div>` : ''}
+                                ${folder}
+                                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;word-break:break-all;font-family:monospace;">${escapeHtml(acc.path)}</div>
                             </div>
+                            ${action}
                         </div>
-                    </label>
+                    </${tag}>
                 `;
     });
-
     html += `</div>`;
     body.innerHTML = html;
+}
+
+async function openAccountInNewTab(path, btn) {
+    // Opened now, during the click, so the browser does not block it as a pop-up
+    const tabName = accountTabName(path);
+    const tab = window.open('', tabName);
+    const oldText = btn ? btn.innerText : '';
+    if (btn) { btn.disabled = true; btn.innerText = 'Opening…'; }
+    try {
+        const resp = await fetch('/api/libraries/open', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_path: path })
+        });
+        const res = await resp.json();
+        if (!resp.ok) throw new Error(res.message || 'This account could not be opened.');
+        if (tab) {
+            tab.location.href = res.url;
+            showToast(res.started ? `${res.label} opened in a new tab.` : `${res.label} is open in its tab.`, 'success');
+        } else {
+            showToast(`${res.label} is ready.`, 'info', 'Open its tab', () => window.open(res.url, tabName));
+        }
+        await loadLibrariesInfo();
+        renderAccountSelectorModalBody();
+        initLibraryIdentity();
+    } catch (e) {
+        if (tab && !tab.closed) tab.close();
+        showToast(e.message, 'error', 8000);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerText = oldText; }
+    }
 }
 
 async function confirmAccountSelection() {
@@ -542,8 +654,18 @@ async function confirmAccountSelection() {
             body: JSON.stringify({ account_path: path, phone_number: phone })
         });
         const res = await resp.json();
+        if (resp.status === 409 && res.status === 'own_library') {
+            // This tab already holds another account's chats: that account opens in its own tab
+            showToast(res.message, 'info', 8000);
+            await openAccountInNewTab(path, null);
+            return;
+        }
         if (resp.ok) {
-            showToast('WhatsApp account updated.', 'success');
+            if (res.key_status === 'saved') {
+                showToast('WhatsApp account chosen for this tab. Its saved backup key will be used.', 'success');
+            } else {
+                showToast('WhatsApp account chosen for this tab.', 'success');
+            }
             if (currentDeviceStatus) {
                 currentDeviceStatus.selected_account_path = path;
                 currentDeviceStatus.has_selected_account = true;
@@ -553,6 +675,7 @@ async function confirmAccountSelection() {
                 }
             }
             await checkDeviceStatus();
+            initLibraryIdentity();
             closeModal('modalAccountSelector');
             if (window._pendingSyncAfterAccountSelect) {
                 window._pendingSyncAfterAccountSelect = false;

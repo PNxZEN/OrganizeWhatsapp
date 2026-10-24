@@ -89,6 +89,44 @@ def find_wadecrypt_binary():
     return "wadecrypt"
 
 
+class KeyMismatchError(RuntimeError):
+    """The 64-digit key does not open this backup (it belongs to another account, or is mistyped)."""
+
+
+class BackupIncompleteError(RuntimeError):
+    """The encrypted backup is cut short or damaged: its database would be missing chats and media."""
+
+    def __init__(self, detail=""):
+        super().__init__(
+            "The WhatsApp backup copied from the phone is incomplete or damaged"
+            + (f" ({detail})" if detail else "") + ". WhatsApp may still have been writing it.\n\n"
+            "On the phone open WhatsApp › Settings › Chats › Chat backup, tap Back up, wait until it "
+            "finishes, then sync again."
+        )
+
+
+def check_database_complete(path) -> None:
+    """
+    Raises BackupIncompleteError unless path is a whole, readable SQLite database. A backup cut off
+    while it was being written or copied still decrypts into something with a valid header, but
+    pages are missing: SQLite's own quick_check finds that.
+    """
+    import sqlite3
+    try:
+        with open(path, "rb") as f:
+            if f.read(16) != _SQLITE_HEADER:
+                raise BackupIncompleteError("not a database")
+        con = sqlite3.connect(str(path))
+        try:
+            row = con.execute("PRAGMA quick_check(1)").fetchone()
+        finally:
+            con.close()
+    except sqlite3.DatabaseError as e:
+        raise BackupIncompleteError(str(e)) from e
+    if not row or row[0] != "ok":
+        raise BackupIncompleteError(str(row[0] if row else "check failed")[:120])
+
+
 def decrypt_db_stream(key_file, crypt_path, out_path, cancellation_token=None, progress_callback=None):
     """
     High-speed, zero-RAM streaming decryption for WhatsApp crypt15 databases.
@@ -108,6 +146,7 @@ def decrypt_db_stream(key_file, crypt_path, out_path, cancellation_token=None, p
     key = KeyFactory.new(str(key_p))
     out_p.parent.mkdir(parents=True, exist_ok=True)
     temp_out_p = out_p.with_name(f"{out_p.name}.tmp_decrypt")
+    cancelled = False
 
     try:
         with open(crypt_p, "rb") as f_in, open(temp_out_p, "wb") as f_out:
@@ -119,6 +158,12 @@ def decrypt_db_stream(key_file, crypt_path, out_path, cancellation_token=None, p
             cipher = AES.new(key.get(), AES.MODE_GCM, db.get_iv())
             z_obj = zlib.decompressobj()
 
+            # Single-file backups end with tag(16) + MD5 of everything before the MD5; multi-file
+            # backups end with ciphertext then tag(16). The MD5 tells the two apart.
+            header_len = f_in.tell()
+            f_in.seek(0)
+            md5 = hashlib.md5(f_in.read(header_len))
+
             total_size = crypt_p.stat().st_size
             total_payload = total_size - f_in.tell() - 32
             if total_payload <= 0:
@@ -129,16 +174,26 @@ def decrypt_db_stream(key_file, crypt_path, out_path, cancellation_token=None, p
 
             while bytes_read < total_payload:
                 if cancellation_token and cancellation_token.is_set():
-                    return False
+                    cancelled = True
+                    break
 
                 to_read = min(chunk_size, total_payload - bytes_read)
                 chunk = f_in.read(to_read)
                 if not chunk:
                     break
                 bytes_read += len(chunk)
+                md5.update(chunk)
 
                 dec_chunk = cipher.decrypt(chunk)
-                decomp_chunk = z_obj.decompress(dec_chunk)
+                decomp_chunk = b""
+                for i in range(0, len(dec_chunk), 65536):
+                    try:
+                        decomp_chunk += z_obj.decompress(dec_chunk[i:i + 65536])
+                    except zlib.error:
+                        if bytes_read > len(chunk) or i > 0:
+                            # The key is right (earlier data was readable), so the file is damaged
+                            raise BackupIncompleteError("part of it is damaged")
+                        raise
                 if decomp_chunk:
                     f_out.write(decomp_chunk)
 
@@ -148,14 +203,33 @@ def decrypt_db_stream(key_file, crypt_path, out_path, cancellation_token=None, p
                     except Exception:
                         pass
 
-            # Read the 32-byte footer (authentication tag + checksum)
-            footer = f_in.read(32)
-            if len(footer) >= 16:
-                auth_tag = footer[:16]
+            if not cancelled:
+                footer = f_in.read(32)
+                if len(footer) < 32:
+                    raise BackupIncompleteError("it ends early")
+                md5.update(footer[:16])
+                if md5.digest() == footer[16:]:
+                    auth_tag = footer[:16]
+                else:
+                    # Multi-file layout: the first 16 bytes are still data
+                    tail = z_obj.decompress(cipher.decrypt(footer[:16]))
+                    if tail:
+                        f_out.write(tail)
+                    auth_tag = footer[16:]
                 try:
                     cipher.verify(auth_tag)
-                except Exception as e_tag:
-                    sys.stderr.write(f"[Decrypt] Warning: Auth tag mismatch (continuing): {e_tag}\n")
+                except ValueError:
+                    raise BackupIncompleteError("its checksum does not match")
+            if not cancelled and not z_obj.eof:
+                # The compressed database stops before its end: the file was cut short
+                raise BackupIncompleteError("it ends early")
+
+        if cancelled:
+            # A half-written database must not stay behind (or be taken for a finished one)
+            temp_out_p.unlink(missing_ok=True)
+            return False
+        if temp_out_p.is_file() and temp_out_p.stat().st_size >= 16:
+            check_database_complete(temp_out_p)
 
         # Atomic replacement of output database
         if temp_out_p.is_file() and temp_out_p.stat().st_size >= 16:
@@ -182,6 +256,9 @@ def decrypt_db_stream(key_file, crypt_path, out_path, cancellation_token=None, p
             temp_out_p.replace(out_p)
             return True
         return False
+    except BackupIncompleteError:
+        temp_out_p.unlink(missing_ok=True)
+        raise  # the fallback would decrypt the same damaged file: stop here
     except Exception as e:
         sys.stderr.write(f"[Decrypt] Stream decryption note: {e}, falling back to wadecrypt\n")
         if temp_out_p.is_file():
@@ -335,6 +412,8 @@ def _decrypt_db_uncached(key_file, crypt_path, out_path, cancellation_token=None
                     out_p.unlink()
                 except Exception:
                     pass
+        except BackupIncompleteError:
+            raise
         except Exception as e_stream:
             sys.stderr.write(f"[Decrypt] Fast stream decryption skipped: {e_stream}\n")
 
@@ -342,6 +421,10 @@ def _decrypt_db_uncached(key_file, crypt_path, out_path, cancellation_token=None
         return str(out_p)
 
     # 2. Standard wadecrypt fallback (invoked via python -m to avoid Windows wrapper bugs)
+    # Into a temporary file: a damaged backup must not replace the previous, good database
+    final_p = out_p
+    out_p = final_p.with_name(final_p.name + ".tmp_wadecrypt")
+    out_p.unlink(missing_ok=True)
     cmd = [sys.executable, "-m", "wa_crypt_tools.wadecrypt", str(key_p), str(crypt_p), str(out_p)]
 
     try:
@@ -361,8 +444,13 @@ def _decrypt_db_uncached(key_file, crypt_path, out_path, cancellation_token=None
         raise RuntimeError("Decryption timed out after 300 seconds.")
 
     if proc.returncode != 0:
+        out_p.unlink(missing_ok=True)
         err_msg = proc.stderr.strip() or proc.stdout.strip() or "Unknown decryption error"
         raise RuntimeError(f"Decryption failed with code {proc.returncode}: {err_msg}")
+    if "truncated" in ((proc.stderr or "") + (proc.stdout or "")).lower():
+        # wadecrypt only logs this and still writes the partial database
+        out_p.unlink(missing_ok=True)
+        raise BackupIncompleteError("it ends early")
 
     if not out_p.is_file() or out_p.stat().st_size == 0:
         raise RuntimeError(
@@ -390,7 +478,7 @@ def _decrypt_db_uncached(key_file, crypt_path, out_path, cancellation_token=None
                 "If backup has not started, open WhatsApp > Settings > Chats > Chat backup and tap 'Back up'."
             )
         elif crypt_p.name.endswith(".crypt15"):
-            raise RuntimeError(
+            raise KeyMismatchError(
                 f"Decryption failed for '{crypt_p.name}'. The 64-digit key provided does not match this backup, "
                 "or the backup file was corrupted during transfer. Please verify your 64-digit key in Settings."
             )
@@ -399,5 +487,11 @@ def _decrypt_db_uncached(key_file, crypt_path, out_path, cancellation_token=None
                 f"Decryption failed: output is not a valid SQLite database (header: {magic!r})."
             )
 
-    return str(out_p)
+    try:
+        check_database_complete(out_p)
+    except BackupIncompleteError:
+        out_p.unlink(missing_ok=True)
+        raise
+    os.replace(out_p, final_p)
+    return str(final_p)
 

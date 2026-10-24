@@ -7,9 +7,8 @@ function enterSelectionMode() {
 }
 
 function resetSelectionUI() {
-    if (window._isBackupRunning && typeof cancelActiveBackup === 'function') {
-        cancelActiveBackup();
-    }
+    // A running ZIP is not cancelled here: clearing the selection (after its download starts,
+    // switching chats, Esc) must not abort it. It has its own Cancel button.
     selectModeActive = false;
     selectedFiles = [];
     const group = document.getElementById('btnActionSelectedGroup');

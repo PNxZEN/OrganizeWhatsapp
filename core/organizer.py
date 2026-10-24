@@ -3,6 +3,7 @@ WhatsApp Media Organizer - Media Organization Engine.
 Handles folder sanitization, file indexing, copy/symlink operations, salvaging, and ZIP archiving.
 """
 
+import base64
 import errno
 import hashlib
 import json
@@ -640,6 +641,48 @@ LIVE_FLUSH_MAX_ITEMS = 200
 LIVE_FLUSH_INTERVAL_SECS = 3.0
 
 
+# WhatsApp message types (message.message_type) and the phone folders they are saved in
+_KIND_BY_MESSAGE_TYPE = {13: "gif", 20: "sticker"}
+_KIND_BY_FOLDER = (("WhatsApp Stickers", "sticker"), ("Sticker Packs", "sticker"),
+                   ("WhatsApp Animated Gifs", "gif"), ("WhatsApp Voice Notes", "voice"))
+
+
+def media_kind(phone_path: str, filename: str, mime_type: str = "", message_type=None) -> Optional[str]:
+    """
+    "sticker", "gif" or "voice" for media people like to see (and clear out) on their own, else None.
+    WhatsApp's own message type first, then the phone folder, then its file naming (STK-, PTT-).
+    """
+    try:
+        kind = _KIND_BY_MESSAGE_TYPE.get(int(message_type)) if message_type not in (None, "") else None
+    except (TypeError, ValueError):
+        kind = None
+    if kind:
+        return kind
+    for folder, folder_kind in _KIND_BY_FOLDER:
+        if folder in (phone_path or ""):
+            return folder_kind
+    name = (filename or "").upper()
+    if name.startswith("STK-") or (name.endswith(".WEBP") and "image/webp" in (mime_type or "")):
+        return "sticker"
+    if name.endswith(".GIF"):
+        return "gif"
+    if name.startswith("PTT-"):
+        return "voice"
+    return None
+
+
+def file_sha256_b64(path) -> Optional[str]:
+    """Base64 SHA-256 of a file's contents: the form WhatsApp stores in message_media.file_hash."""
+    h = hashlib.sha256()
+    try:
+        with open(to_long_path(path), "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(chunk)
+    except OSError:
+        return None
+    return base64.b64encode(h.digest()).decode("ascii")
+
+
 class StreamingMediaRouter:
     """
     On-the-fly streaming router and live organizer for WhatsApp media transfers.
@@ -655,6 +698,14 @@ class StreamingMediaRouter:
         self.output_dir = Path(output_dir).resolve()
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.mode = mode
+        # The phone folder relative phone paths start at (set by the sync): phone_path is stored
+        # absolute, so phone cleanup removes exactly the file that was copied, whichever WhatsApp
+        # folder it came from
+        self.phone_root = None
+        # The synced account's folder relative to phone_root ("" for the root, "accounts/<id>"), set
+        # by the sync. Unmatched media from the storage's other account folders goes to
+        # _unmatched/From account <id>/ (or From main folder), apart from this account's
+        self.own_account = None
         self.contacts = contacts or {}
         self.lid_to_phone = lid_to_phone or {}
         self.chat_names = chat_names or {}
@@ -662,6 +713,7 @@ class StreamingMediaRouter:
         # Pre-index media_rows by lowercase sanitized and raw filename, hashes, and size
         self.media_map: Dict[str, dict] = {}
         self.hash_map: Dict[str, dict] = {}
+        self.content_map: Dict[str, dict] = {}  # base64 SHA-256 of a file's contents -> its message
         self.size_map: Dict[int, List[dict]] = defaultdict(list)
         if media_rows:
             for r in media_rows:
@@ -670,6 +722,7 @@ class StreamingMediaRouter:
                 fp = r.get("file_path")
                 fh = r.get("file_hash")
                 efh = r.get("enc_file_hash")
+                ofh = r.get("original_file_hash")
                 sz = r.get("size_bytes")
 
                 for name_cand in (fn, mn, os.path.basename(fp) if fp else None):
@@ -683,6 +736,11 @@ class StreamingMediaRouter:
 
                 if fh and isinstance(fh, str):
                     self.hash_map[fh.strip()] = r
+                    # WhatsApp's file_hash is the SHA-256 of the file's contents: a file can be
+                    # recognised by what it is, whatever its name
+                    self._add_content(fh.strip(), r)
+                if ofh and isinstance(ofh, str):
+                    self._add_content(ofh.strip(), r)  # sent media: the file before WhatsApp compressed it
                 if efh and isinstance(efh, str):
                     self.hash_map[efh.strip()] = r
 
@@ -707,6 +765,31 @@ class StreamingMediaRouter:
         self.last_flush_time = time.time()
         self.lock = threading.Lock()
 
+    def _add_content(self, digest: str, row: dict):
+        # The same file sent or forwarded to several chats: it belongs to the oldest message
+        prev = self.content_map.get(digest)
+        if prev is None or (row.get("received_at") or "9999") < (prev.get("received_at") or "9999"):
+            self.content_map[digest] = row
+
+    def size_only_match(self, file_size: int) -> Optional[dict]:
+        """
+        The one message with exactly this file size, but only if WhatsApp recorded no content hash for
+        it: two different files of the same size are not rare in a big library, and a hash settles it.
+        """
+        if not file_size or file_size <= 0:
+            return None
+        candidates = self.size_map.get(file_size)
+        if candidates and len(candidates) == 1 and not (candidates[0].get("file_hash") or "").strip():
+            return candidates[0]
+        return None
+
+    def match_by_content(self, file_path, sha256_b64: Optional[str] = None) -> Optional[dict]:
+        """The message whose attachment has exactly this file's contents (SHA-256), or None."""
+        if not self.content_map:
+            return None
+        digest = sha256_b64 or file_sha256_b64(file_path)
+        return self.content_map.get(digest) if digest else None
+
     def _init_dest_index(self):
         if not self.output_dir.is_dir():
             return
@@ -719,10 +802,41 @@ class StreamingMediaRouter:
                 except Exception:
                     pass
 
-    def resolve_destination(self, phone_rel_path: str, file_size: int) -> Tuple[Optional[Path], Optional[dict]]:
+    def other_account_folder(self, phone_rel_path: str) -> Optional[str]:
+        """
+        For a file from one of the storage's other account folders: that folder's label ("From
+        account 1003", or "From main folder" for the root); None for the synced account's. The root
+        can hold this account's older media or another account's: only the contents tell.
+        """
+        if self.own_account is None:
+            return None
+        norm = phone_rel_path.replace("\\", "/").lstrip("/")
+        m_acc = re.match(r"accounts/([^/]+)/Media/", norm)
+        origin = f"accounts/{m_acc.group(1)}" if m_acc else ("" if norm.startswith("Media/") else None)
+        if origin is None or origin == self.own_account:
+            return None
+        return f"From account {m_acc.group(1)}" if m_acc else "From main folder"
+
+    def strict_name_match(self, filename: str, file_size: int) -> Optional[dict]:
+        """
+        A name match good enough for a file that may be another account's: WhatsApp's counters make
+        names like IMG-20250101-WA0001.jpg common to every account. Only a message with this size
+        and no recorded content hash; with a hash, the content check decides.
+        """
+        row = self.media_map.get(filename.strip().lower())
+        if row and row.get("size_bytes") == file_size and not (row.get("file_hash") or "").strip():
+            return row
+        return None
+
+    def resolve_destination(self, phone_rel_path: str, file_size: int,
+                            forced_row: Optional[dict] = None,
+                            strict: Optional[bool] = None) -> Tuple[Optional[Path], Optional[dict]]:
         """
         Determines the target path for an incoming phone file and returns (dest_path, matched_row).
         Returns (None, None) if the file should be skipped (e.g. .nomedia or link previews).
+        forced_row: the message already known to own this file (matched by its contents).
+        strict: match by name only on proof (strict_name_match); by default for files from the
+        storage's other account folders.
         """
         norm_phone = phone_rel_path.replace("\\", "/").lstrip("/")
         filename = os.path.basename(norm_phone)
@@ -747,20 +861,28 @@ class StreamingMediaRouter:
             dest_p = self.output_dir / "Backups" / sub
             return dest_p, None
 
-        # Tier 1: Filename lookup (exact or sanitized)
-        lookup_key = filename.strip().lower()
-        matched_row = self.media_map.get(lookup_key)
+        other_folder = self.other_account_folder(norm_phone)
+        if strict is None:
+            strict = other_folder is not None
 
-        # Tier 2: Hash lookup (for stickers / hashed names)
-        if not matched_row:
-            raw_stem = Path(filename).stem
-            matched_row = self.hash_map.get(raw_stem)
+        if forced_row or strict:
+            # Another account's file goes to a chat only on proof: its contents (forced_row, from
+            # the content check at the end of the sync) or name and size where WhatsApp kept no hash
+            matched_row = forced_row or self.strict_name_match(filename, file_size)
+        else:
+            # Tier 1: Filename lookup (exact or sanitized)
+            lookup_key = filename.strip().lower()
+            matched_row = self.media_map.get(lookup_key)
 
-        # Tier 3: Unambiguous exact byte-size lookup
-        if not matched_row and file_size > 0:
-            candidates = self.size_map.get(file_size)
-            if candidates and len(candidates) == 1:
-                matched_row = candidates[0]
+            # Tier 2: Hash lookup (for stickers / hashed names)
+            if not matched_row:
+                raw_stem = Path(filename).stem
+                matched_row = self.hash_map.get(raw_stem)
+
+            # Tier 3: Unambiguous exact byte-size lookup (only when it cannot be checked by content;
+            # otherwise the file goes to _unmatched and the content check at the end of the sync places it)
+            if not matched_row:
+                matched_row = self.size_only_match(file_size)
 
         if matched_row:
             raw_chat_name = matched_row.get("chat_name") or "Unknown_Chat"
@@ -787,6 +909,8 @@ class StreamingMediaRouter:
             if "Backup Excluded Stickers" in norm_phone or "WhatsApp Sticker Packs" in norm_phone:
                 dest_dir = self.output_dir / "Stickers" / "Sticker Packs"
             else:
+                if other_folder:
+                    norm_phone = f"Media/{other_folder}/" + norm_phone.split("Media/", 1)[1]
                 if "/Media/" in norm_phone:
                     after_media = norm_phone.split("/Media/", 1)[1]
                     parts = after_media.split("/")
@@ -844,14 +968,25 @@ class StreamingMediaRouter:
         dest_path: Path,
         file_size: int,
         matched_row: Optional[dict] = None,
+        phone_path: Optional[str] = None,
     ):
         """
         Records a successfully committed file, updates in-memory gallery buffer,
         and flushes incrementally to gallery_data.js.
+        phone_path: where the file is on the phone, when phone_rel_path is not that (a re-check of
+        _unmatched routes by the folder layout).
         """
         norm_phone = phone_rel_path.replace("\\", "/").lstrip("/")
         if norm_phone.startswith("Databases/"):
             return
+        if phone_path:
+            stored_phone = phone_path
+        elif phone_rel_path.startswith("/"):
+            stored_phone = phone_rel_path.replace("\\", "/")
+        elif self.phone_root:
+            stored_phone = f"{self.phone_root.rstrip('/')}/{norm_phone}"
+        else:
+            stored_phone = norm_phone
 
         with self.lock:
             try:
@@ -868,16 +1003,15 @@ class StreamingMediaRouter:
                 else (mimetypes.guess_type(dest_path.name)[0] or "application/octet-stream")
             )
 
-            if matched_row is None:
+            if matched_row is None and self.other_account_folder(norm_phone) is None and \
+                    not re.match(r"_unmatched/From (account [^/]+|main folder)/", rel_dest):
                 filename = os.path.basename(norm_phone)
                 matched_row = self.media_map.get(filename.strip().lower())
                 if not matched_row:
                     raw_stem = Path(filename).stem
                     matched_row = self.hash_map.get(raw_stem)
-                if not matched_row and file_size > 0:
-                    candidates = self.size_map.get(file_size)
-                    if candidates and len(candidates) == 1:
-                        matched_row = candidates[0]
+                if not matched_row:
+                    matched_row = self.size_only_match(file_size)
 
             if matched_row:
                 chat_name = matched_row.get("chat_name") or "Unknown_Chat"
@@ -944,7 +1078,10 @@ class StreamingMediaRouter:
                 "chat_name": chat_name,
                 "filename": dest_path.name,
                 "rel_path": rel_dest,
-                "phone_path": norm_phone,  # PRESERVE ORIGINAL DEVICE PATH!
+                "phone_path": stored_phone,  # PRESERVE ORIGINAL DEVICE PATH!
+                # sticker / gif / voice: kinds of media people clear out in bulk
+                "media_kind": media_kind(norm_phone, dest_path.name, mime_type,
+                                         matched_row.get("message_type") if matched_row else None),
                 "size_bytes": file_size,
                 "mime_type": mime_type,
                 "thumb_path": None,
@@ -1073,8 +1210,9 @@ class StreamingMediaRouter:
             self._flush_buffer()
             if self.all_organized:
                 try:
-                    from core.gallery import generate_gallery
-                    generate_gallery(
+                    # Merged with the library: this run's list lacks the files already on the PC
+                    from core.gallery import merge_into_gallery
+                    merge_into_gallery(
                         self.all_organized,
                         str(self.output_dir),
                         contacts=self.contacts,
@@ -1143,6 +1281,97 @@ class StreamingMediaRouter:
             sys.stderr.write(f"[Live] Warning: Failed to export media_index.csv: {e}\n")
 
 
+def _csv_phone_paths(out_dir: Path) -> Dict[str, str]:
+    """media_index.csv: rel_path -> the file's path on the phone."""
+    csv_path = out_dir / "media_index.csv"
+    paths = {}
+    if not csv_path.is_file():
+        return paths
+    try:
+        with open(csv_path, "r", encoding="utf-8", errors="replace", newline="") as f:
+            for r in csv.DictReader(f):
+                if r.get("rel_path") and r.get("phone_path"):
+                    paths[r["rel_path"]] = r["phone_path"]
+    except Exception:
+        pass
+    return paths
+
+
+def _drop_missing_unmatched_csv_rows(out_dir: Path):
+    """media_index.csv: forget _unmatched rows whose file was moved to its chat (the phone cleanup reads it)."""
+    from core.gallery import gallery_data_lock
+    csv_path = out_dir / "media_index.csv"
+    if not csv_path.is_file():
+        return
+    with gallery_data_lock:
+        try:
+            with open(csv_path, "r", newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                fields = reader.fieldnames or []
+                rows = list(reader)
+            kept = [r for r in rows if not ((r.get("rel_path") or "").startswith("_unmatched/")
+                                            and not (out_dir / r["rel_path"]).is_file())]
+            if len(kept) == len(rows):
+                return
+            tmp = csv_path.with_suffix(".tmp")
+            with open(tmp, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(kept)
+            os.replace(tmp, csv_path)
+        except (OSError, csv.Error) as e:
+            sys.stderr.write(f"[Reorganize] Warning: could not update media_index.csv: {e}\n")
+
+
+class _ContentHashCache:
+    """
+    SHA-256 of _unmatched files, remembered by path, size and modification time, so each sync's
+    re-check only reads the files that are new (hashing a big folder every time would be slow).
+    """
+
+    def __init__(self, out_dir: Path):
+        self.path = out_dir / ".cache" / "unmatched_content_hashes.json"
+        self.out_dir = out_dir
+        try:
+            self.data = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(self.data, dict):
+                self.data = {}
+        except (OSError, ValueError):
+            self.data = {}
+        self.seen = set()
+        self.changed = False
+
+    def get(self, path: Path, size: int) -> Optional[str]:
+        try:
+            key = path.relative_to(self.out_dir).as_posix()
+            mtime = int(path.stat().st_mtime)
+        except (OSError, ValueError):
+            return file_sha256_b64(path)
+        self.seen.add(key)
+        entry = self.data.get(key)
+        if isinstance(entry, list) and len(entry) == 3 and entry[0] == size and entry[1] == mtime:
+            return entry[2]
+        digest = file_sha256_b64(path)
+        if digest:
+            self.data[key] = [size, mtime, digest]
+            self.changed = True
+        return digest
+
+    def save(self):
+        stale = [k for k in self.data if k not in self.seen]
+        for k in stale:  # moved out of _unmatched, or deleted
+            del self.data[k]
+        if not (self.changed or stale):
+            return
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self.data), encoding="utf-8")
+            os.replace(tmp, self.path)
+        except OSError:
+            pass
+
+
 def reorganize_unmatched_media(
     output_dir,
     media_rows=None,
@@ -1170,6 +1399,7 @@ def reorganize_unmatched_media(
         "rematched": 0,
         "sticker_packs": 0,
         "still_unmatched": 0,
+        "by_content": 0,
     }
 
     if not unmatched_dir.is_dir():
@@ -1177,8 +1407,10 @@ def reorganize_unmatched_media(
 
     # Auto-load database mappings if not supplied
     if media_rows is None:
-        msgstore = Path("./Databases/msgstore.db")
-        wa_db = Path("./Databases/wa.db")
+        from core.config import load_config
+        db_dir = Path(load_config().get("db_dir") or "./Databases")
+        msgstore = db_dir / "msgstore.db"
+        wa_db = db_dir / "wa.db"
         if msgstore.is_file():
             try:
                 from core.contacts import load_contacts_mapping, load_db_mappings
@@ -1206,6 +1438,9 @@ def reorganize_unmatched_media(
         lid_to_phone=lid_to_phone,
         chat_names=chat_names,
     )
+
+    hash_cache = _ContentHashCache(out_dir)
+    known_phone_paths = _csv_phone_paths(out_dir)
 
     # 1. Purge .nomedia files
     for p in list(unmatched_dir.rglob(".nomedia")):
@@ -1247,7 +1482,16 @@ def reorganize_unmatched_media(
         else:
             virtual_phone = f"Media/{rel_under_unmatched}"
 
-        dest_p, matched_row = router.resolve_destination(virtual_phone, file_size)
+        # Another account folder's files: by contents (or name and size without a hash) only
+        strict = bool(re.match(r"From (account [^/]+|main folder)/", rel_under_unmatched))
+        dest_p, matched_row = router.resolve_destination(virtual_phone, file_size, strict=strict)
+        if dest_p is not None and matched_row is None and router.content_map:
+            # Not by name: by contents (a renamed or re-saved file, or one whose message only showed
+            # up in a later backup). Exact: the SHA-256 WhatsApp recorded for the attachment.
+            row = router.match_by_content(p, hash_cache.get(p, file_size))
+            if row:
+                dest_p, matched_row = router.resolve_destination(virtual_phone, file_size, forced_row=row)
+                summary["by_content"] += 1
 
         if dest_p is None:
             try:
@@ -1268,7 +1512,8 @@ def reorganize_unmatched_media(
                     p.unlink(missing_ok=True)
                 else:
                     shutil.move(str(p), str(dest_p))
-            router.record_committed_file(virtual_phone, dest_p, file_size, matched_row)
+            router.record_committed_file(virtual_phone, dest_p, file_size, matched_row,
+                                         phone_path=known_phone_paths.get(f"_unmatched/{rel_under_unmatched}"))
             summary["rematched"] += 1
         elif rel_target.startswith("Stickers/Sticker Packs"):
             dest_p.parent.mkdir(parents=True, exist_ok=True)
@@ -1277,10 +1522,13 @@ def reorganize_unmatched_media(
                     p.unlink(missing_ok=True)
                 else:
                     shutil.move(str(p), str(dest_p))
-            router.record_committed_file(virtual_phone, dest_p, file_size, None)
+            router.record_committed_file(virtual_phone, dest_p, file_size, None,
+                                         phone_path=known_phone_paths.get(f"_unmatched/{rel_under_unmatched}"))
             summary["sticker_packs"] += 1
         else:
             summary["still_unmatched"] += 1
+
+    hash_cache.save()
 
     # 4. Prune empty directories
     for root, dirs, files in os.walk(str(unmatched_dir), topdown=False):
@@ -1292,8 +1540,11 @@ def reorganize_unmatched_media(
             except Exception:
                 pass
 
-    # 5. Synchronize gallery_data.js and media_index.csv
-    router.flush_all(export_csv=False)
+    # 5. Synchronize gallery_data.js and media_index.csv (moved files get their new rows; their
+    # phone path stays: _unmatched keeps the phone's folder layout, so "Media/..." is where they were)
+    router.flush_all(export_csv=bool(summary["rematched"] or summary["sticker_packs"]))
+    if summary["rematched"] or summary["sticker_packs"]:
+        _drop_missing_unmatched_csv_rows(out_dir)
 
     # Reconcile existing gallery_data.js against current files on disk
     data_path = out_dir / "gallery_data.js"
@@ -1368,6 +1619,7 @@ def reorganize_unmatched_media(
                             "starred": item.get("starred", 0),
                             "from_me": item.get("from_me", 0),
                             "forward_score": item.get("forward_score", 0),
+                            "media_kind": item.get("media_kind"),
                         }
                         chat_obj["media"].append(media_entry)
                         chat_obj["total_size"] += item.get("size_bytes", 0)

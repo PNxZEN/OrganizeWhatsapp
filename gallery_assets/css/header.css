@@ -112,3 +112,27 @@
     font-size: 0.85rem;
     color: var(--text-secondary);
 }
+
+/* Which WhatsApp account this tab shows: each account has its own library and tab */
+.library-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 240px;
+    margin-left: 8px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    background: rgba(16, 185, 129, 0.10);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+.library-chip:hover { border-color: var(--accent); }
+@media (max-width: 720px) {
+    .library-chip { max-width: 120px; }
+}

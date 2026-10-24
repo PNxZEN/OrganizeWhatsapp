@@ -31,7 +31,7 @@ function loadGuide(platform) {
         currentDeviceStatus: {},
     };
     vm.createContext(ctx);
-    for (const rel of ['gallery_assets/js/core/format.js', 'gallery_assets/js/features/tutorial.js']) {
+    for (const rel of ['gallery_assets/js/core/escape.js', 'gallery_assets/js/core/format.js', 'gallery_assets/js/features/tutorial.js']) {
         vm.runInContext(fs.readFileSync(path.join(ROOT, rel), 'utf8'), ctx, { filename: rel });
     }
     return { ctx, elements };
@@ -89,6 +89,35 @@ for (const oem of ['xiaomi', 'samsung', 'oneplus', 'vivo', 'motorola', 'nothing'
 }
 assert.ok(!build({ stage: 'usb_only' }, 'xiaomi').steps[1].substeps.some(s => /Install via USB/.test(s.text)));
 console.log('  -> Passed: brand steps for every phone, without optional Xiaomi extras');
+
+// 4b. The brand list: every brand the server can recognise has its own verified steps
+const brands = vm.runInContext('PHONE_BRANDS', ctx);
+const pySrc = fs.readFileSync(path.join(ROOT, 'core/adb.py'), 'utf8');
+const pyKeys = [...pySrc.matchAll(/^\s+\("([a-z]+)", \(/gm)].map(m => m[1]);
+assert.ok(pyKeys.length >= 15, 'BRAND_KEYWORDS parsed');
+for (const key of pyKeys) assert.ok(brands.some(b => b.key === key), `steps for ${key}`);
+assert.strictEqual(brands[brands.length - 1].key, 'generic', '"Other brand" last');
+for (const b of brands) {
+    assert.strictEqual(b.steps.length, 3, b.key);
+    assert.ok(/7 times/.test(b.steps[0].text) && /PIN/.test(b.steps[0].text), `${b.key}: 7 taps, PIN`);
+    assert.ok(/Developer options/.test(b.steps[1].text), `${b.key}: where Developer options is`);
+    assert.ok(/USB debugging/.test(b.steps[2].text), `${b.key}: the toggle`);
+}
+const xiaomi = build({ stage: 'usb_only' }, 'xiaomi').steps[1];
+assert.ok(/Security settings/.test(xiaomi.note) && /Xiaomi account/.test(xiaomi.note) && /SIM/.test(xiaomi.note));
+assert.ok(/OS version/.test(xiaomi.substeps[0].text), 'HyperOS: OS version, not Build number');
+assert.ok(/Auto Blocker/.test(build({ stage: 'usb_only' }, 'samsung').steps[1].note), 'Samsung Auto Blocker');
+assert.ok(/Transfer files/.test(build({ stage: 'usb_only' }, 'huawei').steps[1].note));
+assert.ok(/Software version/.test(build({ stage: 'usb_only' }, 'vivo').steps[1].substeps[0].text));
+const unknown = build({ stage: 'usb_only' }, 'some-new-brand').steps[1];
+assert.ok(/Build number/.test(unknown.substeps[0].text) && unknown.detail === 'Do this once on your phone:', 'unknown brands: generic steps');
+// a web search for the exact phone, escaped
+const more = build({ stage: 'usb_only', model: 'Redmi Note 13 "Pro"' }, 'xiaomi').steps[1].more;
+assert.ok(more.includes('https://www.google.com/search?q=how%20to%20turn%20on%20USB%20debugging%20Xiaomi%20HyperOS%20Redmi%20Note%2013'));
+assert.ok(more.includes('Redmi Note 13 &quot;Pro&quot;') && !more.includes('"Pro"'), 'model name escaped');
+assert.ok(more.includes('rel="noopener noreferrer"') && more.includes('Developer options'));
+assert.ok(ctx.usbDebuggingSearchUrl('generic', '').endsWith(encodeURIComponent('how to turn on USB debugging Android phone')));
+console.log('  -> Passed: verified steps for every recognised brand, notes and a web search for the exact phone');
 
 // 5. Rendering: marks, open steps, and no re-render when nothing changed
 ctx.currentDeviceStatus = { connected: true, usb_debugging: false, stage: 'usb_only', vendor: 'Xiaomi', stage_seconds: 3 };

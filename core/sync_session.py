@@ -11,12 +11,16 @@ Features:
 """
 
 import os
+import re
 import sqlite3
 import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+
+_STAGING_NAME = re.compile(r"\.part_(?:[A-Za-z0-9_-]{8}|sync)$")
 
 
 class SyncSessionManager:
@@ -420,6 +424,10 @@ class SyncSessionManager:
             if not p.is_dir():
                 continue
             for part_file in p.rglob("*.part_*"):
+                # Only the transfer's own staging names (<file>.part_<first 8 characters of the session>, or
+                # .part_sync): a WhatsApp document such as "Thesis.part_1.pdf" is a real file
+                if not _STAGING_NAME.search(part_file.name):
+                    continue
                 try:
                     if part_file.is_file():
                         part_file.unlink(missing_ok=True)

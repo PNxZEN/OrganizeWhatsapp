@@ -4,9 +4,11 @@ Handles device detection, authorization status checking, base path discovery,
 incremental streaming tar pull, and folder synchronization.
 """
 
+import filecmp
 import functools
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -783,6 +785,51 @@ def build_account_probe_script(roots=WHATSAPP_PROBE_ROOTS) -> str:
     )
 
 
+def media_tar_root(base: str) -> str:
+    """
+    The folder media paths of a sync are relative to: an account subfolder (…/accounts/<id>) is
+    pulled together with its parent's Media, so its paths start at the parent.
+    """
+    base = (base or "").rstrip("/")
+    return base.rsplit("/accounts/", 1)[0] if "/accounts/" in base else base
+
+
+def newer_backup_in_storage(base, adb_path=None, device_serial=None):
+    """
+    Another account folder of the same WhatsApp storage (the root or a sibling accounts/<id>)
+    with a newer chat backup than base: {"path", "mtime", "base_mtime"}, or None.
+    WhatsApp can move the current account into accounts/<id> and leave the root with an old backup
+    (or the reverse), so a saved choice can end up on a backup that no longer changes.
+    """
+    root = media_tar_root(base)
+    if not root:
+        return None
+    cmd = find_adb_binary(adb_path)
+    adb_base = [cmd, "-s", device_serial] if device_serial else [cmd]
+    try:
+        res = subprocess.run(adb_base + ["shell", "sh"], input=build_account_probe_script(roots=(shlex.quote(root),)),
+                             capture_output=True, text=True, timeout=10, check=False,
+                             encoding="utf-8", errors="replace")
+    except Exception:
+        return None
+    mtimes = {}
+    for line in (res.stdout or "").splitlines():
+        parts = line.strip().split("|")
+        if len(parts) >= 7 and parts[0] == "ACC" and parts[3] == "1" and parts[4].strip():
+            try:
+                mtimes[parts[1].strip().rstrip("/")] = int(parts[5])
+            except ValueError:
+                continue
+    base_mtime = mtimes.get(base.rstrip("/"), 0)
+    others = [(m, p) for p, m in mtimes.items() if p != base.rstrip("/")]
+    if not others:
+        return None
+    m, p = max(others)
+    if m > base_mtime + 6 * 3600:
+        return {"path": p, "mtime": m, "base_mtime": base_mtime}
+    return None
+
+
 def discover_whatsapp_accounts(
     adb_path=None,
     hex_key=None,
@@ -868,7 +915,7 @@ def discover_whatsapp_accounts(
             self_info = {}
             try:
                 from core.contacts import extract_self_account_info
-                self_info = extract_self_account_info("Databases/msgstore.db") or {}
+                self_info = extract_self_account_info(os.path.join(cfg.get("db_dir") or "./Databases", "msgstore.db")) or {}
                 if not self_info.get("phone_number") and not self_info.get("push_name"):
                     out_db = Path(cfg.get("output_dir", "./output")) / "Databases" / "msgstore.db"
                     if out_db.is_file():
@@ -998,6 +1045,9 @@ def discover_whatsapp_accounts(
             "app_label": app_label,
             "label": label,
             "phone_number": phone_number,
+            # True only when this folder's own decrypted backup gave the number (known_accounts);
+            # otherwise it is a guess (the SIM's, or another account's database) shared by all
+            "phone_verified": bool(known_accounts.get(p)),
             "push_name": push_name,
             "has_db": has_db,
             "has_media": has_media,
@@ -1087,12 +1137,16 @@ def already_pulled_roots(dest_media=None):
     dest_media ("./output") the parent is the application folder itself, which used to make every
     sync walk the whole app (runtime, venv, Databases) plus the output folder a second time.
     """
-    candidates = [Path("./output")]
+    # Only this library's folder: another account's library (output - WhatsApp Business ...) has
+    # its own files, and the first library's ./output must not count as this one's
+    candidates = []
     if dest_media:
         media_path = Path(dest_media)
         candidates.append(media_path)
         if media_path.name.lower() == "media":
             candidates.append(media_path.parent)
+    else:
+        candidates.append(Path("./output"))
     roots = []
     for cand in candidates:
         try:
@@ -1308,6 +1362,7 @@ def is_skippable_system_path(rel_p: str) -> bool:
 
 
 _session_inventory_cache = {}
+LAST_MEDIA_INVENTORY = {}
 
 
 _DATED_MSGSTORE_RE = re.compile(r"^msgstore-(\d{4}-\d{2}-\d{2})\.(\d+)\.db\.crypt\d+$", re.IGNORECASE)
@@ -1338,6 +1393,94 @@ def select_database_files(phone_files):
     return selected
 
 
+def phone_path_index(output_roots, tar_root):
+    """
+    From media_index.csv: absolute phone path -> size of each file the PC has, and
+    (normalized name, size) -> the phone paths PC files of that name and size were copied from.
+    """
+    import csv
+    known, owners = {}, {}
+    for root in output_roots:
+        csv_file = Path(root) / "media_index.csv"
+        if not csv_file.is_file():
+            continue
+        try:
+            with open(csv_file, "r", encoding="utf-8", errors="replace", newline="") as f:
+                for row in csv.DictReader(f):
+                    phone, rel, sz = row.get("phone_path"), row.get("rel_path"), row.get("size_bytes")
+                    if not (phone and rel and sz):
+                        continue
+                    try:
+                        sz = int(sz)
+                        if os.path.getsize(Path(root) / rel) != sz:
+                            continue
+                    except (OSError, ValueError):
+                        continue
+                    phone = phone.replace("\\", "/")
+                    abs_p = phone if phone.startswith("/") else f"{tar_root.rstrip('/')}/{phone.lstrip('/')}"
+                    known[abs_p] = sz
+                    for name in (os.path.basename(abs_p), os.path.basename(rel)):
+                        for strip in (False, True):
+                            owners.setdefault((normalize_filename(name, strip_dup_suffix=strip), sz), set()).add(abs_p)
+        except OSError:
+            continue
+    return known, owners
+
+
+def _already_on_pc_check(dest_media, tar_root, destination_resolver=None):
+    """
+    Returns already_on_pc(phone_path, size): whether a phone file needs no transfer. By its phone
+    path when the PC knows where its files came from; by name and size only for files whose origin
+    is unknown (synced by older versions). Two phone files can share a name and size.
+    """
+    roots = already_pulled_roots(dest_media)
+    by_name = set()
+    for root in roots:
+        by_name.update(build_already_pulled_index(root))
+    known, owners = phone_path_index(roots, tar_root)
+
+    def already_on_pc(phone_path, size):
+        abs_p = phone_path if phone_path.startswith("/") else f"{tar_root.rstrip('/')}/{phone_path}"
+        if known.get(abs_p) == size:
+            return True
+        fn = os.path.basename(phone_path)
+        keys = [(normalize_filename(fn, strip_dup_suffix=s), size) for s in (False, True)]
+        came_from = set().union(*(owners.get(k, set()) for k in keys))
+        if came_from and abs_p not in came_from:
+            return False  # the PC's file of this name and size is another one from the phone
+        if destination_resolver:
+            try:
+                resolved_p, _ = destination_resolver(phone_path, size)
+                if resolved_p and resolved_p.is_file() and resolved_p.stat().st_size == size:
+                    return True
+            except Exception:
+                pass
+        return any(k in by_name for k in keys)
+
+    return already_on_pc
+
+
+def _is_media_path(phone_path: str) -> bool:
+    p = "/" + phone_path.replace("\\", "/").lstrip("/")
+    return "/Media/" in p
+
+
+def _free_duplicate_name(dest_p: Path, new_file: Path) -> Path:
+    """name_dupN.ext beside dest_p: the first free one, or one already holding new_file's contents."""
+    n = 1
+    while True:
+        cand = dest_p.with_name(f"{dest_p.stem}_dup{n}{dest_p.suffix}")
+        if not cand.exists():
+            return cand
+        try:
+            if cand.stat().st_size == new_file.stat().st_size and filecmp.cmp(
+                    to_long_path(new_file), to_long_path(cand), shallow=False):
+                return cand
+        except OSError:
+            pass
+        n += 1
+
+
 def adb_pull_tar(
     adb_path,
     base,
@@ -1354,9 +1497,12 @@ def adb_pull_tar(
     destination_resolver=None,
     on_commit_callback=None,
     in_flight_callback=None,
+    skip_media_folders=None,
 ):
     """
     Fast incremental tar pull from Android to PC using a single tar stream.
+    skip_media_folders: Media folders (relative to the storage folder) another account's library
+    collects (core.libraries.folders_of_other_libraries).
     Features:
     - High-speed in-process file inventory using find -printf
     - Media Union: Automatically unions account-specific and parent/historical media folders
@@ -1377,67 +1523,47 @@ def adb_pull_tar(
         session_manager.cleanup_orphaned_part_files([dest_db, dest_media, "./Backups"])
 
     # Determine tar_root and target folders
-    # Media Union Architecture:
-    # If base is an account subfolder (e.g. /storage/emulated/0/Android/media/com.whatsapp/WhatsApp/accounts/1002):
-    # - For Databases: pull strictly from base/Databases
-    # - For Media: probe BOTH base/Media AND parent_path/Media to capture both post-migration and pre-migration media!
+    # Media Union: one WhatsApp storage folder holds the media of several account folders (Media
+    # at its root and accounts/<id>/Media). WhatsApp can move the current account between them, so
+    # one account's older and newer media can sit in different ones. Every one is pulled and
+    # matched against the chosen account's database; what does not match and comes from another
+    # account's folder is kept apart (StreamingMediaRouter.own_account).
+    # Databases come strictly from base/Databases.
     is_db_only = (folders_filter == ["Databases"])
-    tar_root = base
+    tar_root = base if is_db_only else media_tar_root(base)
     account_sub = ""
-    parent_path = ""
-
     if "/accounts/" in base:
-        parent_path = base.rsplit("/accounts/", 1)[0]
         account_sub = "accounts/" + base.rsplit("/accounts/", 1)[1].strip("/")
+
+    def _exists(rel):
+        check_cmd = adb_base + ["shell", f"ls -d '{tar_root}/{rel}' 2>/dev/null"]
+        check_res = subprocess.run(check_cmd, capture_output=True, text=True, check=False)
+        return check_res.returncode == 0 and bool(check_res.stdout.strip())
 
     folders_to_pull = []
     if is_db_only:
-        check_cmd = adb_base + ["shell", f"ls -d '{base}/Databases' 2>/dev/null"]
-        check_res = subprocess.run(check_cmd, capture_output=True, text=True, check=False)
-        if check_res.returncode == 0 and check_res.stdout.strip():
+        if _exists("Databases"):
             folders_to_pull.append("Databases")
     else:
-        # Media / Backups pull
-        if parent_path and account_sub:
-            # Multi-account folder: Set tar_root to parent_path so find and tar can address both
-            tar_root = parent_path
-            # 1. Probe companion account folders
-            for fld in [f"{account_sub}/Media", f"{account_sub}/Backups"]:
-                if folders_filter is not None and "Media" not in folders_filter and "Media" in fld:
-                    continue
-                check_cmd = adb_base + ["shell", f"ls -d '{parent_path}/{fld}' 2>/dev/null"]
-                check_res = subprocess.run(check_cmd, capture_output=True, text=True, check=False)
-                if check_res.returncode == 0 and check_res.stdout.strip():
-                    folders_to_pull.append(fld)
+        want_media = folders_filter is None or "Media" in folders_filter
+        want_backups = folders_filter is None or "Backups" in folders_filter
+        candidates = []
+        if want_media:
+            candidates += [f"{account_sub}/Media", "Media"] if account_sub else ["Media"]
+        if want_backups:
+            candidates += [f"{account_sub}/Backups", "Backups"] if account_sub else ["Backups"]
+        folders_to_pull = [fld for fld in candidates if _exists(fld)]
+        if want_media:
+            check_acc = adb_base + ["shell", f"ls -d '{tar_root}/accounts'/*/Media 2>/dev/null"]
+            acc_res = subprocess.run(check_acc, capture_output=True, text=True, check=False)
+            for line in (acc_res.stdout or "").splitlines() if acc_res.returncode == 0 else []:
+                acc_dir = line.strip().rstrip("/")
+                rel_acc = acc_dir[len(tar_root) + 1:] if acc_dir.startswith(f"{tar_root}/accounts/") else ""
+                if rel_acc.endswith("/Media") and rel_acc.count("/") == 2 and rel_acc not in folders_to_pull:
+                    folders_to_pull.append(rel_acc)
 
-            # 2. Probe shared/historical parent folders (pre-migration media)
-            for fld in ["Media", "Backups"]:
-                if folders_filter is not None and fld not in folders_filter:
-                    continue
-                check_cmd = adb_base + ["shell", f"ls -d '{parent_path}/{fld}' 2>/dev/null"]
-                check_res = subprocess.run(check_cmd, capture_output=True, text=True, check=False)
-                if check_res.returncode == 0 and check_res.stdout.strip():
-                    folders_to_pull.append(fld)
-        else:
-            # Single account or root base
-            for fld in ["Media", "Backups"]:
-                if folders_filter is not None and fld not in folders_filter:
-                    continue
-                check_cmd = adb_base + ["shell", f"ls -d '{base}/{fld}' 2>/dev/null"]
-                check_res = subprocess.run(check_cmd, capture_output=True, text=True, check=False)
-                if check_res.returncode == 0 and check_res.stdout.strip():
-                    folders_to_pull.append(fld)
-            if not is_db_only and (folders_filter is None or "Media" in folders_filter):
-                check_acc = adb_base + ["shell", f"ls -d '{base}/accounts'/*/Media 2>/dev/null"]
-                acc_res = subprocess.run(check_acc, capture_output=True, text=True, check=False)
-                if acc_res.returncode == 0 and acc_res.stdout.strip():
-                    for line in acc_res.stdout.splitlines():
-                        acc_dir = line.strip()
-                        if acc_dir:
-                            rel_acc = os.path.relpath(acc_dir, base).replace("\\", "/")
-                            if rel_acc and rel_acc not in folders_to_pull:
-                                folders_to_pull.append(rel_acc)
-
+    if skip_media_folders:
+        folders_to_pull = [f for f in folders_to_pull if f not in set(skip_media_folders)]
     if not folders_to_pull:
         return False
 
@@ -1536,6 +1662,11 @@ def adb_pull_tar(
         if cache_key and not is_db_only and phone_files:
             _session_inventory_cache[cache_key] = phone_files
 
+    if not is_db_only:
+        # What was on the phone, for the check after the sync that all of it reached the PC
+        LAST_MEDIA_INVENTORY.clear()
+        LAST_MEDIA_INVENTORY.update({"tar_root": tar_root, "files": list(phone_files or [])})
+
     if not phone_files:
         if session_manager:
             sys.stderr.write("[ADB] Warning: No WhatsApp files found on phone during inventory scan.\n")
@@ -1617,10 +1748,7 @@ def adb_pull_tar(
             pass
         if not is_db_only:
             # Reconcile already organized files in output so even fresh/cancelled sessions skip existing files
-            already_pulled = set()
-            for cand_out in already_pulled_roots(dest_media):
-                already_pulled.update(build_already_pulled_index(cand_out))
-
+            already_on_pc = _already_on_pc_check(dest_media, tar_root, destination_resolver)
             pending_rows = session_manager.get_pending_files(session_id)
             existing_batch = []
             for r in pending_rows:
@@ -1628,18 +1756,7 @@ def adb_pull_tar(
                 sz = r["file_size"]
                 if rel_p.startswith("Databases/"):
                     continue
-                if destination_resolver:
-                    try:
-                        resolved_p, _ = destination_resolver(rel_p, sz)
-                        if resolved_p and resolved_p.is_file() and resolved_p.stat().st_size == sz:
-                            existing_batch.append((rel_p, sz))
-                            continue
-                    except Exception:
-                        pass
-                fn = os.path.basename(rel_p)
-                norm = normalize_filename(fn, strip_dup_suffix=False)
-                norm_strip = normalize_filename(fn, strip_dup_suffix=True)
-                if (norm, sz) in already_pulled or (norm_strip, sz) in already_pulled:
+                if already_on_pc(rel_p, sz):
                     existing_batch.append((rel_p, sz))
             if existing_batch:
                 session_manager.mark_files_completed_batch(session_id, existing_batch)
@@ -1655,33 +1772,16 @@ def adb_pull_tar(
                 total_files=sess_info.get("total_files", len(phone_files)),
             )
     else:
-        already_pulled = set()
-        for cand_out in already_pulled_roots(dest_media):
-            already_pulled.update(build_already_pulled_index(cand_out))
-
+        already_on_pc = _already_on_pc_check(dest_media, tar_root, destination_resolver)
         for rel_path, size in phone_files:
             if rel_path.startswith("Databases/"):
                 files_to_pull.append(rel_path)
                 continue
-
-            if destination_resolver:
-                try:
-                    resolved_p, _ = destination_resolver(rel_path, size)
-                    if resolved_p and resolved_p.is_file() and resolved_p.stat().st_size == size:
-                        continue
-                except Exception:
-                    pass
-
+            if already_on_pc(rel_path, size):
+                continue
             local_p = get_local_path(rel_path)
-            if os.path.isfile(local_p):
-                if os.path.getsize(local_p) == size:
-                    continue
-            else:
-                filename_only = os.path.basename(rel_path)
-                norm_name = normalize_filename(filename_only, strip_dup_suffix=False)
-                norm_strip = normalize_filename(filename_only, strip_dup_suffix=True)
-                if (norm_name, size) in already_pulled or (norm_strip, size) in already_pulled:
-                    continue
+            if os.path.isfile(local_p) and os.path.getsize(local_p) == size and not _is_media_path(rel_path):
+                continue
             files_to_pull.append(rel_path)
         if status_callback:
             status_callback(
@@ -1725,7 +1825,7 @@ def adb_pull_tar(
     except Exception as e:
         sys.stderr.write(f"[ADB] Warning: Could not verify disk space: {e}\n")
 
-    pull_list_name = "pull_list.txt"
+    pull_list_name = f"pull_list_{os.getpid()}.txt"  # one per process: each account's tab can sync
     try:
         with open(pull_list_name, "w", encoding="utf-8", newline="") as f:
             for p in files_to_pull:
@@ -1807,15 +1907,10 @@ def adb_pull_tar(
                 if member.isdir():
                     os.makedirs(to_long_path(dest_p), exist_ok=True)
                 elif member.isreg():
-                    if dest_p.is_file() and dest_p.stat().st_size == member.size:
-                        # File already exists at destination with matching size. Skip extraction to eliminate redundant disk writes.
-                        if progress_callback:
-                            progress_callback(clean_name, member.size)
-                        if on_commit_callback:
-                            on_commit_callback(clean_name, dest_p, member.size, matched_row)
-                        if session_manager and session_id:
-                            session_manager.mark_file_completed(session_id, clean_name, member.size, target_path=str(dest_p))
-                        continue
+                    # A file of this name and size already there is not proof it is this file: two
+                    # WhatsApp folders can hold different photos named alike, a new backup can have
+                    # the old one's size. The contents decide, once this one has arrived.
+                    same_size_there = dest_p.is_file() and dest_p.stat().st_size == member.size
                     os.makedirs(to_long_path(dest_p.parent), exist_ok=True)
                     # Atomic write pattern: extract to .part_{session_id} staging file
                     tag = session_id[:8] if session_id else "sync"
@@ -1856,8 +1951,24 @@ def adb_pull_tar(
 
                         # Validate byte size before atomic rename
                         actual_size = temp_dest_p.stat().st_size
-                        if actual_size == member.size:
-                            safe_atomic_replace(temp_dest_p, dest_p, timeout=30.0)
+                        if actual_size == member.size and same_size_there and filecmp.cmp(
+                                to_long_path(temp_dest_p), to_long_path(dest_p), shallow=False):
+                            # Already on the PC
+                            safe_atomic_unlink(temp_dest_p)
+                            if progress_callback:
+                                progress_callback(clean_name, member.size)
+                            if on_commit_callback:
+                                on_commit_callback(clean_name, dest_p, member.size, matched_row)
+                            if session_manager and session_id:
+                                session_manager.mark_file_completed(session_id, clean_name, member.size, target_path=str(dest_p))
+                        elif actual_size == member.size:
+                            if same_size_there and _is_media_path(clean_name):
+                                # Another file has this name: keep both
+                                dest_p = _free_duplicate_name(dest_p, temp_dest_p)
+                            if dest_p.is_file() and filecmp.cmp(to_long_path(temp_dest_p), to_long_path(dest_p), shallow=False):
+                                safe_atomic_unlink(temp_dest_p)
+                            else:
+                                safe_atomic_replace(temp_dest_p, dest_p, timeout=30.0)
                             if session_manager and session_id:
                                 session_manager.mark_file_completed(
                                     session_id, clean_name, member.size, target_path=str(dest_p)
@@ -1904,7 +2015,16 @@ def adb_pull_tar(
         except subprocess.TimeoutExpired:
             _terminate_adb_proc(proc)
             return False
-        return proc.returncode == 0
+        if proc.returncode != 0:
+            # The phone's tar also fails when a listed file was deleted after the inventory (a chat
+            # cleared during the sync). Every other file arrived; the check after the sync lists
+            # what did not. Only a phone that went away fails the pull.
+            dev = check_adb_device(cmd)
+            if not (dev.connected and dev.authorized):
+                return False
+            sys.stderr.write(f"[ADB] Note: the phone's tar ended with status {proc.returncode} "
+                             "(a file may have been removed during the sync)\n")
+        return True
     except Exception as e:
         sys.stderr.write(f"[ADB] Tar stream pull error: {e}\n")
         return False
@@ -1944,6 +2064,7 @@ def adb_pull(
     in_flight_callback=None,
     hex_key=None,
     preferred_account_path=None,
+    skip_media_folders=None,
 ):
     """
     Pulls WhatsApp databases and media from Android.
@@ -1992,6 +2113,7 @@ def adb_pull(
         destination_resolver=destination_resolver,
         on_commit_callback=on_commit_callback,
         in_flight_callback=in_flight_callback,
+        skip_media_folders=skip_media_folders,
     )
     if success:
         cleanup_nested_databases_folder(dest_db)
@@ -2074,13 +2196,44 @@ def disable_developer_options(adb_path=None):
         return False, f"Error communicating with device: {e}"
 
 
+# Brand keys of the setup guide's USB debugging steps (gallery_assets/js/features/tutorial.js,
+# PHONE_BRANDS). Checked in order: sub-brands before their parent (Redmi before Xiaomi...).
+BRAND_KEYWORDS = (
+    ("xiaomi", ("xiaomi", "redmi", "poco")),
+    ("samsung", ("samsung",)),
+    ("oneplus", ("oneplus",)),
+    ("realme", ("realme",)),
+    ("oppo", ("oppo",)),
+    ("vivo", ("vivo", "iqoo")),
+    ("honor", ("honor",)),
+    ("huawei", ("huawei",)),
+    ("motorola", ("motorola", "moto ", "moto_", "lenovo")),
+    ("nothing", ("nothing", "cmf")),
+    ("pixel", ("google", "pixel")),
+    ("transsion", ("tecno", "infinix", "itel", "transsion")),
+    ("sony", ("sony", "xperia")),
+    ("asus", ("asus", "zenfone", "rog phone")),
+    ("nokia", ("nokia", "hmd")),
+)
+
+
+def brand_key(*texts) -> str:
+    """The guide's brand key for a manufacturer / model / USB vendor name, or "generic"."""
+    combined = " " + " ".join(t for t in texts if t).lower() + " "
+    for key, words in BRAND_KEYWORDS:
+        if any(w in combined for w in words):
+            return key
+    return "generic"
+
+
 def detect_device_oem(adb_path=None):
     """
     Detects the connected Android device OEM/brand and model.
-    Prioritizes active ADB getprop if authorized, otherwise falls back to Windows USB hardware VID.
+    Prioritizes active ADB getprop if authorized, otherwise falls back to the USB hardware vendor
+    (known before USB debugging is on, so the guide can show the right steps to turn it on).
     Returns:
         dict: {
-            "oem_key": "xiaomi" | "samsung" | "oneplus" | "pixel" | "generic",
+            "oem_key": a key of BRAND_KEYWORDS or "generic",
             "brand": str,
             "model": str,
             "confidence": "high" | "suggested" | "unknown"
@@ -2091,26 +2244,14 @@ def detect_device_oem(adb_path=None):
         dev = check_adb_device(adb_path)
         if dev.connected and dev.authorized:
             res_m = subprocess.run([cmd, "shell", "getprop ro.product.manufacturer"], capture_output=True, text=True, timeout=3, check=False)
+            res_b = subprocess.run([cmd, "shell", "getprop ro.product.brand"], capture_output=True, text=True, timeout=3, check=False)
             res_model = subprocess.run([cmd, "shell", "getprop ro.product.model"], capture_output=True, text=True, timeout=3, check=False)
             brand = res_m.stdout.strip()
             model = res_model.stdout.strip()
             if brand:
-                b_low = brand.lower()
-                if any(x in b_low for x in ["xiaomi", "redmi", "poco"]):
-                    return {"oem_key": "xiaomi", "brand": brand, "model": model, "confidence": "high"}
-                if "samsung" in b_low:
-                    return {"oem_key": "samsung", "brand": brand, "model": model, "confidence": "high"}
-                if any(x in b_low for x in ["oneplus", "oppo", "realme"]):
-                    return {"oem_key": "oneplus", "brand": brand, "model": model, "confidence": "high"}
-                if any(x in b_low for x in ["vivo", "iqoo"]):
-                    return {"oem_key": "vivo", "brand": brand, "model": model, "confidence": "high"}
-                if any(x in b_low for x in ["motorola", "moto", "lenovo"]):
-                    return {"oem_key": "motorola", "brand": brand, "model": model, "confidence": "high"}
-                if "nothing" in b_low:
-                    return {"oem_key": "nothing", "brand": brand, "model": model, "confidence": "high"}
-                if any(x in b_low for x in ["google", "pixel"]):
-                    return {"oem_key": "pixel", "brand": brand, "model": model, "confidence": "high"}
-                return {"oem_key": "generic", "brand": brand, "model": model, "confidence": "high"}
+                # ro.product.brand tells Redmi / POCO / iQOO apart from their manufacturer
+                key = brand_key(res_b.stdout.strip(), brand, model)
+                return {"oem_key": key, "brand": brand, "model": model, "confidence": "high"}
     except Exception:
         pass
 
@@ -2118,24 +2259,9 @@ def detect_device_oem(adb_path=None):
         usb_devices = detect_usb_android_hardware()
         if usb_devices:
             first = usb_devices[0]
-            vendor = (first.get("vendor") or "").lower()
-            name = (first.get("name") or "").lower()
-            combined = f"{vendor} {name}"
-            if any(x in combined for x in ["xiaomi", "redmi", "poco"]):
-                return {"oem_key": "xiaomi", "brand": first.get("vendor") or "Xiaomi", "model": first.get("name") or "", "confidence": "suggested"}
-            if "samsung" in combined:
-                return {"oem_key": "samsung", "brand": "Samsung", "model": first.get("name") or "", "confidence": "suggested"}
-            if any(x in combined for x in ["oneplus", "oppo", "realme"]):
-                return {"oem_key": "oneplus", "brand": first.get("vendor") or "OnePlus", "model": first.get("name") or "", "confidence": "suggested"}
-            if any(x in combined for x in ["vivo", "iqoo"]):
-                return {"oem_key": "vivo", "brand": first.get("vendor") or "Vivo", "model": first.get("name") or "", "confidence": "suggested"}
-            if any(x in combined for x in ["motorola", "moto", "lenovo"]):
-                return {"oem_key": "motorola", "brand": first.get("vendor") or "Motorola", "model": first.get("name") or "", "confidence": "suggested"}
-            if "nothing" in combined:
-                return {"oem_key": "nothing", "brand": first.get("vendor") or "Nothing", "model": first.get("name") or "", "confidence": "suggested"}
-            if any(x in combined for x in ["google", "pixel"]):
-                return {"oem_key": "pixel", "brand": first.get("vendor") or "Google", "model": first.get("name") or "", "confidence": "suggested"}
-            return {"oem_key": "generic", "brand": first.get("vendor") or "Android", "model": first.get("name") or "", "confidence": "suggested"}
+            vendor = first.get("vendor") or ""
+            name = first.get("name") or ""
+            return {"oem_key": brand_key(vendor, name), "brand": vendor or "Android", "model": name, "confidence": "suggested"}
     except Exception:
         pass
 
@@ -2380,7 +2506,9 @@ def batch_delete_phone_files(
         norm = p.replace("\\", "/").strip()
         if not norm.startswith("/"):
             if base_path:
-                full = f"{base_path.rstrip('/')}/{norm}"
+                # Relative paths are relative to the folder the sync pulled from: for an account
+                # subfolder that is its parent (it also holds the account's older Media)
+                full = f"{media_tar_root(base_path)}/{norm}"
             else:
                 full = f"/storage/emulated/0/{norm}"
         else:

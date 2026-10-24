@@ -355,7 +355,8 @@ updateGridDuplicateBadges();
 
 assert.strictEqual(btnReview.style.display, 'none', 'Review button must be hidden when count is 0');
 assert.strictEqual(btnQuick.style.display, 'none', 'Quick button must be hidden when count is 0');
-assert.strictEqual(hideDupsCount.innerText, '(No duplicates)', 'Should display (No duplicates) text');
+assert.strictEqual(hideDupsCount.innerText, '', 'No count badge without duplicates');
+assert.strictEqual(hideDupsCount.style.display, 'none');
 
 // Now simulate background discovery of 5 duplicates in realtime
 window._currentChatDupSet = new Set(['c1/IMG-20240101-WA0001_dup1.jpg', 'd2', 'd3', 'd4', 'd5']);
@@ -370,12 +371,13 @@ assert.strictEqual(btnReview.style.display, 'inline-flex', 'Review button must b
 assert.strictEqual(String(pillCount.innerText), '5', 'Review pill count must update to 5');
 assert.strictEqual(btnQuick.style.display, 'inline-flex', 'Quick button must be visible when count > 0');
 assert.strictEqual(btnQuick.innerText, 'Review & Clean (5)', 'Quick button must display (5)');
-assert.strictEqual(hideDupsCount.innerText, '(5 hidden)', 'Checkbox badge must update to (5 hidden) when hideDuplicates is checked');
+assert.strictEqual(hideDupsCount.innerText, '5', 'Chip badge shows the count');
+assert.strictEqual(hideDupsCount.title, '5 duplicates hidden');
 
 // Verify unchecking hideDuplicates updates to (5 duplicates)
 document.getElementById('hideDuplicatesFilter').checked = false;
 updateDuplicateCountBadgesUI();
-assert.strictEqual(hideDupsCount.innerText, '(5 duplicates)', 'Checkbox badge must update to (5 duplicates) when hideDuplicates is unchecked');
+assert.strictEqual(hideDupsCount.title, '5 duplicates shown', 'Badge says they are shown when hideDuplicates is unchecked');
 document.getElementById('hideDuplicatesFilter').checked = true;
 
 // Verify duplicate card was hidden in realtime when hideDuplicatesFilter is checked

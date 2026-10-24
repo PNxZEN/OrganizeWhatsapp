@@ -326,6 +326,11 @@ def generate_clean_plan(
         if not phone_p:
             continue
 
+        # Safety Check 0b: media from another account's folder (kept apart in _unmatched/From ...)
+        # is that account's; freeing it from the phone is not this library's call
+        if re.match(r"_unmatched/From (account [^/]+|main folder)/", rel_p.replace("\\", "/")):
+            continue
+
         # Safety Check 1: Excluded chat
         if chat_jid in exclude_jids:
             protected_count += 1

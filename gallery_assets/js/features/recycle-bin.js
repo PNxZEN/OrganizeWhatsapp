@@ -275,6 +275,12 @@ async function restoreRecycledItems(payload, pendingMessage) {
                         refreshedChat.file_count = cData.file_count || refreshedChat.media.length;
                         refreshedChat.total_size = cData.total_size || refreshedChat.total_size;
                         refreshedChat._dupCache = null;
+                        const metaEl = document.getElementById('currentChatMeta');
+                        if (metaEl) {
+                            metaEl.innerText = refreshedChat.jid === '_unmatched'
+                                ? `${refreshedChat.file_count} files • Unindexed WhatsApp Media`
+                                : `${refreshedChat.file_count} files • Total storage: ${formatBytes(refreshedChat.total_size)}`;
+                        }
                         renderSidebar();
                         filterAndRenderMedia({ preserveScroll: true, keepItemsCount: true });
                     }

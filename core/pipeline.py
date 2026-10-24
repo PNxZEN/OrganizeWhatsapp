@@ -16,15 +16,24 @@ from pathlib import Path
 from core.adb import (
     adb_pull,
     check_adb_device,
+    LAST_MEDIA_INVENTORY,
     cleanup_nested_databases_folder,
     discover_android_base_path,
     find_adb_binary,
+    media_tar_root,
+    newer_backup_in_storage,
     wait_for_adb_device,
 )
 from core.config import load_config, save_config
 from core.contacts import load_contacts_mapping, load_db_mappings
 from core.database import build_media_index
-from core.decrypt import create_key_file, decrypt_db
+from core.decrypt import (
+    BackupIncompleteError,
+    KeyMismatchError,
+    check_database_complete,
+    create_key_file,
+    decrypt_db,
+)
 from core.duplicates import analyze_duplicates, detect_quality_duplicates
 from core.gallery import gallery_data_lock, generate_gallery
 from core.organizer import (
@@ -36,6 +45,134 @@ from core.organizer import (
     StreamingMediaRouter,
 )
 from core.server import sync_status
+
+
+def add_sync_warning(msg):
+    """A problem the user must see on the finished-sync screen (the sync itself went on)."""
+    warnings = sync_status.setdefault("warnings", [])
+    if msg not in warnings:
+        warnings.append(msg)
+
+
+def report_completeness(output_dir, media_rows, status_callback=None, own_account=None):
+    """Checks that every media file the phone listed is on the PC; tells the user if not."""
+    from core.sync_report import OTHER_ACCOUNT, REPORT_NAME, THIS_ACCOUNT, verify_sync_completeness
+    if status_callback:
+        status_callback("building_gallery", "Checking that all media reached the PC...",
+                        detail="Comparing the phone's file list with the files on this PC")
+    try:
+        report = verify_sync_completeness(output_dir, dict(LAST_MEDIA_INVENTORY), media_rows,
+                                          own_account=own_account)
+    except Exception as e:
+        sys.stderr.write(f"[Streaming] Warning: completeness check failed: {e}\n")
+        return None
+    print(f"[Streaming] Check: {report['on_pc']:,} of {report['phone_media_files']:,} media files on the "
+          f"phone are on the PC ({report['in_chats']:,} in chats, {report['in_unmatched']:,} unmatched).")
+    if report["missing_count"]:
+        add_sync_warning(
+            f"{report['missing_count']:,} media file(s) on the phone did not reach the PC. Sync again to "
+            f"fetch them; the list is in {REPORT_NAME} in the output folder."
+        )
+    # Whose media the other account folders hold: said once per folder and verdict
+    noted = dict(load_config().get("account_folder_verdicts") or {})
+    root = LAST_MEDIA_INVENTORY.get("tar_root") or ""
+    for folder, f in report["phone_folders"].items():
+        if f["synced_account"] or f["verdict"] not in (THIS_ACCOUNT, OTHER_ACCOUNT):
+            continue
+        key = f"{root}/{folder}"
+        name = "The main WhatsApp folder" if folder == "Media" else f"WhatsApp's account folder {folder.split('/')[1]}"
+        print(f"[Streaming] {name}: {f['in_chats']:,} of {f['chat_media']:,} chat media in this account's chats "
+              f"({f['verdict']})")
+        if noted.get(key) == f["verdict"]:
+            continue
+        noted[key] = f["verdict"]
+        unmatched_dir = "From main folder" if folder == "Media" else f"From account {folder.split('/')[1]}"
+        if f["verdict"] == THIS_ACCOUNT:
+            add_sync_warning(
+                f"{name} holds this account's older media: {f['in_chats']:,} of its {f['chat_media']:,} "
+                "photos, videos and documents were filed into your chats."
+            )
+        else:
+            add_sync_warning(
+                f"{name} belongs to another WhatsApp account: only {f['in_chats']:,} of its "
+                f"{f['chat_media']:,} files are in this account's chats (shared between the two). The rest "
+                f"is kept in _unmatched/{unmatched_dir}. To file it into its own chats, open that account "
+                "from Accounts: it gets its own tab and folder, and asks for that account's 64-digit key."
+            )
+    save_config({"account_folder_verdicts": noted})
+    return report
+
+
+def remember_account_key(account, hex_key):
+    """The key opened this account's backup: remember it for the account (its library starts with it)."""
+    keys = dict(load_config().get("account_keys") or {})
+    keys[account] = hex_key
+    save_config({"account_keys": keys, "hex_key_account": account})
+
+
+def database_account(db_path):
+    """The phone folder of the account whose backup db_path was decrypted from, or None."""
+    try:
+        return Path(f"{db_path}.account").read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
+
+def _set_database_account(db_path, account):
+    try:
+        Path(f"{db_path}.account").write_text(account or "", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def decrypt_or_keep_previous(key_file, crypt_file, out_db, status_callback=None, required=True,
+                             account=None, **kwargs):
+    """
+    Decrypts crypt_file into out_db. A backup that is cut off or damaged (WhatsApp still writing it,
+    an interrupted copy) is never used: the database from the previous sync stays in place and is
+    used instead, with a warning, if it is the same account's (account: its phone folder). Raises
+    when there is no such database and required is True.
+    Returns True when the fresh backup was used.
+    """
+    try:
+        decrypt_db(key_file, crypt_file, out_db, **kwargs)
+        if account:
+            _set_database_account(out_db, account)
+        return True
+    except KeyMismatchError:
+        proven_for = load_config().get("hex_key_account")
+        if account and proven_for and account != proven_for:
+            raise KeyMismatchError(
+                f"The saved 64-digit key does not open the backup of the WhatsApp account in {account}. "
+                "Each WhatsApp account has its own key: enter this account's key in Key & Settings, then "
+                "sync again."
+            )
+        raise
+    except BackupIncompleteError as e:
+        previous_ok = False
+        if os.path.isfile(out_db) and account and database_account(out_db) != account:
+            sys.stderr.write(f"[DB] The previous {os.path.basename(out_db)} is not known to be this account's: not used\n")
+        elif os.path.isfile(out_db):
+            try:
+                check_database_complete(out_db)
+                previous_ok = True
+            except BackupIncompleteError:
+                previous_ok = False
+        if not previous_ok:
+            if required:
+                raise
+            sys.stderr.write(f"[DB] Skipping {os.path.basename(crypt_file)}: {e}\n")
+            return False
+        msg = (
+            "The newest WhatsApp backup on the phone is incomplete, so the chats from your previous sync "
+            "are used. Media newer than that backup waits in _unmatched and is filed on a later sync. "
+            "To fix it now: WhatsApp › Settings › Chats › Chat backup › Back up, then sync again."
+        )
+        sys.stderr.write(f"[DB] {os.path.basename(crypt_file)} refused ({e}). Using the previous {os.path.basename(out_db)}.\n")
+        if status_callback:
+            status_callback("decrypting", msg)
+        add_sync_warning(msg)
+        return False
 
 
 def file_stability_check(path, wait_ms=500):
@@ -287,7 +424,8 @@ def run_pipeline(
 
         if crypt_file and os.path.isfile(crypt_file):
             print(f"[DB] Decrypting: {crypt_file} -> {msgstore}")
-            decrypt_db(key_file, crypt_file, msgstore)
+            decrypt_or_keep_previous(key_file, crypt_file, msgstore, status_callback,
+                                     account=load_config().get("selected_account_path") or None)
         else:
             print("[WARN] No encrypted msgstore.db found in Databases folder.")
 
@@ -305,7 +443,7 @@ def run_pipeline(
 
         if wa_crypt and os.path.isfile(wa_crypt):
             print(f"[DB] Decrypting contacts: {wa_crypt} -> wa.db")
-            decrypt_db(key_file, wa_crypt, "wa.db")
+            decrypt_or_keep_previous(key_file, wa_crypt, "wa.db", required=False)
 
     # Contacts mapping
     adb_bin = find_adb_binary()
@@ -527,6 +665,16 @@ def run_streaming_pipeline(
         preferred_account_path=saved_account_path,
         status_callback=status_callback,
     )
+    # A library belongs to one account: never sync another account into it because its own
+    # folder is missing (another phone connected, WhatsApp reinstalled)
+    from core.config import active_profile
+    if saved_account_path and base_path != saved_account_path and (
+            active_profile() or (Path(output_dir) / "media_index.csv").is_file()):
+        raise RuntimeError(
+            f"This tab's WhatsApp account ({saved_account_path}) is not on the connected phone. "
+            "Connect the phone it is on, or open the account that is on this phone from Accounts "
+            "(each account opens in its own tab)."
+        )
     if not saved_account_path and base_path:
         acc_id = Path(base_path).name if "/accounts/" in base_path else "main"
         app_type = "whatsapp_business" if ("w4b" in base_path or "WhatsApp Business" in base_path) else "whatsapp"
@@ -569,6 +717,13 @@ def run_streaming_pipeline(
                 detail="Skipping fresh download and decryption",
             )
         print(f"[Streaming] Fast in-session resume: Reusing already decrypted database at {msgstore}")
+
+    # The database on the PC may be another account's: never reuse it for this one
+    local_owner = database_account(msgstore) if os.path.isfile(msgstore) else None
+    if (skip_db_pull or skip_decrypt) and local_owner and local_owner != base_path:
+        print(f"[Streaming] The local chat database is {local_owner}'s: fetching {base_path}'s instead")
+        skip_db_pull = False
+        skip_decrypt = False
 
     # Phase 1: Fast Pull Databases only
     if not skip_pull and not skip_db_pull:
@@ -722,13 +877,17 @@ def run_streaming_pipeline(
                 )
 
         if crypt_file and os.path.isfile(crypt_file):
-            decrypt_db(
+            fresh = decrypt_or_keep_previous(
                 key_file,
                 crypt_file,
                 msgstore,
+                status_callback,
+                account=base_path,
                 cancellation_token=cancellation_token,
                 progress_callback=_on_decrypt_progress,
             )
+            if fresh and hex_key and not (cancellation_token and cancellation_token.is_set()):
+                remember_account_key(base_path, hex_key)
             # Extract real registered phone number from decrypted SQLite props
             if os.path.isfile(msgstore):
                 if status_callback:
@@ -789,7 +948,7 @@ def run_streaming_pipeline(
 
         wa_db = os.path.join(db_dir, "wa.db")
         if wa_crypt and os.path.isfile(wa_crypt):
-            decrypt_db(key_file, wa_crypt, wa_db)
+            decrypt_or_keep_previous(key_file, wa_crypt, wa_db, required=False)
 
     if cancellation_token and cancellation_token.is_set():
         return False
@@ -849,17 +1008,37 @@ def run_streaming_pipeline(
         chat_names=chat_names,
         mode=mode,
     )
+    router.phone_root = media_tar_root(base_path)
+    router.own_account = ("accounts/" + base_path.rsplit("/accounts/", 1)[1].strip("/")) if "/accounts/" in base_path else ""
 
     if cancellation_token and cancellation_token.is_set():
         return False
 
     # Phase 4: Stream Media from Phone Directly to Output Folder
+    LAST_MEDIA_INVENTORY.clear()
     if not skip_pull:
         if status_callback:
             status_callback(
                 "indexing",
                 "Scanning WhatsApp media on phone...",
                 detail=f"Checking storage folders ({base_path}/Media)",
+            )
+        from core import libraries as _libraries
+        newer = newer_backup_in_storage(base_path, adb_path=cmd)
+        noted_newer = dict(load_config().get("noted_newer_backups") or {})
+        newer_key = newer["path"] if newer else ""
+        # Another account's library (its folder has a library of its own) is not this one moved;
+        # and each folder is pointed out once (a second account's backup is newer every other day)
+        if newer and not _libraries.library_for(newer["path"]) and noted_newer.get(base_path) != newer_key:
+            noted_newer[base_path] = newer_key
+            save_config({"noted_newer_backups": noted_newer})
+            from datetime import datetime
+            when = datetime.fromtimestamp(newer["mtime"]).strftime("%d %b %Y")
+            name = newer["path"].rsplit("/", 1)[-1] if "/accounts/" in newer["path"] else "the main WhatsApp folder"
+            add_sync_warning(
+                f"WhatsApp's folder {name} has a newer chat backup ({when}) than the account synced. "
+                "If WhatsApp moved your account there, open it from Accounts: until then, newer media is "
+                "copied but cannot be matched to its chats."
             )
 
         stream_ok = adb_pull(
@@ -875,6 +1054,7 @@ def run_streaming_pipeline(
             destination_resolver=router.resolve_destination,
             on_commit_callback=router.record_committed_file,
             in_flight_callback=in_flight_callback,
+            skip_media_folders=_libraries.folders_of_other_libraries(base_path),
         )
 
         if cancellation_token and cancellation_token.is_set():
@@ -890,6 +1070,25 @@ def run_streaming_pipeline(
         status_callback("building_gallery", "Finalizing gallery data and export catalog...")
 
     summary, organized_list = router.flush_all(export_csv=True)
+
+    # Earlier syncs may have left files in _unmatched that this (newer) database knows: a photo
+    # newer than the backup used then, or one only recognisable by its contents. Files already on
+    # the PC are not transferred again, so they would otherwise stay there for good.
+    if not (cancellation_token and cancellation_token.is_set()) and (Path(output_dir) / "_unmatched").is_dir():
+        if status_callback:
+            status_callback("building_gallery", "Re-checking unmatched media...",
+                            detail="Matching earlier unmatched files to chats by name and by their contents")
+        try:
+            from core.organizer import reorganize_unmatched_media
+            recheck = reorganize_unmatched_media(output_dir, media_rows=media_rows, contacts=contacts,
+                                                 lid_to_phone=lid_to_phone, chat_names=chat_names)
+            if recheck.get("rematched"):
+                print(f"[Streaming] Matched {recheck['rematched']} earlier unmatched file(s) to their chats "
+                      f"({recheck.get('by_content', 0)} by contents).")
+        except Exception as e:
+            sys.stderr.write(f"[Streaming] Warning: re-checking unmatched media failed: {e}\n")
+    if LAST_MEDIA_INVENTORY.get("files") is not None and not (cancellation_token and cancellation_token.is_set()):
+        report_completeness(output_dir, media_rows, status_callback, own_account=router.own_account)
     cleanup_cache(output_dir, max_size_mb=500)
 
     if session_manager and session_id:

@@ -58,7 +58,7 @@ MAX_EXTRACTED_FILES = 20000
 MAX_NOTES_CHARS = 8000
 CHECK_CACHE_SECS = 600
 HTTP_TIMEOUT_SECS = 20
-DOWNLOAD_CHUNK = 256 * 1024
+DOWNLOAD_CHUNK = 64 * 1024     # small enough for visible progress on a slow connection
 SHUTDOWN_GRACE_SECS = 20
 
 STATE_IDLE = "idle"
@@ -509,7 +509,12 @@ class UpdateManager:
             shutil.rmtree(staging, ignore_errors=True)
             work.mkdir(parents=True, exist_ok=True)
             package = release["package"]
-            expected = self._expected_checksum(package)
+            # The small .sha256 file comes in alongside the package instead of before it: each
+            # request to GitHub costs a redirect and two connections, seconds on a slow network
+            checksum_file = {}
+            fetcher = threading.Thread(target=lambda: checksum_file.update(result=self._checksum_from_file(package)),
+                                       daemon=True, name="update-checksum")
+            fetcher.start()
 
             size = package["size"]
             if size > MAX_PACKAGE_BYTES:
@@ -521,10 +526,14 @@ class UpdateManager:
                                               f"(need about {needed // (1024 * 1024)} MB).")
 
             archive = work / package["name"]
+            started = time.time()
             self._download(package["url"], archive, size)
+            print(f"[Updater] Downloaded {package['name']} ({size // 1024} KB) in {time.time() - started:.1f} s", flush=True)
             self._check_cancel()
 
             self._set(STATE_VERIFYING, "Verifying download…", 100.0)
+            fetcher.join(timeout=HTTP_TIMEOUT_SECS * 2)
+            expected = self._expected_checksum(package, checksum_file.get("result", ("", None)))
             actual = sha256_file(archive)
             if actual != expected:
                 raise UpdateError("checksum_mismatch", "The downloaded file failed its integrity check "
@@ -550,17 +559,23 @@ class UpdateManager:
             self._discard_files()
             self._set(STATE_ERROR, str(e), error={"code": "unexpected", "message": f"Unexpected error: {e}"})
 
-    def _expected_checksum(self, package: dict) -> str:
+    def _checksum_from_file(self, package: dict):
+        """The release's .sha256 file: (hash or "", error or None). Never raises."""
+        if not package.get("checksum_url"):
+            return "", None
+        try:
+            text = self._get_text(package["checksum_url"], 4096)
+        except UpdateError as e:
+            return "", e
+        m = re.search(r"\b([0-9a-fA-F]{64})\b", text)
+        return (m.group(1).lower() if m else ""), None
+
+    def _expected_checksum(self, package: dict, from_file_result=None) -> str:
+        """GitHub's own digest of the asset and the release's .sha256 file must agree (either alone is enough)."""
         from_api = package.get("sha256") or ""
-        from_file = ""
-        if package.get("checksum_url"):
-            try:
-                text = self._get_text(package["checksum_url"], 4096)
-                m = re.search(r"\b([0-9a-fA-F]{64})\b", text)
-                from_file = m.group(1).lower() if m else ""
-            except UpdateError:
-                if not from_api:
-                    raise
+        from_file, error = from_file_result if from_file_result is not None else self._checksum_from_file(package)
+        if error and not from_api:
+            raise error
         if from_api and from_file and from_api != from_file:
             raise UpdateError("checksum_mismatch", "The release's checksums disagree; refusing to install it.")
         expected = from_api or from_file
@@ -569,12 +584,21 @@ class UpdateManager:
         return expected
 
     def _download(self, url: str, dest: Path, expected_size: int):
+        with self._lock:
+            self._progress["message"] = "Connecting to GitHub\u2026"
+            self._progress["bytes_total"] = expected_size or 0
+        asked = time.time()
         with self._request(url, "application/octet-stream") as resp:
+            waited = time.time() - asked
+            if waited > 3:
+                # Shown in the server window: a slow network (or one that slows GitHub downloads)
+                print(f"[Updater] GitHub took {waited:.1f} s to start sending the update.", flush=True)
             length = int(resp.headers.get("Content-Length") or expected_size or 0)
             if length > MAX_PACKAGE_BYTES:
                 raise UpdateError("bad_package", "The update package is unexpectedly large.")
             with self._lock:
                 self._progress["bytes_total"] = length
+                self._progress["message"] = "Downloading\u2026"
             done = 0
             tmp = dest.with_name(dest.name + ".part")
             try:
