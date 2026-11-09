@@ -1,21 +1,20 @@
 # WhatsApp Offline Media Gallery
 
-> Browse, search, and back up your WhatsApp photos, videos, and documents - fully offline, private, and organized by chat.
+> Browse, search, and back up your WhatsApp photos, videos, and documents — fully offline, private, and organized by chat.
 
 <div align="center">
 
-[![Latest Release](https://img.shields.io/github/v/release/PNxZEN/OrganizeWhatsapp?style=for-the-badge&color=10b981&logo=github&label=Latest%20Release)](../../releases/latest)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=for-the-badge)](../../releases/latest)
-[![Offline and Private](https://img.shields.io/badge/100%25-Offline%20%26%20Private-success?style=for-the-badge)](../../)
+[![Latest Release](https://img.shields.io/github/v/release/PNxZEN/OrganizeWhatsapp?style=for-the-badge&color=10b981&logo=github&label=Latest%20Release)](https://github.com/PNxZEN/OrganizeWhatsapp/releases/latest)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=for-the-badge)](https://github.com/PNxZEN/OrganizeWhatsapp/releases/latest)
+[![Offline & Private](https://img.shields.io/badge/100%25-Offline%20%26%20Private-success?style=for-the-badge)](https://github.com/PNxZEN/OrganizeWhatsapp)
+[![Changelog](https://img.shields.io/badge/Changelog-v1.2.5-orange?style=for-the-badge)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
 <br/>
 
-### [**Download Latest Release (Windows Portable & Unix Source)**](../../releases/latest)
+### [**Download Latest Release (Windows Portable & Unix Source)**](https://github.com/PNxZEN/OrganizeWhatsapp/releases/latest)
 
 **Zero installation required for Windows:** Embedded Python 3.13 and Google ADB included. Just extract and double-click `Start-Gallery.bat`.
-
-[**Download Latest Release on GitHub ->**](../../releases/latest)
 
 </div>
 
@@ -28,7 +27,7 @@
 3. [Quick Start (macOS / Linux)](#3-quick-start-macos--linux)
 4. [Quick Start (Developers / Manual Setup)](#4-quick-start-developers--manual-setup)
 5. [Step-by-Step User Guide](#5-step-by-step-user-guide)
-6. [Features](#6-features)
+6. [Key Features](#6-key-features)
 7. [Why Direct Wired ADB?](#7-why-direct-wired-adb)
 8. [Why the 64-Digit Key?](#8-why-the-64-digit-key)
 9. [Project Structure](#9-project-structure)
@@ -36,30 +35,30 @@
 11. [In-App Updates & Versioning](#11-in-app-updates--versioning)
 12. [Privacy & Security](#12-privacy--security)
 13. [Requirements](#13-requirements)
-14. [License](#14-license)
+14. [Changelog & Release Notes](#14-changelog--release-notes)
+15. [License](#15-license)
 
 ---
 
 ## 1. What Problem Does This Solve?
 
-WhatsApp is the primary medium for sharing photos, videos, voice notes, and documents. Over months and years, this media consumes tens of gigabytes of phone storage, frequently pushing devices to 95-100% capacity.
+WhatsApp is the primary medium for sharing photos, videos, voice notes, and documents. Over months and years, this media consumes tens of gigabytes of phone storage, frequently pushing devices to capacity.
 
 WhatsApp includes a **"Manage Storage"** screen, but provides only one action: **DELETE**.
 
 There is no built-in option to:
 - "Back up selected chat to PC"
-- "Save college trip photos to external hard drive"
+- "Save college trip photos to an external drive"
 - "Export all videos from this group while keeping documents"
 
 Users are forced to choose between running out of storage or permanently losing their memories.
 
 ### Why Built-in WhatsApp Backups Don't Help
-Even if WhatsApp performs an automatic local backup or a cloud backup (Google Drive / iCloud):
-- **Locked Inside WhatsApp**: Media in those backups can **only be accessed and restored inside the WhatsApp mobile app itself**. You cannot plug an external hard drive, USB flash drive, or PC into the backup to browse your photos or play your videos.
-- **No Direct Storage Access**: Cloud backups are stored as hidden, proprietary app-data packages that cannot be mounted or explored. Local backups on your phone are cryptographically locked inside proprietary encrypted database blobs (`msgstore.db.crypt14/15`).
-- **Cannot Free Up Phone Space Without Losing Access**: If you delete media from WhatsApp to reclaim phone storage, you lose immediate access to those memories on your devices.
+- **Locked Inside WhatsApp**: Media in cloud or local backups can **only be restored inside the WhatsApp mobile app itself**. You cannot mount the backup on a PC to view photos or play videos.
+- **No Direct Storage Access**: Cloud backups are stored as hidden proprietary app-data packages. Local backups are cryptographically locked database blobs (`msgstore.db.crypt14/15`).
+- **Cannot Free Up Phone Space Without Losing Access**: Deleting media from WhatsApp deletes your access to those files.
 
-**WhatsApp Offline Media Gallery liberates your media**: It connects directly to your phone via USB cable, decrypts and organizes all photos, videos, audio, and documents into clean, human-readable folders organized by chat name and date. You can store them on external hard drives, SSDs, NAS drives, or any computer — accessible anytime via standard file explorers or the built-in 60 FPS offline gallery, completely independent of WhatsApp.
+**WhatsApp Offline Media Gallery liberates your media**: It connects directly to your phone via USB cable, decrypts and organizes all photos, videos, audio, and documents into clean, human-readable folders organized by chat name and date. You can store them on external drives, SSDs, NAS storage, or any computer — accessible anytime via standard file explorers or the built-in 60 FPS offline gallery, completely independent of WhatsApp.
 
 ---
 
@@ -67,18 +66,18 @@ Even if WhatsApp performs an automatic local backup or a cloud backup (Google Dr
 
 The easiest way. No Python, no setup, no installation required.
 
-1. Download the latest zero-install portable ZIP from [**GitHub Releases (Latest)**](../../releases/latest) (`WhatsAppMediaOrganizer-vX.X.X-Windows-Portable.zip`)
-2. **Right-click the ZIP -> Extract All** (to any folder you like)
-3. **Double-click `Start-Gallery.bat`**
-4. Your browser opens automatically - follow the interactive setup guide
+1. Download the latest zero-install portable ZIP from [**GitHub Releases**](https://github.com/PNxZEN/OrganizeWhatsapp/releases/latest) (`WhatsAppMediaOrganizer-vX.X.X-Windows-Portable.zip`).
+2. **Right-click the ZIP → Extract All** (to any folder).
+3. **Double-click `Start-Gallery.bat`**.
+4. Your browser opens automatically — follow the interactive setup guide.
 
-> **That's it.** The ZIP includes Python 3.13, Google ADB, and all dependencies. Nothing else to install.
+> The ZIP includes embedded Python 3.13, Google ADB, and all dependencies.
 
 ---
 
 ## 3. Quick Start (macOS / Linux)
 
-Download the latest `Unix-Source.tar.gz` from [GitHub Releases](../../releases/latest), then extract it and run the one-time setup (creates a Python virtual environment and installs dependencies):
+Download `WhatsAppMediaOrganizer-vX.X.X-Unix-Source.tar.gz` from [GitHub Releases](https://github.com/PNxZEN/OrganizeWhatsapp/releases/latest), then extract and run the one-time setup:
 
 ```bash
 tar -xzf WhatsAppMediaOrganizer-vX.X.X-Unix-Source.tar.gz
@@ -86,30 +85,26 @@ cd WhatsAppMediaOrganizer-vX.X.X
 ./install.sh
 ```
 
-Then launch it (this is the only command you need from now on):
+Then launch it (the only command you need from now on):
 
 ```bash
 ./start_gallery.sh
 ```
 
-> The command blocks contain no `#` comments on purpose: macOS's default shell (zsh) does not treat `#` as a comment when commands are pasted, so a pasted comment fails with errors such as `zsh: number expected`.
-
 Setup will:
-- Check for Python 3.10+ and tell you exactly how to install it if missing
-- Create a `venv` and install the dependencies, including ffmpeg (video thumbnails and previews)
-- Download Google's official Android platform-tools (ADB, for USB phone sync) into `./bin/platform-tools/` if ADB is not already installed. No Homebrew needed.
-
-The launcher only goes online when the dependencies change (the first run, or after an update). A normal launch makes no network requests.
+- Check for Python 3.10+ (and explain how to install it if missing)
+- Create a virtual environment and install dependencies (including FFmpeg)
+- Download Google's official Android platform-tools (ADB) into `./bin/platform-tools/` if not present. No Homebrew required.
 
 > [!NOTE]
-> On Linux, Google publishes ADB for x86-64 only. On ARM Linux, install it with `sudo apt install adb`.
+> On Linux, Google publishes ADB for x86-64 only. On ARM Linux (e.g. Raspberry Pi), install it via `sudo apt install adb`.
 
 ---
 
 ## 4. Quick Start (Developers / Manual Setup)
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/PNxZEN/OrganizeWhatsapp.git
 cd OrganizeWhatsapp
 
 python -m venv venv
@@ -125,118 +120,103 @@ pip install -r requirements.txt
 python wa_media_organizer.py --serve --auto-open
 ```
 
-**Requirements**: Python 3.10+, ADB on PATH (or in `./bin/platform-tools/`; `python -m core.platform_tools --setup` downloads it on macOS / Linux), ffmpeg (installed by requirements.txt on macOS / Linux).
-
 ---
 
 ## 5. Step-by-Step User Guide
 
-### Step 1: Launch & Connect Your Phone
+### Step 1: Connect Your Phone (Live Connection Checklist)
 
-1. Start the app using your platform's launcher (see Quick Start above).
-2. **First launch** automatically opens the interactive setup guide. You can reopen it anytime from the **Setup Guide** button in the top navigation bar.
-3. In **Step 1 (Phone Connection)**, follow the tailored instructions for your phone brand:
-   - **Xiaomi / Redmi / POCO** - Enable Developer Options via Settings > About Phone (tap OS/MIUI Version 7 times)
-   - **Samsung Galaxy** - Enable via Settings > About Phone > Software Information (tap Build Number 7 times)
-   - **OnePlus / OPPO / Realme** - Enable via Settings > About Device > Version (tap Build Number 7 times)
-   - **Vivo / iQOO** - Enable via Settings > About Phone > Software Info (tap Build Number 7 times)
-   - **Motorola / Nothing Phone** - Enable via Settings > About Phone (tap Build Number 7 times)
-   - **Google Pixel / Stock Android** - Enable via Settings > About Phone (tap Build Number 7 times)
-4. Connect your phone via USB cable. When your phone displays **"Allow USB debugging?"**, check **"Always allow from this computer"** and tap **Allow**.
+1. Start the app. The interactive setup guide opens automatically on first launch (or click **Setup Guide** anytime).
+2. The app includes a **live connection checklist** that automatically detects your phone brand when plugged in:
+   - **Plugged in** → **USB debugging enabled** → **Authorized on phone**.
+   - If stuck on any step, brand-tailored hints appear for 15+ manufacturers (Samsung, Xiaomi/HyperOS, OnePlus, OPPO, Vivo, Pixel, Motorola, Nothing, Huawei, etc.).
+3. When your phone displays **"Allow USB debugging?"**, check **"Always allow from this computer"** and tap **Allow**.
 
 ---
 
-### Step 2: Get Your 64-Digit WhatsApp Key
+### Step 2: Capture Your 64-Digit WhatsApp Key
 
-This key decrypts your WhatsApp chat database locally so the app can read chat names and contacts. **It never leaves your device.**
+This key decrypts your WhatsApp chat database locally to resolve chat names and contacts. **It never leaves your machine.**
 
-1. On your phone, open WhatsApp → **Settings → Chats → Chat backup → End-to-end encrypted backup**.
-   - If a backup is in progress, wait for it to finish.
-   - If you set one up without saving the key, tap **Turn off** then **Turn on** to regenerate.
-2. Tap **More options** at the bottom. **Do NOT tap "Use passkey"** — passkeys are biometric and cannot decrypt databases on a PC.
-3. Choose **Use 64-digit encryption key** → tap **Generate your 64-digit key**.
-4. Press and hold anywhere on the 4×4 key grid on your phone to copy all 64 characters.
-
-**Transfer options (choose one):**
-
-| Method | Steps |
-| :--- | :--- |
-| **1-Tap USB Transfer (recommended)** | Click **"Send Key from Phone via USB"** in the guide. The app opens a local page on your phone browser over USB (`http://localhost:8000/paste-key`). Tap **"Paste & Send to PC"**. Done — zero cloud, zero internet. |
-| **Manual paste** | Paste the 64 hex characters directly into the desktop input field. |
+The setup guide offers two effortless modes:
+- **"Do it for me" (Automated USB Capture)**: The app navigates through WhatsApp on your phone via ADB and reads the 64-digit key directly off the screen. Nothing to type or copy.
+- **"Guide me step by step"**: The app monitors your phone screen and shows live instructions and matching screenshots as you tap.
+- **Manual / 1-Tap USB Transfer**: If you already know your key, paste it directly or use 1-Tap USB transfer over the local wire (`/paste-key`).
 
 ---
 
-### Step 3: Sync Your Phone
+### Step 3: Complete Media Sync Across All Folders
 
 Click **Sync Phone** in the top navigation bar.
 
 The app will:
-- Pull your encrypted WhatsApp databases (`msgstore.db.crypt15`) over USB at 30–60 MB/s
-- Decrypt your chat names, sender names, and timestamps locally using AES-256-GCM
-- Stream all your media directly into the organized `./output` directory
-- Generate optimized gallery thumbnails
+- Read media from **all WhatsApp account folders** (both the main `Media` directory and modern `accounts/<id>/Media` subdirectories).
+- Match files by **content fingerprint (SHA-256)** against chat records, ensuring renamed or shared media reaches the right chat.
+- Pull encrypted databases (`msgstore.db.crypt15`) over USB at 30–60 MB/s and decrypt locally using AES-256-GCM.
+- Stream media directly into clean `./output/<Chat Name>/<YYYY-MM>/` folders.
+- Generate a comprehensive `.sync_report.json` auditing every file on phone vs. PC.
 
 ---
 
-### Step 4: Browse, Filter & Back Up
+### Step 4: Browse, Filter & Export
 
 | Action | How |
 | :--- | :--- |
 | **Browse chats** | Left sidebar, sorted by media count and disk size |
-| **Filter media type** | Top chip bar: Images, Videos, Audio, Documents |
-| **Filter by date** | Calendar button → Month Slider (1–12) or Year Slider |
-| **Find duplicates** | Duplicate toggle — red `DUPLICATE` badges, one-click to hide/show |
-| **Select & export** | Checkbox on each card, or **Backup Chat** to archive the whole conversation |
+| **Categories** | Dedicated tabs: Images, Videos, Audio, Documents, Stickers, GIFs, Voice notes |
+| **Fast filters** | Search text, All / Sent / Received switch, Starred, Forwarded, and Hide Duplicates chips |
+| **Date navigation** | Calendar filter with Month and Year slider rails |
+| **Duplicate review** | Visual side-by-side video & image comparison lightbox; soft-delete to Recycle Bin |
+| **Export ZIP** | One-click **Backup Chat** to download an entire conversation as an offline ZIP archive |
 
 ---
 
-### Step 5: Reclaim Phone Storage
+### Step 5: Multi-Account Browser Tabs
 
-You can reclaim phone storage directly from the app or manually inside WhatsApp:
-
-- **Built-in Phone Storage Reclaim Studio**: Open the Reclaim tab to analyze phone storage. Choose between **Safe** (keeps recent media), **Balanced**, or **Aggressive** cleaning profiles. The strict **Archive Safety Invariant** guarantees that zero unbacked-up files are ever deleted from your phone.
-- **Media Restore**: Accidental deletions can be pushed back to your phone at any time via the restore manager.
-- **Manual WhatsApp Deletion**: Open WhatsApp on phone → **Settings → Storage and Data → Manage Storage** → select chats and tap **Delete**.
-
-Your phone storage is instantly reclaimed while your memories remain safely preserved on your PC.
+If your phone runs multiple accounts (WhatsApp Business, a second SIM, Samsung Dual Messenger, or Work Profiles):
+- Click the **Accounts** button in the top navigation bar.
+- Open each account in its own dedicated browser tab.
+- Each account maintains its **own independent library folder**, its own port, and its own saved 64-digit backup key with zero cross-contamination.
 
 ---
 
-### Step 6: Restore Banking App Access
+### Step 6: Verified Phone Storage Reclaim & Audit History
 
-Some banking and payment apps (YONO SBI, Google Pay, PhonePe, BHIM) block access while Developer Options is active.
-
-**To restore access immediately** — before unplugging your cable — click the one-click **"Disable Developer Options"** button in the desktop app.
-
-Alternatively: Phone **Settings → Developer Options → toggle the master switch OFF**.
+Free up phone storage safely without risking data loss:
+- **Phone-Checked Estimates**: Every file is verified to exist on the phone before being counted in the cleanup estimate.
+- **Strict Verification Before Delete**: Right before any file is deleted on the phone, its PC copy is re-checked to ensure it exists and matches file size.
+- **Live Deletion Progress**: Watch live progress with current file names, speed, space freed, and confirmed deletions.
+- **Reclaim History & Check Phone**: Audit past cleanups, export full CSV logs, or click **Check Phone** to see what media is still on the phone vs. PC.
 
 ---
 
-## 6. Features
+### Step 7: Restore Developer Options / Banking App Access
+
+Some banking and UPI payment apps (Google Pay, PhonePe, YONO SBI) restrict access while Developer Options is active.
+
+**To restore access immediately** before unplugging:
+- Click the one-click **"Disable Developer Options"** button in the desktop app UI.
+- Alternatively: Phone **Settings → Developer Options → toggle master switch OFF**.
+
+---
+
+## 6. Key Features
 
 | Feature | Description |
 | :--- | :--- |
-| **Zero-install Windows Portable** | Download a ZIP, extract, double-click — no Python required |
-| **In-App Updater** | Opt-in updates with download verification, atomic swap, and automatic rollback on failure |
-| **Phone Storage Reclaim Studio** | Intelligently free up phone storage with Safe/Balanced/Aggressive profiles and Archive Safety guarantee |
-| **Recycle Bin & Phone Restore** | Soft-delete duplicates into a Recycle Bin; push archived media back to phone over USB |
-| **Direct Wired USB Sync** | Streams media at 30–60 MB/s over USB 3.0/2.0 via ADB — no Wi-Fi, no cloud |
-| **AES-256-GCM Decryption** | Decrypts WhatsApp databases locally with your 64-digit key |
-| **1-Tap USB Key Transfer** | Securely sends your key from phone to PC over the physical wire, zero internet |
-| **Interactive Visual Gallery** | Browse media organized by chat, sender, date, and media type |
-| **One-Click Chat ZIP Export** | Download an entire conversation's media as a standalone offline ZIP archive |
-| **HEIC / HEIF & WebP Native Decoding** | Decodes modern iPhone/Android camera HEIC photos and WhatsApp stickers seamlessly |
-| **Live Crypt15 Auto-Polling** | Automatically waits and synchronizes in real time if WhatsApp on phone is generating a backup |
-| **Month & Year Sliders** | Calendar picker with dedicated sliders for fast date-range filtering |
-| **Smart Duplicate Detection** | SHA-256 SQLite cache identifies forwarded and collision-avoided duplicates |
-| **60 FPS Virtualization** | DOM recycling renders 50,000+ media files without slowdown |
-| **Video Poster Frames** | Pre-renders thumbnails on demand — browser tabs never crash from hardware decoder limits |
-| **Multi-Account & Dual Apps** | Auto-detects native WhatsApp sub-accounts (`accounts/*`), Samsung Dual Messenger, and Dual Apps |
-| **WhatsApp Business Support** | Seamless support for WhatsApp Business (`com.whatsapp.w4b`) with UI account switcher |
-| **One-Click ADB Disable** | Turns off USB debugging from the desktop UI before you unplug |
-| **100% Bundled Offline Fonts** | Self-hosted Inter font family — zero external CDN or Google Fonts requests |
-| **100% Offline & Private** | Zero telemetry, zero cloud, strict localhost binding |
-| **Cross-Tab Sync** | Closing any tab shuts down the server and notifies all other tabs simultaneously |
+| **Zero-Install Portable** | Single-click standalone ZIP for Windows with embedded Python 3.13 and ADB |
+| **Automated Key Capture** | "Do it for me" mode automatically captures 64-digit key over USB |
+| **Phone-Verified Reclaim Studio** | Checks phone inventory before estimating; verifies PC copy before every deletion |
+| **Cleanup Audit History** | Detailed log of every cleanup run, CSV export, and live "Check Phone" inspector |
+| **Multi-Account Tabs** | Run personal, Business, and Dual Messenger accounts in separate isolated tabs |
+| **Complete Account Folder Sync** | Reads all `accounts/<id>/Media` and legacy folders with SHA-256 content-hash matching |
+| **In-App Self-Updater** | Opt-in updates with download verification, atomic swap, and offline rollback |
+| **Full Media Categories** | Filter by Photos, Videos, Audio, Documents, Stickers, GIFs, and Voice Notes |
+| **Duplicate Comparison Lightbox** | 3-frame visual video hash comparison with side-by-side synchronized playback |
+| **In-Gallery Recycle Bin** | Soft-delete duplicates with full Ctrl+Z undo and restore back to original chat folders |
+| **Selective Push-to-Phone** | Restore archived media back to your Android phone over USB with media scanner broadcast |
+| **Wired USB Speed** | Fast socket streaming over USB (30–60 MB/s) — no Wi-Fi, no cloud limits |
+| **100% Offline & Private** | Localhost binding, bundled Inter fonts, zero telemetry, and origin validation |
 
 ---
 
@@ -244,19 +224,17 @@ Alternatively: Phone **Settings → Developer Options → toggle the master swit
 
 | Method | Problem |
 | :--- | :--- |
-| **WhatsApp Web / Multi-Device** | Only syncs recent messages (~3 months). Throttled by WhatsApp servers. Cannot access the full 30+ GB local archive. |
-| **MTP (Windows USB File Transfer)** | Notoriously unstable over large transfers. 4 GB single-file ceiling. Loses original timestamps. Frequently hangs on thousands of nested files. |
-| **Wired ADB** | Binary socket streaming at full USB bus speed. 100% file integrity. Precise timestamps. Zero dropped files. No cloud. |
+| **WhatsApp Web / Multi-Device** | Only syncs recent messages (~3 months). Heavily throttled. Cannot access full historical media archives. |
+| **MTP (Windows File Transfer)** | Unstable over large transfers. 4 GB single-file limit. Strips original timestamps. Frequently freezes. |
+| **Wired ADB** | Binary socket streaming at full USB bus speed. 100% file integrity. Preserves timestamps. Zero dropped files. |
 
 ---
 
 ## 8. Why the 64-Digit Key?
 
-On Android 11–15, WhatsApp stores its SQLite database (`msgstore.db`) inside a protected application sandbox (`/data/data/com.whatsapp/databases/`). Android strictly prevents external access to this folder without root.
+On Android 11–15, WhatsApp stores its internal database (`msgstore.db`) inside a protected sandbox (`/data/data/com.whatsapp/databases/`), which Android shields from external USB access without root.
 
-The only non-root method is WhatsApp's **End-to-End Encrypted Backup** feature, which exports an encrypted snapshot to shared storage (`/sdcard/Android/media/com.whatsapp/WhatsApp/Databases/`) where ADB can read it.
-
-By providing the 64-digit hex key, the app decrypts the database locally using AES-256-GCM, unlocking chat titles, sender names, and timestamps — **without ever sending your data anywhere**.
+WhatsApp's **End-to-End Encrypted Backup** exports an encrypted snapshot to shared storage (`/sdcard/Android/media/com.whatsapp/WhatsApp/Databases/`) where ADB can read it. With the 64-digit key, the app decrypts the database locally using AES-256-GCM to map media to contact names and chat titles — entirely offline on your PC.
 
 ---
 
@@ -267,45 +245,47 @@ OrganizeWhatsapp/
 ├── core/                          # Modular backend engine
 │   ├── activity.py                # Activity coordinator & operation concurrency lock
 │   ├── adb.py                     # ADB binary socket streaming & device control
+│   ├── clean_planner.py           # Phone-verified cleanup planner & candidate matching
 │   ├── config.py                  # Configuration loader, path helpers, binary finders
 │   ├── database.py                # SQLite query engine for msgstore & media indexes
 │   ├── decrypt.py                 # WhatsApp AES-256-GCM database decryptor
 │   ├── device_inventory.py        # Fast device storage & account discoverer
 │   ├── import_job.py              # Background importer for historical/external media
 │   ├── instance.py                # Single-instance lock & active session focus
+│   ├── libraries.py               # Multi-account tab & library coordinator
 │   ├── migrator.py                # Media folder structure migrator & index builder
-│   ├── organizer.py               # Single-pass media copier & duplicate hasher
+│   ├── organizer.py               # Media organizer & content-hash matching engine
 │   ├── pipeline.py                # Multi-stage backup & sync execution pipeline
+│   ├── platform_tools.py          # Platform ADB and companion tool manager
+│   ├── reclaim_history.py         # Cleanup run audit history & phone status inspector
 │   ├── reveal.py                  # OS-native file reveal (Explorer / Finder / Files)
-│   ├── server.py                  # Multi-threaded local HTTP server & REST APIs
+│   ├── server.py                  # Local HTTP server with origin validation & REST APIs
+│   ├── sync_report.py             # Post-sync media reconciliation & audit reporter
 │   ├── thumbnail.py               # On-demand image downscaling & video frame extraction
 │   ├── update_helper.py           # Atomic update installer & background process restarter
 │   ├── updater.py                 # GitHub releases updater with SHA-256 validation
-│   ├── version.py                 # Version truth & semver comparator
-│   └── assets/
-│       └── tutorial/              # Onboarding guide step images (WebP)
-├── gallery.html                   # Gallery page shell (markup + module includes)
-├── gallery_assets/                # Gallery frontend assets (zero external CDN dependencies)
-│   ├── css/                       # Modular stylesheets (base, gallery, update, responsive...)
+│   ├── version.py                 # Single source of truth for version (__version__)
+│   └── assets/tutorial/           # Onboarding guide step images (WebP)
+├── gallery.html                   # Modular gallery layout & modal container
+├── gallery_assets/                # Modular frontend client (zero external CDN dependencies)
+│   ├── css/                       # Modular stylesheets (cascade order)
 │   ├── fonts/                     # Self-hosted offline Inter font files (WOFF2)
 │   └── js/
-│       ├── core/                  # State, formatting, escaping, modal stack, navigation
-│       ├── features/              # Sidebar, grid, lightbox, sync, reclaim, updater...
-│       └── app.js                 # Bootstrap (loads last)
-├── wa_media_organizer.py          # Main CLI entrypoint
-├── start_gallery.bat              # Windows launcher (portable runtime + dev venv)
+│       ├── core/                  # State, formatting, modal stack, navigation, lifecycle
+│       ├── features/              # Sidebar, grid, lightbox, sync, reclaim, updater, wa-guide...
+│       └── app.js                 # Frontend application bootstrap
+├── wa_media_organizer.py          # Main CLI & server entrypoint
+├── start_gallery.bat              # Windows portable launcher
 ├── start_gallery.sh               # macOS / Linux companion launcher
 ├── install.sh                     # macOS / Linux one-step setup
 ├── requirements.txt               # Python dependencies
 ├── config.json.example            # Configuration template
+├── CHANGELOG.md                   # Complete release notes history (v1.0.1 – v1.2.5)
 ├── scripts/
 │   └── build_windows_portable.py  # Builds the Windows Portable ZIP release
-├── .github/
-│   └── workflows/
-│       ├── release.yml            # GitHub Actions: builds & publishes releases on git tag
-│       └── cross-platform.yml     # GitHub Actions: multi-OS CI testing matrix
-├── tests/                         # Automated test suite (230 unit & integration tests + 8 JS test suites)
-├── output/                        # Organized media destination (gitignored)
+├── .github/workflows/             # GitHub Actions CI/CD (release & cross-platform test matrix)
+├── tests/                         # Automated test suite (490+ unit tests + 12 JS test suites)
+├── output/                        # Default organized media destination (gitignored)
 └── Databases/                     # Encrypted & decrypted databases (gitignored)
 ```
 
@@ -313,7 +293,7 @@ OrganizeWhatsapp/
 
 ## 10. Configuration Reference
 
-Copy `config.json.example` to `config.json` to customize settings. The app creates a clean `config.json` with defaults on first launch.
+The app creates a clean `config.json` with defaults on first launch.
 
 ```json
 {
@@ -332,77 +312,54 @@ Copy `config.json.example` to `config.json` to customize settings. The app creat
 
 | Setting | Default | Description |
 | :--- | :--- | :--- |
-| `hex_key` | `""` | Your WhatsApp 64-digit hex encryption key. Set by the app UI; do not share this. |
-| `mode` | `"copy"` | Media transfer mode: `copy` (keep original on phone) or `move`. |
-| `port` | `8000` | Local HTTP server port. Change if 8000 is in use. |
-| `idle_timeout` | `45` | Closing the last browser tab closes the app a few seconds later. If the browser disappears without closing its tabs (crash, sleep), the app closes after this many minutes without any open tab. Running imports, ZIP backups, phone cleanups and restores always finish first; a phone sync is paused and resumes next time. Set `0` to keep the app running until you press Exit. |
-| `output_dir` | `"./output"` | Where organized media and thumbnails are stored. Can be an external drive path. |
-| `media_dir` | `"./output"` | Source directory the gallery reads from. Normally matches `output_dir`. |
-| `db_dir` | `"./Databases"` | Where WhatsApp database files are pulled and decrypted. |
-| `allow_lan` | `false` | Set `true` to allow access from other devices on your local network. **Use with caution** — this exposes your media to your LAN. |
-| `auto_check_updates` | `false` | Opt-in. When `true` the app asks GitHub for the latest version once a day when it opens (Settings > About & Updates). It never downloads or installs anything by itself. |
-| `onboarding_completed` | `false` | Set automatically to `true` after completing the setup guide. Reset to `false` to replay the guide. |
+| `hex_key` | `""` | Your WhatsApp 64-digit hex encryption key. Saved automatically by the guide. |
+| `mode` | `"copy"` | Media transfer mode: `copy` (keeps original on phone) or `move`. |
+| `port` | `8000` | Local HTTP server port. Assigned per account tab when running multiple accounts. |
+| `idle_timeout` | `45` | Minutes without open tabs before idle shutdown (set `0` to disable). Active operations never get cut off. |
+| `output_dir` | `"./output"` | Where organized media is stored. Can point to external drives or NAS folders. |
+| `allow_lan` | `false` | Binds strictly to `127.0.0.1` when `false`. Only enable if you intentionally want LAN access. |
+| `auto_check_updates` | `false` | Opt-in anonymous daily check on GitHub for new releases. Off by default. |
 
 ---
 
 ## 11. In-App Updates & Versioning
 
-Open **Settings > About & Updates** (or click the version badge next to the title):
+Open **Settings → About & Updates** (or click the version badge):
 
-1. **Check for updates** shows the latest release and its notes.
-2. **Download update** downloads and verifies it. Nothing is installed yet.
-3. **Restart & install** swaps the application files and restarts the app. It is refused while a phone sync, an import of older media, a phone cleanup, a restore, or a ZIP backup is running, and every open browser tab shows a "Installing update" screen until the new version is up. A copy of the previous version is kept in the `.update` folder for manual recovery.
-
-Copies installed with Git (a `.git` folder) are not updated in-app: use `git pull`. A release that needs new Python packages (rare) must be downloaded manually from the release page.
+1. **Check for updates** queries GitHub anonymously for new releases and shows release notes.
+2. **Download update** streams the update package and validates its SHA-256 checksum sidecar.
+3. **Restart & install** atomically replaces application files and restarts the server. Active operations (sync, cleanup, backup) block updates until completed.
+4. **Automatic Offline Rollback**: If a new version fails health check on launch, the previous version is restored instantly from the local `.update/backup` snapshot.
 
 ---
 
 ## 12. Privacy & Security
 
-- **Strict Localhost Binding**: The server binds to `127.0.0.1` by default. No device on your Wi-Fi or LAN can access your data unless you explicitly set `allow_lan: true`.
-- **Offline by Default**: The app makes no outgoing network calls on its own. Decryption, thumbnail rendering, duplicate hashing, and even the interface font are 100% local (Inter is bundled; nothing is loaded from Google Fonts or any CDN). The only exception is the update check described below, and it happens only when you ask for it.
-- **Updates Are Opt-In**: Settings > About & Updates shows the installed version. The app contacts GitHub only when you press **Check for updates**, or if you turn on **Check for updates automatically** (off by default, at most once a day). A check is one anonymous request to github.com carrying no account, phone, chat, or media information and no version number (GitHub sees your IP address, like any web request). Downloads are verified with SHA-256 before installing, only application code is replaced (never your `config.json`, keys, databases, or media), and the previous version is restored automatically if the new one does not start.
-- **Key Safety**: Your 64-digit key is stored only in your local `config.json`. It is never transmitted over the internet. The USB transfer path (`/paste-key`) is only reachable over the physical USB cable.
-- **Your Data Stays Consistent**: Only one gallery server runs per output folder; launching the app again opens the running one. Several browser tabs can be open at once and stay in step (recycling, restoring, importing or changing settings in one tab updates the others). Closing the browser never cuts off an import, ZIP backup, phone cleanup or restore: the app finishes it first.
-- **Deleting Means Deleted**: Deleting media for good (from the Recycle Bin, or straight from the gallery) removes the file together with its thumbnails, video previews and its entries in the gallery, duplicate index and sync records. The app keeps no list of deleted files. As a consequence, if a deleted file is still on your phone, the next sync downloads it again.
-- **Imports Never Resurrect or Overwrite**: Importing an older output folder skips media waiting in your Recycle Bin, ignores the older folder's own recycle bin, and keeps your current backup key unless you explicitly choose to replace it with a different one found in that folder.
-- **Git Ignore**: All media, databases, contact maps, keys, and personal configs are strictly git-ignored and will never be committed to any repository.
+- **Strict Localhost & Origin Validation**: Server binds to `127.0.0.1` and validates HTTP Host and Origin headers, protecting against cross-site requests from other browser tabs.
+- **100% Offline by Default**: Decryption, thumbnailing, hashing, and fonts (Inter) are entirely local. Zero telemetry, zero analytics, zero external network calls.
+- **Key Isolation**: The 64-digit key is stored only on your local disk in `config.json`. It is never transmitted over the internet.
+- **Atomic Operations & Consistency**: Multi-tab synchronization ensures that changes in one tab immediately reflect across others without data race conditions.
+- **Permanent Deletion**: Permanently deleted media removes file binaries, thumbnails, and index records completely.
 
 ---
 
 ## 13. Requirements
 
 ### Windows Portable (Recommended)
-- **Nothing** — Python, ADB, and all dependencies are bundled in the ZIP.
+- **Nothing to install** — Python 3.13 runtime, ADB, and dependencies are bundled in the portable ZIP.
 
-### Windows (Manual / Developer)
-- Windows 10 or 11
-- Python 3.10 or newer ([python.org](https://www.python.org/downloads/))
-- `pip install -r requirements.txt`
-- ADB: either installed in system PATH, or placed in `./bin/platform-tools/adb.exe`
-- ffmpeg (optional): for video thumbnail generation — [ffmpeg.org](https://ffmpeg.org/download.html) or placed in `./bin/ffmpeg.exe`
-
-### macOS
-- macOS 12 Monterey or newer
-- Python 3.10+: `brew install python@3.13`
-- Run `./install.sh`: it creates the venv, installs the dependencies (including ffmpeg) and downloads ADB from Google. A Homebrew ADB or ffmpeg is used instead if you have one.
-
-### Linux
-- Python 3.10+: `sudo apt install python3.12` (Ubuntu/Debian) or `sudo dnf install python3.12` (Fedora)
-- Run `./install.sh`: it creates the venv, installs the dependencies (including ffmpeg) and downloads ADB from Google (x86-64; on ARM use `sudo apt install adb`). An installed ADB or ffmpeg is used instead if you have one.
-
-### Python Dependencies (requirements.txt)
-```
-pycryptodomex>=3.20.0   # AES-256-GCM WhatsApp decryption
-pillow>=10.0.0          # Image processing & thumbnail generation
-pillow_heif>=0.16.0     # HEIC/HEIF image format support (iPhone photos)
-ImageHash>=4.3.1        # Perceptual hash for duplicate detection
-wa-crypt-tools>=0.1.0   # WhatsApp crypt14/crypt15 database format support
-imageio-ffmpeg>=0.5.1   # ffmpeg for macOS / Linux (core/requirements-optional.txt)
-```
+### macOS / Linux
+- Python 3.10 or newer (`brew install python@3.13` or `sudo apt install python3.12`)
+- Run `./install.sh` once (installs dependencies and downloads official Google ADB).
 
 ---
 
-## 14. License
+## 14. Changelog & Release Notes
+
+For a full historical record of all improvements and fixes across every version, see **[CHANGELOG.md](CHANGELOG.md)**.
+
+---
+
+## 15. License
 
 MIT License. Free and open source for personal data preservation and storage management.
