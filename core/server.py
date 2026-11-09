@@ -35,11 +35,14 @@ from core.adb import (
 )
 from core.clean_planner import (
     CleanProfile,
+    audit_phone_vs_library,
     discard_plan,
     execute_clean_plan,
     generate_clean_plan,
     get_active_plan,
+    verify_plan_on_phone,
 )
+from core import reclaim_history
 from core.config import active_profile, find_ffmpeg_binary, is_ffmpeg_available, load_config, mask_key, save_config
 from core.decrypt import create_key_file, validate_hex_key
 from core import libraries as _libraries
@@ -56,6 +59,102 @@ _latest_received_key: Optional[str] = None
 _active_backup_cancel = threading.Event()
 _active_restore_cancel = threading.Event()
 _active_clean_cancel = threading.Event()
+
+
+def _phone_hooks() -> dict:
+    """How the cleanup reaches the phone: its files, their MD5s, its free space, this account's folder."""
+    from core.adb import discover_android_base_path, media_tar_root, phone_md5, phone_media_inventory
+    base = discover_android_base_path()
+    root = media_tar_root(base)
+    # Where this account's own media is: its folder, and the main folder only when the sync report
+    # found it to hold this account's older media (another account's files are never searched)
+    own = [f"{base.rstrip('/')}/Media"]
+    if base.rstrip("/") != root.rstrip("/"):
+        verdicts = load_config().get("account_folder_verdicts") or {}
+        if verdicts.get(f"{root}/Media") == "this_account":
+            own.append(f"{root}/Media")
+    else:
+        own = [f"{root}/Media"]
+    return {
+        "storage_root": root,
+        "search_folders": own,
+        "phone_inventory": phone_media_inventory,
+        "md5_on_phone": phone_md5,
+        "phone_free_bytes": lambda: (get_device_storage_info() or {}).get("free_bytes"),
+    }
+
+
+def _plan_for_page(plan: dict) -> dict:
+    """The plan without what the page does not show (the left-out list is long; its counts stay)."""
+    out = dict(plan)
+    if out.get("phone_check"):
+        check = dict(out["phone_check"])
+        check["left_out"] = check.get("left_out", [])[:100]
+        out["phone_check"] = check
+    return out
+
+
+class CleanProgress:
+    """
+    Live state of a phone cleanup, for the progress bar (GET /api/clean/progress). The phone
+    confirms each batch; between confirmations the page predicts from the measured pace, never
+    beyond the batch in flight (seconds_per_file, current, batch_elapsed).
+    """
+
+    _RECENT = 60
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._state = {"active": False}
+
+    def update(self, event):
+        now = time.time()
+        with self._lock:
+            st = self._state
+            kind = event.get("event")
+            if kind == "begin":
+                self._state = st = {
+                    "active": True, "total": event["total"], "total_bytes": event["total_bytes"],
+                    "deleted": 0, "failed": 0, "freed_bytes": 0, "started_at": now,
+                    "current": [], "batch_started_at": now, "recent": [], "failed_files": [],
+                    "seconds_per_file": None,
+                }
+            elif kind == "start":
+                st["current"] = event["files"]
+                st["batch_started_at"] = now
+            elif kind == "done":
+                n = len(event["files"]) + len(event["failed"])
+                if n:
+                    pace = (now - st["batch_started_at"]) / n
+                    prev = st.get("seconds_per_file")
+                    st["seconds_per_file"] = pace if prev is None else 0.6 * prev + 0.4 * pace
+                st["deleted"] = event["deleted_count"]
+                st["failed"] = event["failed_count"]
+                st["freed_bytes"] = event["freed_bytes"]
+                st["recent"] = (st["recent"] + event["files"])[-self._RECENT:]
+                st["failed_files"] = (st["failed_files"] + event["failed"])[-self._RECENT:]
+                st["current"] = []
+
+    def finish(self, result=None):
+        with self._lock:
+            self._state["active"] = False
+            self._state["current"] = []
+            if result is not None:
+                self._state["result"] = {k: result.get(k) for k in ("success", "deleted_count", "failed_count",
+                                                                     "freed_bytes", "errors")}
+
+    def snapshot(self):
+        now = time.time()
+        with self._lock:
+            st = dict(self._state)
+        if "started_at" in st:
+            st["elapsed"] = round(now - st.pop("started_at"), 3)
+            st["batch_elapsed"] = round(now - st.pop("batch_started_at"), 3)
+        return st
+
+
+_clean_progress = CleanProgress()
+_clean_run_lock = threading.Lock()
 
 
 # Files in the output / app folder that a browser must never get: the backup key, settings,
@@ -910,6 +1009,9 @@ def _account_choice_refusal(output_dir, account_path):
 
 def _sync_busy_payload() -> dict:
     """Why a sync could not start: this tab's own sync, or another account's tab using the phone."""
+    if _clean_run_lock.locked():
+        return {"status": "phone_busy", "holder": "phone cleanup",
+                "message": "A phone cleanup is running. The sync can start when it is done."}
     holder = _libraries.phone_lock_holder()
     if holder:
         return {"status": "phone_busy", "holder": holder.get("label") or "another account",
@@ -944,7 +1046,9 @@ def _start_background_sync_locked(output_dir, resume_session_id=None, skip_db_pu
     with _sync_start_lock:
         if sync_status.get("active") or _sync_worker_alive():
             return False
-        # One sync on the phone at a time, across the accounts' tabs
+        # One sync on the phone at a time, across the accounts' tabs, and not during a cleanup
+        if _clean_run_lock.locked():
+            return False
         if _libraries.acquire_phone(_libraries.this_library_label(), output_dir):
             return False
         sync_status["active"] = True
@@ -1493,6 +1597,46 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 or cfg.get("last_sync_time")
             )
             self._send_json(200, resp_data)
+            return
+
+        # /api/clean/history (every cleanup of this library, newest first)
+        if path == "/api/clean/history":
+            self._send_json(200, {"status": "success", "runs": reclaim_history.list_runs(self.output_dir)})
+            return
+
+        # /api/clean/history/<run_id>[.csv] (one cleanup: its summary and its files, filterable)
+        if path.startswith("/api/clean/history/"):
+            run_id = urllib.parse.unquote(path[len("/api/clean/history/"):])
+            query = urllib.parse.parse_qs(parsed_url.query)
+            if run_id.endswith(".csv"):
+                text = reclaim_history.run_csv(self.output_dir, run_id[:-4])
+                if text is None:
+                    self._send_json(404, {"status": "error", "message": "No such cleanup"})
+                    return
+                data = text.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/csv; charset=utf-8")
+                self.send_header("Content-Disposition", f'attachment; filename="cleanup-{run_id[:-4]}.csv"')
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            try:
+                offset = max(0, int(query.get("offset", ["0"])[0]))
+                limit = min(1000, max(1, int(query.get("limit", ["200"])[0])))
+            except ValueError:
+                offset, limit = 0, 200
+            data = reclaim_history.read_run(self.output_dir, run_id, status=query.get("status", [None])[0] or None,
+                                            offset=offset, limit=limit, query=query.get("q", [""])[0])
+            if data is None:
+                self._send_json(404, {"status": "error", "message": "No such cleanup"})
+                return
+            self._send_json(200, {"status": "success", **data})
+            return
+
+        # /api/clean/progress (live progress of a running phone cleanup; polled by the page)
+        if path == "/api/clean/progress":
+            self._send_json(200, _clean_progress.snapshot())
             return
 
         # /api/libraries (this tab's library and every other account's)
@@ -2522,7 +2666,18 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
             custom_cfg = body.get("custom_config", {})
             try:
                 plan = generate_clean_plan(str(self.output_dir), profile=profile, custom_config=custom_cfg)
-                self._send_json(200, {"status": "success", "plan": plan})
+                # With the phone connected, the estimate is what is really on it (see verify_plan_on_phone)
+                dev = check_adb_device()
+                if dev.connected and dev.authorized and plan.get("candidates"):
+                    try:
+                        hooks = _phone_hooks()
+                        verify_plan_on_phone(plan, str(self.output_dir), hooks["phone_inventory"](),
+                                             hooks["storage_root"], hooks["md5_on_phone"], hooks["search_folders"])
+                    except Exception as e:
+                        # Not checked: the cleanup checks it before deleting anything
+                        plan["phone_check"] = None
+                        plan["phone_check_error"] = str(e)
+                self._send_json(200, {"status": "success", "plan": _plan_for_page(plan)})
             except Exception as e:
                 self._send_json(500, {"status": "error", "message": f"Failed to generate clean plan: {e}"})
             return
@@ -2551,15 +2706,35 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 })
                 return
 
+            # One cleanup at a time, and never while a sync uses the phone (in this tab or another)
+            if not _clean_run_lock.acquire(blocking=False):
+                msg = "A cleanup is already running."
+                self._send_json(409, {"success": False, "status": "busy", "error": msg, "message": msg})
+                return
+            holder = {"label": "this tab's sync"} if sync_status.get("active") else _libraries.acquire_phone(
+                f"{_libraries.this_library_label()} (phone cleanup)", self.output_dir)
+            if holder:
+                _clean_run_lock.release()
+                msg = f"The phone is busy ({holder.get('label') or 'a sync'}). Clean up when it is done."
+                self._send_json(409, {"success": False, "status": "phone_busy", "error": msg, "message": msg})
+                return
+
             try:
                 with activity.track("phone storage cleanup"):
                     _active_clean_cancel.clear()
-                    res = execute_clean_plan(
-                        plan_id,
-                        str(self.output_dir),
-                        cancel_event=_active_clean_cancel,
-                        exclude_jids=body.get("exclude_jids"),
-                    )
+                    _clean_progress.update({"event": "begin", "total": 0, "total_bytes": 0})  # not the last run's
+                    res = None
+                    try:
+                        res = execute_clean_plan(
+                            plan_id,
+                            str(self.output_dir),
+                            cancel_event=_active_clean_cancel,
+                            exclude_jids=body.get("exclude_jids"),
+                            on_progress=_clean_progress.update,
+                            **_phone_hooks(),
+                        )
+                    finally:
+                        _clean_progress.finish(res)
                 resp = dict(res)
                 resp["status"] = "success" if res.get("success") else "error"
                 resp["result"] = res
@@ -2568,6 +2743,30 @@ class GalleryHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(409, {"success": False, "status": "updating", "error": _UPDATING_MESSAGE, "message": _UPDATING_MESSAGE})
             except Exception as e:
                 self._send_json(500, {"success": False, "status": "error", "error": f"Execution failed: {e}", "message": f"Execution failed: {e}"})
+            finally:
+                _libraries.release_phone()
+                _clean_run_lock.release()
+            return
+
+        # /api/clean/audit (what of this library is still on the phone and what is gone, now)
+        if path == "/api/clean/audit":
+            dev = check_adb_device()
+            if not dev.connected or not dev.authorized:
+                msg = "Connect the phone (USB debugging allowed) to check what is on it."
+                self._send_json(400, {"status": "error", "message": msg})
+                return
+            try:
+                hooks = _phone_hooks()
+                with activity.track("phone storage check"):
+                    report = audit_phone_vs_library(str(self.output_dir), hooks["phone_inventory"](), hooks["storage_root"],
+                                                    hooks["search_folders"])
+                free = hooks["phone_free_bytes"]()
+                report["phone_free_bytes"] = free
+                self._send_json(200, {"status": "success", "audit": report})
+            except MaintenanceActive:
+                self._send_json(409, {"status": "updating", "message": _UPDATING_MESSAGE})
+            except Exception as e:
+                self._send_json(500, {"status": "error", "message": f"Checking the phone failed: {e}"})
             return
 
         # /api/clean/cancel (cancel active phone storage cleanup purge)

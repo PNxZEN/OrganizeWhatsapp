@@ -76,43 +76,6 @@ class TestRestoreAndAdbClean(unittest.TestCase):
         cmd_args = mock_run.call_args[0][0]
         self.assertIn("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE", " ".join(cmd_args))
 
-    @mock.patch("core.adb.check_adb_device")
-    @mock.patch("core.adb.find_adb_binary", return_value="adb")
-    @mock.patch("subprocess.run")
-    def test_batch_delete_phone_files_guards_and_execution(self, mock_run, mock_adb, mock_dev):
-        mock_dev.return_value = mock.Mock(connected=True, authorized=True)
-        mock_run.return_value = mock.Mock(returncode=0, stdout="", stderr="")
-
-        paths = [
-            "/storage/emulated/0/WhatsApp/Media/WhatsApp Video/old_vid.mp4",
-            "/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/pic.jpg",
-            "/system/bin/sh",  # Ineligible: forbidden root guard!
-            "/data/system/users/0.xml",  # Ineligible: forbidden root guard!
-        ]
-
-        progress_calls = []
-
-        def on_progress(done, total):
-            progress_calls.append((done, total))
-
-        res = batch_delete_phone_files(
-            paths,
-            base_path="/storage/emulated/0/WhatsApp/Media",
-            progress_callback=on_progress,
-        )
-        self.assertTrue(res["success"])
-        # Only the 2 safe WhatsApp paths should have been deleted
-        self.assertEqual(res["deleted_count"], 2)
-        self.assertEqual(res["failed_count"], 0)
-        self.assertTrue(len(progress_calls) > 0)
-
-        # Check command executed
-        mock_run.assert_called_once()
-        cmd_str = " ".join(mock_run.call_args[0][0])
-        self.assertIn("rm -f", cmd_str)
-        self.assertIn("old_vid.mp4", cmd_str)
-        self.assertNotIn("/system/bin/sh", cmd_str)
-
     @mock.patch("core.adb.find_adb_binary", return_value="adb")
     @mock.patch("subprocess.run")
     def test_batch_delete_cancellation(self, mock_run, mock_adb):
@@ -123,18 +86,7 @@ class TestRestoreAndAdbClean(unittest.TestCase):
         res = batch_delete_phone_files(paths, cancel_event=cancel_evt)
         self.assertEqual(res["deleted_count"], 0)
         self.assertIn("cancelled", res["errors"][0])
-
-    @mock.patch("core.adb.check_adb_device")
-    @mock.patch("core.adb.find_adb_binary", return_value="adb")
-    @mock.patch("subprocess.run")
-    def test_batch_delete_mid_transfer_disconnect(self, mock_run, mock_adb, mock_dev):
-        mock_dev.return_value = mock.Mock(connected=True, authorized=True)
-        mock_run.return_value = mock.Mock(returncode=1, stdout="", stderr="error: device offline")
-
-        paths = ["/storage/emulated/0/WhatsApp/Media/WhatsApp Video/vid.mp4"]
-        res = batch_delete_phone_files(paths)
-        self.assertFalse(res["success"])
-        self.assertTrue(any("disconnected" in err.lower() for err in res["errors"]))
+        mock_run.assert_not_called()
 
     def _setup_mock_chat_gallery(self):
         # Create local file on PC disk

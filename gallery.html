@@ -452,6 +452,7 @@
                         <h2 style="margin: 0; font-size: 17px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.3px;">Phone Storage Reclaim Studio</h2>
                         <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--text-secondary);">Safely purge backed-up media from phone to reclaim gigabytes of storage</p>
                     </div>
+                    <button type="button" class="action-btn action-btn-secondary reclaim-history-btn" onclick="openCleanupHistory()" title="Every cleanup: what was deleted, what was not and why">History</button>
                 </div>
 
                 <!-- Phone Storage Live Widget -->
@@ -714,6 +715,9 @@
                     <button type="button" class="action-btn action-btn-secondary" onclick="openDeviceModal();" style="font-size: 11.5px; padding: 5px 12px; border-color: rgba(245,158,11,0.4); color: #fbbf24; white-space: nowrap;">Device Connection</button>
                 </div>
 
+                <!-- What the phone check found (or that it is still to come) -->
+                <div id="reclaimPhoneCheckNotice" class="reclaim-check-notice" style="display: none;"></div>
+
                 <!-- Reclaim Metrics Bar -->
                 <div class="dup-summary-bar" style="border-radius: 12px; margin-bottom: 18px;">
                     <div class="dup-metric-card">
@@ -729,8 +733,8 @@
                         <div class="dup-metric-lbl">Protected Items Shielded</div>
                     </div>
                     <div class="dup-metric-card" style="border-left: 1px solid rgba(255,255,255,0.08);">
-                        <div class="dup-metric-val" style="color: #38bdf8;">100% Match</div>
-                        <div class="dup-metric-lbl">3-Point PC Backup Verified</div>
+                        <div class="dup-metric-val" id="reclaimMetricChecked" style="color: #38bdf8;">PC copies verified</div>
+                        <div class="dup-metric-lbl" id="reclaimMetricCheckedLbl">Every file has its PC backup</div>
                     </div>
                 </div>
 
@@ -790,6 +794,24 @@
                 </div>
             </div>
 
+            <!-- Studio: History of cleanups, and a check of the phone now -->
+            <div id="reclaimStepHistory" class="reclaim-step-body" style="display: none; padding: 22px 26px; overflow-y: auto; flex: 1;">
+                <div class="reclaim-history-head">
+                    <button type="button" class="action-btn action-btn-secondary" onclick="closeCleanupHistory()">Back</button>
+                    <h3>Cleanup history</h3>
+                </div>
+                <div class="reclaim-audit-card">
+                    <div>
+                        <strong>Check the phone now</strong>
+                        <p>Compares this library with what is on the phone right now: what is still there, what is gone, and backed-up media earlier versions could not find. Works for cleanups made with any version.</p>
+                    </div>
+                    <button type="button" class="action-btn action-btn-primary" id="btnRunPhoneAudit" onclick="runPhoneAudit()">Check phone</button>
+                </div>
+                <div id="reclaimAuditResult" style="display: none;"></div>
+                <div id="reclaimHistoryList"></div>
+                <div id="reclaimHistoryDetail" style="display: none;"></div>
+            </div>
+
             <!-- Studio Step 3: Execution & Progress -->
             <div id="reclaimStepProgress" class="reclaim-step-body" style="display: none; padding: 40px 24px; text-align: center; flex: 1;">
                 <div id="reclaimExecutionSpinner" class="sync-spinner" style="width: 48px; height: 48px; border-width: 4px; margin: 0 auto 16px auto;"></div>
@@ -801,6 +823,16 @@
                         <div class="storage-bar-fill" id="reclaimExecutionProgressBar" style="width: 30%; background: linear-gradient(90deg, #00a884, #10b981);"></div>
                     </div>
                     <div id="reclaimExecutionProgressText" style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">Preparing file list...</div>
+                    <!-- Live: what the phone is deleting now and what it has deleted (GET /api/clean/progress) -->
+                    <div id="reclaimLiveNow" class="reclaim-live-now" style="display: none;">
+                        <span class="reclaim-live-label">Now deleting</span>
+                        <span class="reclaim-live-name" id="reclaimLiveNowName"></span>
+                        <span class="reclaim-live-chat" id="reclaimLiveNowChat"></span>
+                    </div>
+                    <ul id="reclaimLiveRecent" class="reclaim-live-recent" aria-live="off" style="display: none;"></ul>
+                    <div id="reclaimLiveFailed" class="reclaim-live-failed" style="display: none;"></div>
+                    <!-- When it is done: exactly what happened to every file -->
+                    <div id="reclaimResultBreakdown" class="reclaim-result" style="display: none;"></div>
                 </div>
 
                 <div id="reclaimProgressRunningActions" style="margin-top: 24px;">

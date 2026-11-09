@@ -435,16 +435,22 @@ class TestCleanPlanner(unittest.TestCase):
         )
         plan_id = plan["plan_id"]
 
-        with mock.patch("core.adb.batch_delete_phone_files") as mock_del:
-            mock_del.return_value = {
-                "success": True,
-                "deleted_count": 1,
-                "failed_count": 0,
-                "errors": [],
-            }
+        def fake_delete(paths, on_batch=None, **kw):
+            # What the phone confirms for the batch is what counts as deleted
+            on_batch({"event": "start", "paths": paths})
+            sizes = {p: 1000 for p in paths}
+            on_batch({"event": "done", "deleted": list(paths), "deleted_sizes": sizes, "failed": [],
+                      "failed_reasons": {}, "not_found": [], "skipped": {}, "deleted_count": len(paths),
+                      "failed_count": 0, "not_found_count": 0, "skipped_count": 0, "total": len(paths),
+                      "freed_bytes": sum(sizes.values())})
+            return {"success": True, "deleted_count": len(paths), "failed_count": 0, "errors": [],
+                    "deleted_paths": list(paths), "deleted_sizes": sizes, "not_done_paths": [], "unknown_paths": []}
+
+        with mock.patch("core.adb.batch_delete_phone_files", side_effect=fake_delete) as mock_del:
             exec_res = execute_clean_plan(plan_id, output_dir=str(self.out_p))
             self.assertTrue(exec_res["success"])
             self.assertEqual(exec_res["deleted_count"], 1)
+            self.assertTrue(exec_res["run_id"])
             mock_del.assert_called_once()
 
 

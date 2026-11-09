@@ -22,7 +22,8 @@ const suites = [
     { name: 'Delete & show in file manager', file: 'test_delete_ui.js' },
     { name: 'Live connection checklist (setup guide)', file: 'test_connection_checklist.js' },
     { name: 'Guided WhatsApp key setup panel', file: 'test_wa_guide_ui.js' },
-    { name: 'Media categories (stickers, GIFs, voice notes)', file: 'test_media_categories.js' }
+    { name: 'Media categories (stickers, GIFs, voice notes)', file: 'test_media_categories.js' },
+    { name: 'Live phone cleanup progress', file: 'test_cleanup_progress.js' }
 ];
 
 console.log('======================================================================');

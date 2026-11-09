@@ -319,6 +319,7 @@ def generate_clean_plan(
         m_type = categorize_media_type(fn, mime, is_doc)
 
         phone_p = row.get("phone_path") or ""
+        phone_recorded = bool(phone_p)
         if not phone_p and fn:
             phone_p = infer_default_phone_path(fn, m_type, is_doc=is_doc, from_me=parse_bool_safe(row.get("from_me")))
 
@@ -437,6 +438,11 @@ def generate_clean_plan(
             "reason": target_reason,
             "is_archived": is_archived,
             "inactivity_days": round(inactivity_days, 1) if is_group else 0,
+            # False: no sync recorded where this file is on the phone; the path is a guess
+            "phone_path_recorded": phone_recorded,
+            "md5": row.get("md5") or "",
+            "is_group": is_group,
+            "last_active_ts": last_active_ts,
         }
         candidates.append(candidate_entry)
 
@@ -504,6 +510,189 @@ def discard_plan(plan_id: str):
     _ACTIVE_PLANS.pop(plan_id, None)
 
 
+def _rebuild_breakdowns(plan: dict):
+    """Totals and breakdowns from plan["candidates"] (after the phone check changed them)."""
+    by_reason = {k: {"count": 0, "bytes": 0} for k in plan["breakdown"]["by_reason"]}
+    by_type = {k: {"count": 0, "bytes": 0} for k in plan["breakdown"]["by_type"]}
+    old_chats = {c["jid"]: c for c in plan["breakdown"]["by_chat"]}
+    by_chat: Dict[str, dict] = {}
+    for c in plan["candidates"]:
+        size = int(c.get("size_bytes") or 0)
+        if c.get("reason") in by_reason:
+            by_reason[c["reason"]]["count"] += 1
+            by_reason[c["reason"]]["bytes"] += size
+        t = c.get("media_type") if c.get("media_type") in by_type else "other"
+        if t in by_type:
+            by_type[t]["count"] += 1
+            by_type[t]["bytes"] += size
+        jid = c.get("chat_jid") or ""
+        if jid not in by_chat:
+            base = dict(old_chats.get(jid) or {"jid": jid, "name": c.get("chat_name") or "", "archived": c.get("is_archived"),
+                                               "inactivity_days": c.get("inactivity_days", 0),
+                                               "last_active_ts": c.get("last_active_ts", 0), "is_group": c.get("is_group")})
+            base.update(count=0, bytes=0)
+            by_chat[jid] = base
+        by_chat[jid]["count"] += 1
+        by_chat[jid]["bytes"] += size
+    plan["breakdown"] = {"by_reason": by_reason, "by_type": by_type,
+                         "by_chat": sorted(by_chat.values(), key=lambda x: x["bytes"], reverse=True)}
+    plan["reclaimable_files_count"] = len(plan["candidates"])
+    plan["reclaimable_bytes"] = sum(int(c.get("size_bytes") or 0) for c in plan["candidates"])
+
+
+def _local_md5(path: Path) -> Optional[str]:
+    try:
+        h = hashlib.md5()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
+
+
+def _absolute_phone_path(path: str, storage_root: str) -> str:
+    p = (path or "").replace("\\", "/")
+    return p if p.startswith("/") else f"{storage_root.rstrip('/')}/{p.lstrip('/')}"
+
+
+def _searchable(inventory: Dict[str, int], storage_root: str, search_folders: Optional[List[str]]) -> Dict[str, List[str]]:
+    """Files by name, only inside this account's own media folders (another account's are never touched)."""
+    folders = [f.rstrip("/") + "/" for f in (search_folders or [storage_root])]
+    by_name: Dict[str, List[str]] = {}
+    for path in inventory:
+        if any(path.startswith(f) for f in folders):
+            by_name.setdefault(os.path.basename(path), []).append(path)
+    return by_name
+
+
+def verify_plan_on_phone(plan: dict, output_dir: str, inventory: Dict[str, int], storage_root: str,
+                         md5_on_phone=None, search_folders: Optional[List[str]] = None) -> dict:
+    """
+    Checks every candidate against the files really on the phone (inventory: {path: size}) and
+    keeps only what deleting would actually free:
+      - at its path, same size as the PC copy: kept (a path no sync recorded: also same contents)
+      - not at its path but once elsewhere in this account's own media folders (search_folders),
+        same name and size and the same contents (MD5): kept, at the path where it really is
+      - not on the phone, a different file at its path, or more than one match: left out, counted
+      - the same phone file listed twice: once
+    md5_on_phone(paths) -> {path: md5}. Updates and returns the plan, with plan["phone_check"].
+    """
+    out = Path(output_dir)
+    root = storage_root.rstrip("/")
+    by_name = _searchable(inventory, root, search_folders)
+
+    check = {"checked": True, "checked_at": datetime.now(timezone.utc).isoformat(),
+             "on_phone": {"count": 0, "bytes": 0}, "not_on_phone": {"count": 0, "bytes": 0},
+             "found_elsewhere": {"count": 0, "bytes": 0}, "differs": {"count": 0, "bytes": 0},
+             "ambiguous": {"count": 0, "bytes": 0}, "duplicates": {"count": 0, "bytes": 0},
+             "estimate_before_check": plan.get("reclaimable_bytes", 0), "left_out": []}
+
+    def _leave_out(kind, c, why):
+        check[kind]["count"] += 1
+        check[kind]["bytes"] += int(c.get("size_bytes") or 0)
+        if len(check["left_out"]) < 500:
+            check["left_out"].append({"kind": kind, "name": c.get("filename"), "chat": c.get("chat_name"),
+                                      "size": c.get("size_bytes"), "phone_path": c.get("phone_path"), "reason": why})
+
+    pending, need_md5, seen = [], [], set()
+    for c in plan["candidates"]:
+        size = int(c.get("size_bytes") or 0)
+        full = _absolute_phone_path(c.get("phone_path"), root)
+        if full in inventory and inventory[full] == size:
+            path, moved = full, False
+        elif full in inventory:
+            _leave_out("differs", c, f"The phone's file at this path is {inventory[full]} bytes, the PC copy {size}")
+            continue
+        else:
+            matches = [p for p in by_name.get(os.path.basename(full), []) if inventory[p] == size]
+            if not matches:
+                _leave_out("not_on_phone", c, "Not on the phone (already deleted, or never there)")
+                continue
+            if len(matches) > 1:
+                _leave_out("ambiguous", c, f"{len(matches)} files on the phone have this name and size")
+                continue
+            path, moved = matches[0], True
+        if path in seen:
+            _leave_out("duplicates", c, "Listed twice: counted once")
+            continue
+        seen.add(path)
+        item = dict(c, phone_path=path, phone_found_elsewhere=moved)
+        if moved or not c.get("phone_path_recorded"):
+            need_md5.append(item)  # found by name, or a guessed path: prove it is the same file
+        pending.append(item)
+
+    phone_md5 = md5_on_phone([i["phone_path"] for i in need_md5]) if (need_md5 and md5_on_phone) else {}
+    md5_paths = {i["phone_path"] for i in need_md5}
+    kept = []
+    for item in pending:
+        if item["phone_path"] in md5_paths:
+            pc = _local_md5(out / item["rel_path"])
+            if not pc or phone_md5.get(item["phone_path"]) != pc:
+                _leave_out("differs", item, "Same name and size, different contents: not the file on the PC")
+                continue
+        if item.get("phone_found_elsewhere"):
+            check["found_elsewhere"]["count"] += 1
+            check["found_elsewhere"]["bytes"] += int(item.get("size_bytes") or 0)
+        check["on_phone"]["count"] += 1
+        check["on_phone"]["bytes"] += int(item.get("size_bytes") or 0)
+        kept.append(item)
+
+    plan["candidates"] = kept
+    plan["phone_check"] = check
+    _rebuild_breakdowns(plan)
+    return plan
+
+
+def audit_phone_vs_library(output_dir: str, inventory: Dict[str, int], storage_root: str,
+                           search_folders: Optional[List[str]] = None) -> dict:
+    """
+    For anyone who cleaned up before cleanups were recorded: which of this library's media is still
+    on the phone and which is gone, now. A file is "still on the phone" at its recorded (or guessed)
+    path, or elsewhere in this WhatsApp's folders with the same name and size.
+    """
+    out = Path(output_dir)
+    root = storage_root.rstrip("/")
+    records = load_media_records_for_planning(out)
+    by_name = _searchable(inventory, root, search_folders)
+    summary = {k: {"count": 0, "bytes": 0} for k in (
+        "on_phone", "on_phone_elsewhere", "gone_from_phone", "not_on_pc")}
+    chats: Dict[str, dict] = {}
+    samples = {"on_phone_elsewhere": [], "gone_from_phone": []}
+    seen = set()
+    for r in records:
+        rel = r.get("rel_path") or ""
+        size = int(r.get("size_bytes") or 0)
+        fn = r.get("filename") or os.path.basename(rel)
+        if not (out / rel).is_file():
+            summary["not_on_pc"]["count"] += 1
+            summary["not_on_pc"]["bytes"] += size
+            continue
+        phone = r.get("phone_path") or infer_default_phone_path(
+            fn, categorize_media_type(fn, r.get("mime_type"), parse_bool_safe(r.get("is_doc"))),
+            is_doc=parse_bool_safe(r.get("is_doc")), from_me=parse_bool_safe(r.get("from_me")))
+        full = _absolute_phone_path(phone, root)
+        if full in seen:
+            continue
+        seen.add(full)
+        if inventory.get(full) == size:
+            kind, where = "on_phone", full
+        else:
+            m = [p for p in by_name.get(os.path.basename(full), []) if inventory[p] == size]
+            kind, where = ("on_phone_elsewhere", m[0]) if m else ("gone_from_phone", None)
+        summary[kind]["count"] += 1
+        summary[kind]["bytes"] += size
+        chat = chats.setdefault(r.get("chat_name") or "Unknown", {"name": r.get("chat_name") or "Unknown",
+                                                                  "on_phone_bytes": 0, "gone_bytes": 0})
+        chat["gone_bytes" if kind == "gone_from_phone" else "on_phone_bytes"] += size
+        if kind in samples and len(samples[kind]) < 200:
+            samples[kind].append({"name": fn, "chat": r.get("chat_name"), "size": size,
+                                  "expected": full, "found": where})
+    return {"checked_at": datetime.now(timezone.utc).isoformat(), "summary": summary,
+            "by_chat": sorted(chats.values(), key=lambda c: c["on_phone_bytes"], reverse=True)[:100],
+            "samples": samples, "phone_files": len(inventory)}
+
+
 def execute_clean_plan(
     plan_id_or_dict: Any,
     output_dir: str,
@@ -512,10 +701,29 @@ def execute_clean_plan(
     progress_callback=None,
     cancel_event=None,
     exclude_jids=None,
+    on_progress=None,
+    storage_root: Optional[str] = None,
+    phone_inventory=None,
+    md5_on_phone=None,
+    phone_free_bytes=None,
+    search_folders: Optional[List[str]] = None,
 ) -> dict:
     """
-    Executes a verified clean plan by batch-deleting targeted files from phone.
+    Deletes a plan's files from the phone, each one checked first, and records the run
+    (core.reclaim_history) as the phone confirms each batch.
+
+    - A plan the phone has not been checked against yet is checked first (phone_inventory() ->
+      {path: size}, storage_root, md5_on_phone(paths)): only files really there, as on the PC.
+    - Right before a file is deleted, its PC copy must exist with the phone file's exact size;
+      otherwise it is skipped and stays on the phone.
+    - Space freed is the size of the files the phone confirmed gone; phone_free_bytes() before and
+      after shows what the phone itself reports.
+    on_progress(event): live progress for the UI. {"event": "begin", "total", "total_bytes"}, then
+    per batch {"event": "start", "files": [...]} and {"event": "done", "files": [...], "failed": [...],
+    "deleted_count", "failed_count", "freed_bytes", ...}; each file is {"name", "chat", "size"}.
     """
+    from core import reclaim_history
+
     if isinstance(plan_id_or_dict, str):
         plan = get_active_plan(plan_id_or_dict)
         if not plan:
@@ -527,39 +735,137 @@ def execute_clean_plan(
     if exclude_jids:
         exclude_set = set(exclude_jids)
         candidates = [c for c in candidates if c.get("chat_jid") not in exclude_set]
+    candidates = [c for c in candidates if c.get("phone_path")]
+    if not candidates:
+        return {"success": True, "deleted_count": 0, "failed_count": 0, "freed_bytes": 0, "freed_mb": 0.0, "errors": []}
 
-    valid_candidates = [c for c in candidates if c.get("phone_path")]
-    if not valid_candidates:
-        return {"success": True, "deleted_count": 0, "failed_count": 0, "freed_bytes": 0}
+    check = plan.get("phone_check")
+    if not check and phone_inventory and storage_root:
+        # Checked now, against the files really on the phone
+        sub = dict(plan, candidates=candidates, breakdown=plan.get("breakdown") or
+                   {"by_reason": {}, "by_type": {}, "by_chat": []})
+        sub["reclaimable_bytes"] = sum(int(c.get("size_bytes") or 0) for c in candidates)
+        verify_plan_on_phone(sub, output_dir, phone_inventory(), storage_root, md5_on_phone, search_folders)
+        candidates, check = sub["candidates"], sub["phone_check"]
 
-    phone_paths = [c.get("phone_path") for c in valid_candidates]
-    if not phone_paths:
-        return {"success": False, "error": "No phone paths associated with candidates in plan"}
+    out = Path(output_dir)
+    by_path = {c["phone_path"]: c for c in candidates}
+    phone_paths = list(by_path)
+    planned_bytes = sum(int(c.get("size_bytes") or 0) for c in candidates)
+
+    def _free():
+        try:
+            return phone_free_bytes() if phone_free_bytes else None
+        except Exception:
+            return None
+
+    run = reclaim_history.CleanupRun(output_dir, {
+        "profile": plan.get("profile"), "plan_id": plan.get("plan_id"),
+        "planned_files": len(phone_paths), "planned_bytes": planned_bytes,
+        "estimate_before_check": (check or {}).get("estimate_before_check", plan.get("reclaimable_bytes")),
+        "phone_check": {k: v for k, v in (check or {}).items() if k != "left_out"} or None,
+        "phone_free_before": _free(), "excluded_chats": len(exclude_jids or []),
+    })
+    if check and check.get("left_out"):
+        # What the phone check left out, so the record explains the whole estimate
+        kinds = {"not_on_phone": "not_on_phone", "duplicates": "duplicate"}
+        run.record([{"status": kinds.get(x["kind"], "skipped"),
+                     "name": x.get("name"), "chat": x.get("chat"), "size": x.get("size"),
+                     "phone_path": x.get("phone_path"), "rel_path": "", "reason": x.get("reason")}
+                    for x in check["left_out"]])
+
+    def _entry(path, status, size=None, reason=None):
+        c = by_path.get(path) or {}
+        return {"status": status, "name": c.get("filename") or os.path.basename(path or ""),
+                "chat": c.get("chat_name") or "", "rel_path": c.get("rel_path") or "",
+                "phone_path": path, "size": int(size if size is not None else (c.get("size_bytes") or 0)),
+                "reason": reason}
+
+    def _verify(path, phone_size):
+        c = by_path.get(path) or {}
+        local = out / (c.get("rel_path") or "")
+        try:
+            pc_size = local.stat().st_size if c.get("rel_path") else None
+        except OSError:
+            pc_size = None
+        if pc_size is None:
+            return False, "Its PC copy is missing now: kept on the phone"
+        if pc_size != phone_size:
+            return False, f"The phone file ({phone_size} bytes) differs from its PC copy ({pc_size} bytes): kept"
+        return True, None
+
+    def _file(path):
+        c = by_path.get(path) or {}
+        return {"name": c.get("filename") or os.path.basename(path or ""), "chat": c.get("chat_name") or "",
+                "size": int(c.get("size_bytes") or 0)}
+
+    def _on_batch(event):
+        if event["event"] == "done":
+            run.record([_entry(p, "deleted", event["deleted_sizes"].get(p)) for p in event["deleted"]]
+                       + [_entry(p, "failed", reason=event["failed_reasons"].get(p)) for p in event["failed"]]
+                       + [_entry(p, "not_on_phone", 0, "Not on the phone any more") for p in event["not_found"]]
+                       + [_entry(p, "skipped", reason=r) for p, r in event["skipped"].items()])
+        if not on_progress:
+            return
+        if event["event"] == "start":
+            on_progress({"event": "start", "files": [_file(p) for p in event["paths"]]})
+        else:
+            on_progress({"event": "done", "files": [_file(p) for p in event["deleted"]],
+                         "failed": [_file(p) for p in event["failed"]],
+                         "deleted_count": event["deleted_count"], "failed_count": event["failed_count"],
+                         "not_found_count": event["not_found_count"], "skipped_count": event["skipped_count"],
+                         "freed_bytes": event["freed_bytes"]})
+
+    if on_progress:
+        on_progress({"event": "begin", "total": len(phone_paths), "total_bytes": planned_bytes})
 
     from core.adb import batch_delete_phone_files
-    res = batch_delete_phone_files(
-        phone_paths,
-        adb_path=adb_path,
-        serial=serial,
-        progress_callback=progress_callback,
-        cancel_event=cancel_event,
-    )
+    res = {"success": False, "errors": ["Cleanup stopped unexpectedly"], "not_done_paths": phone_paths}
+    try:
+        res = batch_delete_phone_files(
+            phone_paths,
+            adb_path=adb_path,
+            serial=serial,
+            progress_callback=progress_callback,
+            cancel_event=cancel_event,
+            on_batch=_on_batch,
+            verify=_verify,
+        )
+    finally:
+        run.record([_entry(p, "not_done", reason="Not reached (cancelled or phone disconnected)")
+                    for p in res.get("not_done_paths", [])]
+                   + [_entry(p, "unknown", reason="The phone was disconnected while deleting it: check the phone")
+                      for p in res.get("unknown_paths", [])])
+        is_cancelled = bool(cancel_event and cancel_event.is_set())
+        counts = run.summary["counts"]
+        status = ("completed" if res.get("success") else "cancelled" if is_cancelled
+                  else "interrupted" if (res.get("not_done_paths") or res.get("unknown_paths")) else "completed_with_problems")
+        run.finish(status, phone_free_after=_free(), errors=res.get("errors", [])[:20],
+                   freed_bytes=run.summary["bytes"]["deleted"])
 
-    deleted_count = res.get("deleted_count", 0)
-    freed_bytes = sum(c.get("size_bytes", 0) for c in valid_candidates[:deleted_count])
-
-    is_cancelled = bool(cancel_event and cancel_event.is_set())
-    plan["status"] = "executed" if res.get("success") else ("cancelled" if is_cancelled else "interrupted")
+    freed_bytes = run.summary["bytes"]["deleted"]
+    plan["status"] = "executed" if res.get("success") else run.summary["status"]
     plan["executed_at"] = datetime.now(timezone.utc).isoformat()
-    plan["deleted_count"] = deleted_count
+    plan["deleted_count"] = counts["deleted"]
     plan["freed_bytes"] = freed_bytes
+    discard_plan(plan.get("plan_id") or "")  # a plan runs once: a new cleanup checks the phone again
 
     return {
-        "success": res.get("success", False),
-        "deleted_count": deleted_count,
-        "failed_count": res.get("failed_count", 0),
+        "success": bool(res.get("success")),
+        "run_id": run.run_id,
+        "status": run.summary["status"],
+        "deleted_count": counts["deleted"],
+        "failed_count": counts["failed"],
+        "not_on_phone_count": counts["not_on_phone"],
+        "skipped_count": counts["skipped"],
+        "duplicate_count": counts["duplicate"],
+        "not_done_count": counts["not_done"],
+        "unknown_count": counts["unknown"],
         "freed_bytes": freed_bytes,
         "freed_mb": round(freed_bytes / (1024 * 1024), 2),
+        "planned_bytes": planned_bytes,
+        "phone_free_before": run.summary.get("phone_free_before"),
+        "phone_free_after": run.summary.get("phone_free_after"),
         "errors": res.get("errors", []),
     }
 

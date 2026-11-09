@@ -24,6 +24,8 @@ ROOT = {root!r}
 BIN = {bin!r}
 LOG = {log!r}
 SKIP_FILE = {skip!r}
+UNPLUG_FILE = {unplug!r}
+SLOW_FILE = {slow!r}
 _PHONE_PATH = re.compile(r"(?<![\w./-])(/storage|/sdcard|/data/local/tmp)")
 
 
@@ -46,6 +48,46 @@ def run_sh(script, binary=False, stdin_text=None):
     sys.stdout.write(to_phone(proc.stdout))
     sys.stderr.write(to_phone(proc.stderr))
     return proc.returncode
+
+
+def run_interactive_sh():
+    """Like adb shell sh: each line is passed on as it arrives, each output line as it is printed."""
+    import threading
+    env = dict(os.environ, PATH=BIN + ":" + os.environ.get("PATH", ""))
+    proc = subprocess.Popen(["sh"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, env=env)
+
+    slow = float(open(SLOW_FILE).read().strip() or 0) if SLOW_FILE and os.path.exists(SLOW_FILE) else 0.0
+    unplug_after = None
+    if UNPLUG_FILE and os.path.exists(UNPLUG_FILE):
+        unplug_after = int(open(UNPLUG_FILE).read().strip() or 0)
+
+    def feed():
+        try:
+            for n, raw in enumerate(iter(sys.stdin.buffer.readline, b"")):
+                if unplug_after is not None and n >= unplug_after:
+                    # The cable is pulled: the session ends without answering
+                    proc.kill()
+                    os._exit(1)
+                if slow:
+                    import time
+                    time.sleep(slow)  # a slow phone: each command line takes this long
+                proc.stdin.write(to_host(raw.decode("utf-8", "replace")).encode("utf-8"))
+                proc.stdin.flush()
+        except OSError:
+            pass
+        finally:
+            try:
+                proc.stdin.close()
+            except OSError:
+                pass
+
+    threading.Thread(target=feed, daemon=True).start()
+    for raw in iter(proc.stdout.readline, b""):
+        sys.stdout.write(to_phone(raw.decode("utf-8", "replace")))
+        sys.stdout.flush()
+    sys.stderr.write(to_phone(proc.stderr.read().decode("utf-8", "replace")))
+    return proc.wait()
 
 
 def main(argv):
@@ -98,7 +140,7 @@ def main(argv):
             shutil.copyfile(src, rest[1] if not os.path.isdir(rest[1]) else os.path.join(rest[1], os.path.basename(src)))
         return 0
     if verb == "shell" and (not rest or rest == ["sh"]):
-        return run_sh(None, stdin_text=to_host(sys.stdin.read()))
+        return run_interactive_sh()
     if verb in ("shell", "exec-out"):
         script = to_host(" ".join(rest))
         if verb == "exec-out" and re.match(r"\s*tar\b", script):
@@ -144,10 +186,12 @@ class FakePhone:
             p.chmod(0o755)
         self.log = base / "adb_calls.log"
         self.skip_file = base / "skip_in_transfer.txt"
+        self.unplug_file = base / "unplug_after_lines.txt"
+        self.slow_file = base / "seconds_per_shell_line.txt"
         self.adb_path = str(base / "adb")
         Path(self.adb_path).write_text(_ADB.format(
             python=sys.executable, root=str(self.root), bin=str(bin_dir), log=str(self.log),
-            skip=str(self.skip_file), serial=SERIAL,
+            skip=str(self.skip_file), unplug=str(self.unplug_file), slow=str(self.slow_file), serial=SERIAL,
         ))
         os.chmod(self.adb_path, 0o755)
 
@@ -165,6 +209,14 @@ class FakePhone:
     def fail_transfer_of(self, filename):
         """The next transfers leave this file out, as a phone that cannot read it would."""
         self.skip_file.write_text(filename, encoding="utf-8")
+
+    def slow_shell(self, seconds_per_line):
+        """Each line sent to a shell session takes this long, like a slow phone (for watching progress)."""
+        self.slow_file.write_text(str(seconds_per_line))
+
+    def unplug_after(self, lines):
+        """The next shell session (adb shell sh) ends, as if unplugged, after this many input lines."""
+        self.unplug_file.write_text(str(lines))
 
     def transfer_lists(self):
         """Each file list sent to the phone for a transfer, as a list of its phone paths."""

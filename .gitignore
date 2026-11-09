@@ -45,6 +45,7 @@ config.json
 
 # Scratch & Temporary Directories
 scratch/
+unused/
 tests/test_output/
 test_output/
 e2e_recording_*.json

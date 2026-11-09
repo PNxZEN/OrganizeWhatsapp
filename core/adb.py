@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -2467,124 +2468,320 @@ def broadcast_media_scan(phone_paths, adb_path=None, serial=None):
     return scanned
 
 
+_DELETE_BATCH = 25  # files per batch: small enough for live progress, large enough to stay fast
+_DELETE_MARK = "__WA_DEL"
+_WHATSAPP_SIGNATURES = (
+    "com.whatsapp",
+    "com.whatsapp.w4b",
+    "WhatsApp/Media",
+    "WhatsApp Business/Media",
+    "WhatsApp/accounts",
+    "DualApp/WhatsApp",
+    "DUAL_APP/WhatsApp",
+    "Parallel/WhatsApp",
+    "Clone/WhatsApp",
+)
+
+
+def is_deletable_phone_path(full: str) -> bool:
+    """Safety guard: only files inside WhatsApp's media folders may ever be deleted."""
+    if not full or not full.startswith("/") or "\n" in full or "\r" in full:
+        return False
+    if any(full.startswith(bad) for bad in ("/system", "/data/system", "/sbin", "/vendor", "/etc")):
+        return False
+    return any(sig in full for sig in _WHATSAPP_SIGNATURES)
+
+
+def _shell_quote(path: str) -> str:
+    return "'" + path.replace("'", "'\\''") + "'"
+
+
+class _PhoneShell:
+    """One adb shell session: send a line, read the lines it prints up to a marker."""
+
+    def __init__(self, base_cmd):
+        import queue
+        self._queue = queue.Queue()
+        self.proc = subprocess.Popen(base_cmd + ["shell", "sh"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.DEVNULL)
+        self.ended = False
+
+        def _reader():
+            try:
+                for raw in iter(self.proc.stdout.readline, b""):
+                    self._queue.put(raw.decode("utf-8", errors="replace").rstrip("\r\n"))
+            finally:
+                self._queue.put(None)  # the session ended
+
+        threading.Thread(target=_reader, daemon=True, name="phone-shell-reader").start()
+
+    def run(self, script: str, marker: str, timeout: float):
+        """Lines printed before `marker`, or None when the session ended or stopped answering."""
+        import queue
+        if self.ended:
+            return None
+        try:
+            self.proc.stdin.write((script + f'; echo "{marker}"\n').encode("utf-8"))
+            self.proc.stdin.flush()
+        except OSError:
+            self.ended = True
+            return None
+        out = []
+        deadline = time.time() + timeout
+        while True:
+            try:
+                line = self._queue.get(timeout=max(0.05, deadline - time.time()))
+            except queue.Empty:
+                self.ended = True
+                return None
+            if line is None:
+                self.ended = True
+                return None
+            if line == marker:
+                return out
+            out.append(line)
+
+    def close(self):
+        try:
+            self.proc.stdin.write(b"exit\n")
+            self.proc.stdin.close()
+            self.proc.wait(timeout=3)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        _terminate_adb_proc(self.proc, timeout=5)
+
+
 def batch_delete_phone_files(
     phone_paths,
     base_path=None,
     adb_path=None,
     serial=None,
-    batch_size=100,
+    batch_size=None,
     progress_callback=None,
     cancel_event=None,
+    on_batch=None,
+    batch_timeout=60.0,
+    verify=None,
 ):
     """
-    Deletes files from Android storage in high-performance batches.
-    Includes strict path sanitization ensuring only WhatsApp media directories are touched.
+    Deletes files from Android storage in batches, over ONE adb shell session, each file checked
+    before and after. Only files inside WhatsApp's media folders are ever touched.
+
+    Per batch: the phone says which files exist and their size; verify(path, phone_size) -> (ok,
+    reason) decides for each (the caller checks its PC copy); only those are deleted; then the
+    phone says which are still there. So every file ends up in exactly one of:
+      deleted    gone now, and it was there (its size is what was freed)
+      not_found  was not on the phone at all (nothing to free; v1.2.4 counted these as deleted)
+      skipped    verify said no (e.g. its PC copy is missing or differs): left on the phone
+      failed     still on the phone after rm (with rm's error)
+      not_done   never reached (cancelled, or the phone was unplugged); the batch in flight when
+                 the phone went away is "unknown": the phone could not say
+    progress_callback(deleted, total) after each batch; on_batch({"event": "start", "paths"}) and
+    on_batch({"event": "done", ...per-status lists for the batch..., running counts}).
+    Paths in events and results are the caller's own strings.
     """
+    def _result(**kw):
+        base = {"success": False, "deleted_count": 0, "failed_count": 0, "errors": [],
+                "deleted_paths": [], "deleted_sizes": {}, "failed_paths": [], "failed_reasons": {},
+                "not_found_paths": [], "skipped": {}, "not_done_paths": [], "unknown_paths": [],
+                "freed_bytes": 0}
+        base.update(kw)
+        return base
+
     if cancel_event and cancel_event.is_set():
-        return {"success": False, "deleted_count": 0, "failed_count": 0, "errors": ["Deletion cancelled by user"]}
+        return _result(errors=["Deletion cancelled by user"], not_done_paths=list(phone_paths or []))
     if not phone_paths:
-        return {"success": True, "deleted_count": 0, "failed_count": 0, "errors": []}
+        return _result(success=True)
 
     cmd = find_adb_binary(adb_path)
     dev = check_adb_device(adb_path=adb_path)
     if not dev.connected:
-        return {"success": False, "deleted_count": 0, "failed_count": 0, "errors": [f"Phone not connected: {dev.error or 'No USB device detected'}"]}
+        return _result(errors=[f"Phone not connected: {dev.error or 'No USB device detected'}"],
+                       not_done_paths=list(phone_paths))
     if not dev.authorized:
-        return {"success": False, "deleted_count": 0, "failed_count": 0, "errors": ["Phone is connected but unauthorized. Please allow USB debugging on your device."]}
+        return _result(errors=["Phone is connected but unauthorized. Please allow USB debugging on your device."],
+                       not_done_paths=list(phone_paths))
 
     base_cmd = [cmd]
     if serial:
         base_cmd.extend(["-s", serial])
 
-    if not base_path:
+    if not base_path and any(p and not p.replace("\\", "/").startswith("/") for p in phone_paths):
         base_path = discover_android_base_path(adb_path=adb_path, device_serial=serial)
 
-    sanitized_paths = []
+    targets = []  # (full phone path, the caller's path)
+    seen = set()
+    skipped = {}
     for p in phone_paths:
         if not p:
             continue
         norm = p.replace("\\", "/").strip()
         if not norm.startswith("/"):
-            if base_path:
-                # Relative paths are relative to the folder the sync pulled from: for an account
-                # subfolder that is its parent (it also holds the account's older Media)
-                full = f"{media_tar_root(base_path)}/{norm}"
-            else:
-                full = f"/storage/emulated/0/{norm}"
+            # Relative paths are relative to the folder the sync pulled from: for an account
+            # subfolder that is its parent (it also holds the account's older Media)
+            full = f"{media_tar_root(base_path)}/{norm}" if base_path else f"/storage/emulated/0/{norm}"
         else:
             full = norm
-
-        # Safety Guard: Only delete inside legitimate WhatsApp media directories
-        whatsapp_signatures = (
-            "com.whatsapp",
-            "com.whatsapp.w4b",
-            "WhatsApp/Media",
-            "WhatsApp Business/Media",
-            "WhatsApp/accounts",
-            "DualApp/WhatsApp",
-            "DUAL_APP/WhatsApp",
-            "Parallel/WhatsApp",
-            "Clone/WhatsApp",
-        )
-        if any(full.startswith(bad) for bad in ("/system", "/data/system", "/sbin", "/vendor", "/etc")):
+        if not is_deletable_phone_path(full):
+            skipped[p] = "Outside WhatsApp's media folders: never deleted"
             continue
-        if any(sig in full for sig in whatsapp_signatures):
-            sanitized_paths.append(full)
+        if full in seen:
+            continue  # the same phone file twice: deleted (and counted) once
+        seen.add(full)
+        targets.append((full, p))
 
-    if not sanitized_paths:
-        return {"success": True, "deleted_count": 0, "failed_count": 0, "errors": ["No eligible paths to delete"]}
+    if not targets:
+        return _result(success=True, skipped=skipped, errors=["No eligible paths to delete"])
 
-    total = len(sanitized_paths)
-    deleted = 0
-    failed = 0
-    errors = []
+    total = len(targets)
+    size = max(1, int(batch_size or _DELETE_BATCH))
+    deleted, sizes, failed, failed_reasons = [], {}, [], {}
+    not_found, not_done, unknown, errors = [], [], [], []
 
-    for i in range(0, total, batch_size):
-        if cancel_event and cancel_event.is_set():
-            errors.append("Deletion cancelled by user")
-            break
-
-        chunk = sanitized_paths[i : i + batch_size]
-        escaped_chunk = []
-        for p in chunk:
-            esc = p.replace("'", "'\\''")
-            escaped_chunk.append(f"'{esc}'")
-        rm_cmd = "rm -f " + " ".join(escaped_chunk)
-
-        try:
-            res = subprocess.run(
-                base_cmd + ["shell", rm_cmd],
-                capture_output=True,
-                text=True,
-                timeout=15,
-                check=False,
-            )
-            if res.returncode == 0:
-                deleted += len(chunk)
-            else:
-                err_text = (res.stderr or "").strip()
-                failed += len(chunk)
-                errors.append(err_text or f"rm returned exit code {res.returncode}")
-                lower_err = err_text.lower()
-                if any(s in lower_err for s in ("device not found", "device offline", "device unauthorized", "error: closed")):
-                    errors.append("Phone was disconnected during cleanup")
-                    break
-        except Exception as e:
-            failed += len(chunk)
-            errors.append(str(e))
-
-        if progress_callback:
+    def _emit(event):
+        if on_batch:
             try:
-                progress_callback(deleted, total)
+                on_batch(event)
             except Exception:
                 pass
 
-    return {
-        "success": failed == 0,
-        "deleted_count": deleted,
-        "failed_count": failed,
-        "errors": errors,
-    }
+    try:
+        shell = _PhoneShell(base_cmd)
+    except Exception as e:
+        return _result(errors=[str(e)], skipped=skipped, not_done_paths=[orig for _, orig in targets])
+
+    try:
+        for n, i in enumerate(range(0, total, size)):
+            chunk = targets[i:i + size]
+            if cancel_event and cancel_event.is_set():
+                errors.append("Deletion cancelled by user")
+                not_done.extend(orig for _, orig in targets[i:])
+                break
+            _emit({"event": "start", "paths": [orig for _, orig in chunk]})
+
+            # 1. Which of them are on the phone, and how big
+            quoted = " ".join(_shell_quote(full) for full, _ in chunk)
+            lines = shell.run(f"stat -c '%s %n' {quoted} 2>/dev/null", f"{_DELETE_MARK}S{n}", batch_timeout)
+            if lines is None:
+                errors.append("Phone was disconnected during cleanup")
+                not_done.extend(orig for _, orig in targets[i:])
+                break
+            phone_size = {}
+            for line in lines:
+                sz, _, path = line.partition(" ")
+                if sz.isdigit():
+                    phone_size[path] = int(sz)
+
+            # 2. The caller's check (its PC copy) for each one that is there
+            batch_missing, batch_skipped, to_delete = [], {}, []
+            for full, orig in chunk:
+                if full not in phone_size:
+                    batch_missing.append(orig)
+                    continue
+                ok, reason = (True, None)
+                if verify:
+                    try:
+                        ok, reason = verify(orig, phone_size[full])
+                    except Exception as e:
+                        ok, reason = False, f"Check failed: {e}"
+                if ok:
+                    to_delete.append((full, orig))
+                else:
+                    batch_skipped[orig] = reason or "Not verified"
+
+            # 3. Delete those, then see which are still there
+            batch_deleted, batch_failed, batch_reasons = [], [], {}
+            if to_delete:
+                q = " ".join(_shell_quote(full) for full, _ in to_delete)
+                script = (f"err=$(rm -f -- {q} 2>&1 >/dev/null); "
+                          f"if [ -n \"$err\" ]; then echo \"$err\" | while read -r l; do echo \"{_DELETE_MARK}E $l\"; break; done; fi; "
+                          f"for f in {q}; do [ -e \"$f\" ] && echo \"{_DELETE_MARK}F $f\"; done")
+                lines = shell.run(script, f"{_DELETE_MARK}B{n}", batch_timeout)
+                if lines is None:
+                    # The phone went away during rm: which of these are gone, it could not say
+                    unknown.extend(orig for _, orig in to_delete)
+                    errors.append("Phone was disconnected during cleanup")
+                    not_found.extend(batch_missing)
+                    skipped.update(batch_skipped)
+                    not_done.extend(orig for _, orig in targets[i + len(chunk):])
+                    break
+                still = {line[len(_DELETE_MARK) + 2:] for line in lines if line.startswith(f"{_DELETE_MARK}F ")}
+                rm_error = next((line[len(_DELETE_MARK) + 2:] for line in lines if line.startswith(f"{_DELETE_MARK}E ")), "")
+                for full, orig in to_delete:
+                    if full in still:
+                        batch_failed.append(orig)
+                        batch_reasons[orig] = rm_error or "Still on the phone after deleting"
+                    else:
+                        batch_deleted.append(orig)
+                        sizes[orig] = phone_size[full]
+
+            deleted.extend(batch_deleted)
+            failed.extend(batch_failed)
+            failed_reasons.update(batch_reasons)
+            not_found.extend(batch_missing)
+            skipped.update(batch_skipped)
+            _emit({"event": "done", "deleted": batch_deleted, "deleted_sizes": {p: sizes[p] for p in batch_deleted},
+                   "failed": batch_failed, "failed_reasons": batch_reasons, "not_found": batch_missing,
+                   "skipped": batch_skipped, "deleted_count": len(deleted), "failed_count": len(failed),
+                   "not_found_count": len(not_found), "skipped_count": len(skipped), "total": total,
+                   "freed_bytes": sum(sizes.values())})
+            if progress_callback:
+                try:
+                    progress_callback(len(deleted), total)
+                except Exception:
+                    pass
+    finally:
+        shell.close()
+
+    if failed:
+        errors.append(f"{len(failed)} file(s) could not be deleted")
+    return _result(
+        success=not failed and not unknown and not not_done and not any(
+            e.startswith(("Phone was disconnected", "Deletion cancelled")) for e in errors),
+        deleted_count=len(deleted), failed_count=len(failed), errors=errors,
+        deleted_paths=deleted, deleted_sizes=sizes, failed_paths=failed, failed_reasons=failed_reasons,
+        not_found_paths=not_found, skipped=skipped, not_done_paths=not_done, unknown_paths=unknown,
+        freed_bytes=sum(sizes.values()),
+    )
+
+
+def phone_media_inventory(adb_path=None, serial=None, roots=WHATSAPP_PROBE_ROOTS, timeout=180):
+    """
+    Every file in WhatsApp's media folders on the phone (all apps, accounts and storage roots),
+    in one call: {absolute path: size}. /sdcard paths are reported as /storage/emulated/0.
+    """
+    cmd = find_adb_binary(adb_path)
+    base = [cmd, "-s", serial] if serial else [cmd]
+    script = (
+        "for r in " + " ".join(roots) + " ; do [ -d \"$r\" ] || continue; "
+        "case \"$r\" in /sdcard*) continue;; esac; "
+        "find \"$r\" -type f -path '*/Media/*' -printf '%s %p\\n' 2>/dev/null; done"
+    )
+    res = subprocess.run(base + ["shell", "sh"], input=script, capture_output=True, text=True,
+                         timeout=timeout, check=False, encoding="utf-8", errors="replace")
+    files = {}
+    for line in (res.stdout or "").splitlines():
+        sz, _, path = line.partition(" ")
+        if sz.isdigit() and path.startswith("/"):
+            files[path] = int(sz)
+    return files
+
+
+def phone_md5(paths, adb_path=None, serial=None, timeout=600):
+    """{path: md5 hex} of files on the phone (to prove a file found by name is the one on the PC)."""
+    if not paths:
+        return {}
+    cmd = find_adb_binary(adb_path)
+    base = [cmd, "-s", serial] if serial else [cmd]
+    script = "md5sum " + " ".join(_shell_quote(p) for p in paths) + " 2>/dev/null"
+    res = subprocess.run(base + ["shell", "sh"], input=script, capture_output=True, text=True,
+                         timeout=timeout, check=False, encoding="utf-8", errors="replace")
+    out = {}
+    for line in (res.stdout or "").splitlines():
+        digest, _, path = line.partition("  ")
+        if len(digest) == 32 and path:
+            out[path] = digest.lower()
+    return out
 
 
 def restore_chat_to_phone(

@@ -19,6 +19,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
 import uuid
 from pathlib import Path
@@ -73,7 +74,11 @@ class SimulatedPhoneSync(unittest.TestCase):
             p = mock.patch(target, return_value=self.phone.adb_path)
             p.start()
             self.addCleanup(p.stop)
-        p = mock.patch("time.sleep", return_value=None)  # the pipeline's waits for a backup
+        # The pipeline's waits for a backup, in the pipeline only: patching time.sleep for the whole
+        # process makes other tests' background threads (a server's idle watchdog) spin and fill memory
+        fast_time = types.SimpleNamespace(**{k: getattr(time, k) for k in dir(time) if not k.startswith("_")})
+        fast_time.sleep = lambda secs: None
+        p = mock.patch.object(pipeline, "time", fast_time)
         p.start()
         self.addCleanup(p.stop)
         save_config({"hex_key": HEX_KEY, "selected_account_path": ACC})
